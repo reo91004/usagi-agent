@@ -115,7 +115,7 @@ const SLACK_API = [
   {
     id: 'slack-api-restart',
     feature: 'slack',
-    title: '시사 비서를 껐다 켜세요',
+    title: '우사기 비서를 껐다 켜세요',
     say: '개요의 연결 카드에서 Slack이 초록이면 슬랙 글 보기가 켜진 것입니다.',
   },
 ];

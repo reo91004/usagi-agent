@@ -37,6 +37,7 @@ import { AgentsNotifier, AGENT_LIMITS, agentsForThread, sessionsForThread, threa
 import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
+import { START_CHARACTER } from "./characters.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
 import { statusOf } from "./status.ts";
@@ -147,8 +148,8 @@ function reloadConnectors(): { changed: boolean; restarting: boolean } {
 const characterStore = new CharacterStore(join(HOME_DIR, "characters"));
 try { characterStore.load(); } catch (e: any) { console.warn("[characters] 사용자 캐릭터를 읽지 못했어요:", e?.message ?? e); }
 characterStore.onChange = ({ removedCurrent }) => {
-  // 지금 쓰던 캐릭터를 지움 → 시사로(config.json 도). put 이 state 를 다시 보낸다
-  if (removedCurrent) settings.put({ character: "shisa" });
+  // 지금 쓰던 캐릭터를 지움 → 기본 캐릭터로(config.json 도). put 이 state 를 다시 보낸다
+  if (removedCurrent) settings.put({ character: START_CHARACTER });
   bus.charactersChanged();
   bus.characterChanged(); // 이름·대사가 바뀐 지금 캐릭터도 바로
 };

@@ -1,4 +1,4 @@
-// 개발 실행을 Electron 기본 앱이 아니라 '시사 비서' 아이콘·이름으로 Dock 에 띄운다.
+// 개발 실행을 Electron 기본 앱이 아니라 '우사기 비서' 아이콘·이름으로 Dock 에 띄운다.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,7 +6,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const NAME = '시사 비서';
+const NAME = '우사기 비서';
 const DEST = path.join(ROOT, '.dev-app', `${NAME}.app`);
 const buddy = '/usr/libexec/PlistBuddy';
 

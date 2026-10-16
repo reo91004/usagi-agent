@@ -1,8 +1,8 @@
-// 배포용 dmg 만들기: 데몬(agent/)까지 든 「시사.app」 → ad-hoc 서명 → hdiutil 로 「시사.app + 응용 프로그램 바로가기」 dmg.
+// 배포용 dmg 만들기: 데몬(agent/)까지 든 「우사기.app」 → ad-hoc 서명 → hdiutil 로 「우사기.app + 응용 프로그램 바로가기」 dmg.
 // 사용: npm run dist                 (이 맥의 아키텍처: 애플 실리콘이면 arm64)
 //       npm run dist -- --arch=x64   (인텔 맥용. 데몬 의존성은 npm 이 x64 용으로 받고, Electron x64 는 packager 가 받는다)
 //       npm run dist -- --no-dmg     (앱 번들만)
-// 결과: dist/Shisa-<버전>-<arch>.dmg (버전은 desktop/package.json version)
+// 결과: dist/Usagi-<버전>-<arch>.dmg (버전은 desktop/package.json version)
 // 인터넷이 필요하다(npm ci, 처음 한 번 Electron 받기). 애플 개발자 서명·공증은 하지 않는다(README 「쉬운 설치」의 「그래도 열기」 참고).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'); // desktop/
 const REPO = path.join(ROOT, '..');
-const APP_NAME = '시사';
+const APP_NAME = '우사기';
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 
@@ -101,8 +101,8 @@ const paths = await packager({
   platform: 'darwin',
   arch: ARCH,
   electronVersion: ELECTRON_VERSION,
-  name: APP_NAME, // 시사.app · Dock·Cmd+Tab·Finder 에 보이는 이름
-  executableName: 'shisa',
+  name: APP_NAME, // 우사기.app · Dock·Cmd+Tab·Finder 에 보이는 이름
+  executableName: 'usagi',
   appVersion: VERSION,
   buildVersion: VERSION,
   appBundleId: 'com.cy-agent.desktop',
@@ -132,14 +132,14 @@ run('codesign', ['--force', '--deep', '--sign', '-', APP]);
 run('codesign', ['--verify', '--deep', '--strict', APP]);
 
 if (MAKE_DMG) {
-  // 6) dmg: 시사.app + 응용 프로그램(/Applications) 바로가기, 압축(UDZO)
+  // 6) dmg: 우사기.app + 응용 프로그램(/Applications) 바로가기, 압축(UDZO)
   step('dmg 만들기');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shisa-dmg-'));
   fs.chmodSync(root, 0o755); // dmg 맨 위 폴더(mkdtemp 는 700)
   try {
     run('ditto', [APP, path.join(root, `${APP_NAME}.app`)]);
     fs.symlinkSync('/Applications', path.join(root, '응용 프로그램'));
-    const dmg = path.join(DIST, `Shisa-${VERSION}-${ARCH}.dmg`); // 파일 이름은 영문(GitHub 릴리스가 한글 파일 이름을 못 받는다). 앱 이름은 그대로 「시사」
+    const dmg = path.join(DIST, `Usagi-${VERSION}-${ARCH}.dmg`); // 파일 이름은 영문(GitHub 릴리스가 한글 파일 이름을 못 받는다). 앱 이름은 그대로 「우사기」
     fs.rmSync(dmg, { force: true });
     run('hdiutil', ['create', '-volname', `${APP_NAME} ${VERSION}`, '-srcfolder', root, '-fs', 'HFS+', '-format', 'UDZO', '-imagekey', 'zlib-level=9', '-ov', dmg]);
     const mb = (fs.statSync(dmg).size / 1024 / 1024).toFixed(1);

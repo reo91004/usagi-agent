@@ -34,8 +34,8 @@ const paths = await packager({
   // 번들엔 실행에 필요한 것만 (main.js, preload, renderer, src, assets, package.json)
   ignore: [/^\/(test|scripts|dist|out|node_modules)(\/|$)/, /^\/README\.md$/, /^\/\.gitignore$/],
   extendInfo: {
-    CFBundleDisplayName: '시사 비서', // Cmd+Tab·Dock 에 보이는 이름 (번들 파일명은 cy.app 유지)
-    CFBundleName: '시사 비서',
+    CFBundleDisplayName: '우사기 비서', // Cmd+Tab·Dock 에 보이는 이름 (번들 파일명은 cy.app 유지)
+    CFBundleName: '우사기 비서',
     LSUIElement: true, // Dock 아이콘 없이 켠다(설정에서 켜면 app.dock.show)
   },
   quiet: true,

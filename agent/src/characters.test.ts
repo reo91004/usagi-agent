@@ -178,7 +178,7 @@ test("설정: PUT character → config.json 에 쓰고 바로 바뀌고, 모르�
   const cfg = loadConfig({}, {});
   const seen: string[][] = [];
   const s = new Settings(cfg, { path, env: {}, onChange: (k) => seen.push(k) });
-  assert.equal(s.view().character, "shisa");
+  assert.equal(s.view().character, "usagi", "config.json 에 character 가 없으면(새 설치) 우사기");
   assert.deepEqual(s.view().characters.map((c) => c.id), [...CHARACTER_IDS]);
   const r = s.put({ character: "hachi" });
   assert.ok(r.ok);
