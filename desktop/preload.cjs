@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('cy', {
   onClear: on('clear'),
   onConnection: on('connection'),
   onVisibility: on('visibility'),
+  onFlip: on('flip'), // true = 화면 위쪽이라 캐릭터가 창 위, 말풍선이 아래
   onChat: on('chat'),
   onAgents: on('agents'), // { running } — 돌고 있는 서브에이전트 수(캡션 "에이전트 N개 실행 중")
   setInteractive: (v) => ipcRenderer.send('set-interactive', !!v),

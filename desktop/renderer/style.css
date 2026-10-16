@@ -61,6 +61,14 @@ html, body {
 }
 #stack.hidden { display: none; }
 
+/* 화면 위쪽에 놓으면 뒤집는다(geometry.js dropPlacement 와 캐릭터 쪽 여백 4px 을 맞춘다): 캐릭터가 창 위, 나머지는 그 아래로 */
+#stage.flip { flex-direction: column-reverse; padding: 4px 8px 8px; }
+#stage.flip #stack { flex-direction: column-reverse; margin-bottom: 0; margin-top: 10px; }
+#stage.flip #focus, #stage.flip #doing { margin-bottom: 0; margin-top: 10px; }
+#stage.flip #ask { margin-bottom: 0; margin-top: 8px; }
+#stage.flip #caption { margin-bottom: 0; margin-top: 4px; }
+#stage.flip .item.newest .bubble::after, #stage.flip #focus::after, #stage.flip #doing::after { top: -6px; bottom: auto; transform: translateX(-50%) rotate(225deg); }
+
 .bubble {
   position: relative;
   max-width: 260px;

@@ -11,7 +11,7 @@ import { ASSET_SCHEME, resolveAsset, parseRange, assetCandidates, userCharacterF
 import { cleanMergeQuestion, normalizeOpen } from './src/bubbles.js';
 import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
-import { defaultPosition, restorePosition } from './src/geometry.js';
+import { defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
 import { normalizeSection } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
 import { okRuleId, sanitizeRulePatch } from './src/todo-rules.js';
@@ -454,14 +454,16 @@ function attachContentsDebug(wc, tag) {
 // ---- 창 ----
 function initialPosition() {
   const areas = screen.getAllDisplays().map((d) => d.workArea);
-  // 창 높이가 바뀌었으면 저장 위치를 그만큼 올린다(캐릭터는 창 아래에 붙어 있음)
+  // 창 높이가 바뀌었으면 저장 위치를 그만큼 올린다(캐릭터는 창 아래에 붙어 있음. 뒤집혔으면 위에 있어서 그대로)
   const savedH = Number(state.winHeight) || OLD_HEIGHT;
-  if (state.pos && savedH !== SIZE.height) state.pos = { ...state.pos, y: state.pos.y - (SIZE.height - savedH) };
+  if (state.pos && !state.flip && savedH !== SIZE.height) state.pos = { ...state.pos, y: state.pos.y - (SIZE.height - savedH) };
   if (state.winHeight !== SIZE.height) { state.winHeight = SIZE.height; saveState(); }
   const savedW = Number(state.winWidth) || OLD_WIDTH;
   if (state.pos && savedW !== SIZE.width) state.pos = { ...state.pos, x: state.pos.x - Math.round((SIZE.width - savedW) / 2) };
   if (state.winWidth !== SIZE.width) { state.winWidth = SIZE.width; saveState(); }
-  return restorePosition(state.pos, areas, SIZE) ?? defaultPosition(screen.getPrimaryDisplay().workArea, SIZE);
+  const pos = restorePosition(state.pos, areas, SIZE);
+  if (!pos) state.flip = false; // 기본 자리(오른쪽 아래)는 뒤집지 않는다
+  return pos ?? defaultPosition(screen.getPrimaryDisplay().workArea, SIZE);
 }
 
 function createWindow() {
@@ -482,6 +484,7 @@ function createWindow() {
     focusable: false, // 포커스 뺏지 않기
     show: false,
     type: process.platform === 'darwin' ? 'panel' : undefined, // 전체화면 위에도 뜨게
+    enableLargerThanScreen: true, // 맥은 이게 없으면 창 윗변을 메뉴 막대 아래로 묶어서 캐릭터가 화면 가운데 위로 못 간다
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -507,6 +510,7 @@ function createWindow() {
     winLoaded = true;
     send('connection', { connected });
     send('visibility', { hidden: state.bubblesHidden });
+    send('flip', !!state.flip);
     // 화면이 뜨기 전에 온 말풍선(SSE 가 먼저 붙으면 데몬이 다시 보내는 승인·머지 말풍선)을 이제 보낸다 — 버리지 않게
     for (const [c, p] of early.splice(0)) send(c, p);
   });
@@ -1185,7 +1189,15 @@ function endDrag() {
   drag = null;
   if (!win) return;
   const [x, y] = win.getPosition();
-  state.pos = { x, y };
+  // 화면 위쪽에 놓았으면 뒤집어서 말풍선이 캐릭터 아래로 가게(geometry.js dropPlacement)
+  const p = dropPlacement(y, !!state.flip, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea, SIZE);
+  if (p.flip !== !!state.flip) send('flip', p.flip);
+  if (p.y !== y) {
+    if (process.platform === 'win32') win.setBounds({ x, y: p.y, ...SIZE });
+    else win.setPosition(x, p.y);
+  }
+  state.pos = { x, y: p.y };
+  state.flip = p.flip;
   saveState();
 }
 
@@ -2047,6 +2059,8 @@ if (SQUIRREL) {
       if (!restorePosition({ x, y }, areas, SIZE)) {
         const p = defaultPosition(screen.getPrimaryDisplay().workArea, SIZE);
         win.setPosition(p.x, p.y);
+        state.flip = false;
+        send('flip', false);
       }
     });
   });
