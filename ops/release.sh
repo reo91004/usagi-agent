@@ -48,14 +48,16 @@ cask "usagi-agent" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "우사기.app"
   binary "#{appdir}/우사기.app/Contents/Resources/bin/usagi-run"
 
   # ad-hoc 서명(개발자 인증서 없음)이라 받은 그대로면 Gatekeeper 가 열지 못하게 막는다
-  postflight do
-    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/우사기.app"]
+  postflight_steps do
+    run "/usr/bin/xattr", args:           ["-dr", "com.apple.quarantine", "{{appdir}}/우사기.app"],
+                          writable_paths: ["우사기.app"],
+                          writable_base:  :appdir
   end
 
   uninstall quit:       "com.cy-agent.desktop",
