@@ -1,4 +1,4 @@
-// 앱 아이콘 생성 — assets/character.png(없으면 character.svg)를 맥 아이콘 모양(둥근 사각형 배경 + 여백)에 얹어
+// 앱 아이콘 생성 — 우사기 그림(assets/characters/usagi/eyes_open.png, 없으면 시사 그림·character.svg)을 맥 아이콘 모양(둥근 사각형 배경 + 여백)에 얹어
 // assets/icon.png(1024px, Dock 아이콘용) 과 assets/icon.icns(앱 번들용) 를 만든다.
 // sips·iconutil(맥 기본 도구)만 쓴다. 사용: node scripts/make-icon.mjs
 import fs from 'node:fs';
@@ -16,8 +16,8 @@ const S = 1024; // 캔버스
 const BODY = 824; // 맥 아이콘 그리드: 1024 캔버스 안 824 둥근 사각형
 const RADIUS = 185;
 const CHAR = 740; // 캐릭터 크기 — 사각형 안에 가벼운 여백
-const TOP = [250, 247, 255]; // 배경 그라데이션 위
-const BOTTOM = [226, 220, 255]; // 아래
+const TOP = [255, 247, 249]; // 배경 그라데이션 위(우사기 귀 안쪽 분홍을 옅게)
+const BOTTOM = [255, 221, 231]; // 아래
 
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
 
@@ -117,10 +117,13 @@ function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cy-icon-'));
   try {
     // 1) 원본 → CHAR×CHAR PNG
-    // 아이콘은 눈 뜬 기본 표정(neutral). 생성물이라 git 에 안 넣는다
+    // 아이콘은 우사기의 눈 뜬 기본 표정. 생성물이라 git 에 안 넣는다
     const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
     const repoChar = path.join(ASSETS, '..', '..', 'assets', 'character');
+    const usagi = path.join('characters', 'usagi', 'eyes_open.png');
     const picks = [
+      ...(REPO_ONLY ? [] : [path.join(home, 'assets', usagi)]),
+      path.join(ASSETS, '..', '..', 'assets', usagi),
       ...(REPO_ONLY ? [] : [path.join(home, 'assets', 'character', 'eyes_open@2x.png'), path.join(home, 'assets', 'character', 'eyes_open.png')]),
       path.join(repoChar, 'eyes_open@2x.png'),
       path.join(repoChar, 'eyes_open.png'),

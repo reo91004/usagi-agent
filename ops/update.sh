@@ -1,16 +1,16 @@
 #!/bin/sh
 # 최신 버전 받기: GitHub 에서 받아(처음이면 clone, 있으면 pull) → install.sh 로 설치·적용 → 데몬·앱 다시 띄우기.
 # 받은 폴더 안에서: ./ops/update.sh
-# 폴더가 없어도(처음 설치도) 한 줄로: curl -fsSL https://raw.githubusercontent.com/cheo0y/shisa-agent/main/ops/update.sh | sh
+# 폴더가 없어도(처음 설치도) 한 줄로: curl -fsSL https://raw.githubusercontent.com/reo91004/usagi-agent/main/ops/update.sh | sh
 # 다른 폴더에 두려면 SHISA_DIR=~/어딘가 를 앞에 붙인다
 set -eu
-REPO="${SHISA_REPO:-https://github.com/cheo0y/shisa-agent.git}"
+REPO="${SHISA_REPO:-https://github.com/reo91004/usagi-agent.git}"
 
-# 이 스크립트가 레포 안에 있으면 그 레포, 아니면(curl 로 받아 실행) ~/shisa-agent
+# 이 스크립트가 레포 안에 있으면 그 레포, 아니면(curl 로 받아 실행) ~/usagi-agent
 HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)
 if [ -n "${SHISA_DIR:-}" ]; then DIR="$SHISA_DIR"
 elif [ -n "$HERE" ] && [ -f "$HERE/install.sh" ] && [ -d "$HERE/../agent" ]; then DIR=$(cd "$HERE/.." && pwd)
-else DIR="$HOME/shisa-agent"; fi
+else DIR="$HOME/usagi-agent"; fi
 
 command -v git >/dev/null 2>&1 || { echo "✗ git 이 없습니다. 터미널에 xcode-select --install 을 입력해 설치한 뒤 다시 실행해 주세요."; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "✗ Node.js 가 없습니다. brew install node 로 설치한 뒤 다시 실행해 주세요."; exit 1; }

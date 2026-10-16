@@ -8,7 +8,7 @@ import {
   ALERT_DEFAULT, cleanCalendarAlert, alertMinutesNext, parseAlertMinutes, alertChoices, calendarAlertSummary,
 } from '../src/settings.js';
 import { mountGuidelines } from '../src/guidelines.js';
-import { CHARACTERS, CHARACTER_IDS, characterAssets, characterName, okCharacterId, USER_CHAR_DIR, defaultFrame } from '../src/character.js';
+import { CHARACTERS, CHARACTER_IDS, characterAssets, characterName, okCharacterId, USER_CHAR_DIR, defaultFrame, START_CHARACTER } from '../src/character.js';
 import { applyCharacters, effectiveLines, defaultsOf } from '../src/character-registry.js';
 import { editorSections, flattenLines, unflattenLines, fieldText, fieldProblem, linesFromTexts, diffLines, slotRows, okMediaName, previewKind, missingRequired, sourceOptions, ACCEPT } from '../src/character-edit.js';
 import { who, setWho, onWho } from './who.js';
@@ -285,7 +285,7 @@ function renderCharacter() {
     rb.type = 'radio';
     rb.name = 'character';
     rb.value = c.id;
-    rb.checked = (settings.character ?? 'shisa') === c.id;
+    rb.checked = (settings.character ?? START_CHARACTER) === c.id;
     rb.addEventListener('change', async () => { if (rb.checked && await save({ character: c.id })) renderCharacter(); });
     const pic = el('img');
     pic.alt = '';

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { loadConfig, type Config } from "./config.ts";
 import { Settings, excludeBriefingSources, mergeConfigFile, validatePatch, validatePhrases, modelOptions, SettingsError } from "./settings.ts";
 import { phrase, setPhrases } from "./phrases.ts";
+import { setCharacter } from "./characters.ts";
 import { BRIEFING_TASK } from "./brain.ts";
 import { Bus } from "./bus.ts";
 import { Store } from "./store.ts";
@@ -152,6 +153,7 @@ test("브리핑은 설정의 제외 출처를 따른다(think 가 cfg.briefing.e
 });
 
 test("validatePhrases: 아는 키만, 모르는 자리표시는 거절(줄 수·길이 제한 없음), 빈 글·기본값과 같은 글은 null(기본값으로)", () => {
+  setCharacter("shisa"); // 기본값 비교는 시사 문구로
   assert.deepEqual(validatePhrases({ dance: "춤!\n 얍 \n", todo_new_one: ["새: {title}"], hello: "", mcp_back: null, merge_done: "머지했어요 🎉 (스이시~사)" }),
     { dance: ["춤!", "얍"], todo_new_one: ["새: {title}"], hello: null, mcp_back: null, merge_done: null });
   for (const bad of [[], "x", { nope: "a" }, { dance: 3 }, { dance: ["a", 1] }, { todo_new_one: "{title} {pr}" }, { dance: "{title}" }]) {
@@ -173,7 +175,7 @@ test("config: phrases 는 글·줄 배열을 줄들로, 이상한 값은 건너�
 test("Settings: 문구 고치기 — 파일에 키 단위로 합치고 메모리·말풍선에 바로, null 이면 기본값으로(파일에서 빠짐)", () => {
   const d = tmp(), p = join(d, "config.json");
   writeFileSync(p, JSON.stringify({ slackBotToken: "xoxb-keep", phrases: { hello: ["반가워요"] } }));
-  const cfg = cfgOf({ phrases: { hello: ["반가워요"] } });
+  const cfg = cfgOf({ character: "shisa", phrases: { hello: ["반가워요"] } });
   try {
     const s = new Settings(cfg, { path: p, env: {} });
     assert.equal(phrase("hello"), "반가워요", "켤 때 config.json 의 고친 문구");

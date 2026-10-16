@@ -1,9 +1,9 @@
 // 지금 캐릭터 이름(「시사」·「하치와레」…) — 창 안의 글(「하치와레 켜짐」·「하치와레에 연결되지 않았어요」)이 같이 쓴다.
 // 창마다 데몬 state 의 캐릭터를 받아 setWho 로 바꾼다(패널·오버레이·세션 창·설정 창).
-import { okCharacter, characterName, appName } from '../src/character.js';
+import { okCharacter, characterName, appName, START_CHARACTER } from '../src/character.js';
 
-let id = 'shisa';
-let shown = '시사'; // 같은 id 라도 이름을 고치면 다시 알린다
+let id = START_CHARACTER;
+let shown = characterName(id); // 같은 id 라도 이름을 고치면 다시 알린다
 const listeners = new Set();
 export const who = () => characterName(id);
 export const whoId = () => id;

@@ -13,6 +13,8 @@ export type BuiltinId = (typeof CHARACTER_IDS)[number];
 // 사용자 캐릭터 id 도 들어간다(u-xxxxxxxx). 지금 목록에 있는지는 isCharacterId 로
 export type CharacterId = string;
 export const DEFAULT_CHARACTER: BuiltinId = "shisa";
+// 이 포크가 새 설치·지운 캐릭터 대신 고르는 캐릭터(모르는 id 를 받을 때의 DEFAULT_CHARACTER 는 시사 그대로)
+export const START_CHARACTER: BuiltinId = "usagi";
 export const isBuiltinId = (v: unknown): v is BuiltinId => typeof v === "string" && (CHARACTER_IDS as readonly string[]).includes(v);
 
 export type Mood = "happy" | "excited" | "calm" | "busy";

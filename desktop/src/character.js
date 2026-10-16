@@ -29,6 +29,8 @@ export const DANCE_CLIPS = ['plan', 'dance', 'cheer'];
 export const CHARACTER_IDS = Object.freeze(Object.keys(CHARACTERS)); // 기본 다섯
 export const characterIds = () => Object.keys(CHARACTERS); // 지금 고를 수 있는 것(사용자 캐릭터 포함)
 export const DEFAULT_CHARACTER = 'shisa';
+// 데몬 state 를 받기 전 첫 화면(데몬 config.ts START_CHARACTER 와 같다)
+export const START_CHARACTER = 'usagi';
 // 사용자 캐릭터 id 모양(데몬 character-store.ts USER_ID 와 같다). 있는지는 데몬이 다시 본다
 export const USER_CHARACTER_ID = /^u-[a-z0-9]{4,32}$/;
 export const okCharacterId = (id) => typeof id === 'string' && (CHARACTER_IDS.includes(id) || USER_CHARACTER_ID.test(id));
