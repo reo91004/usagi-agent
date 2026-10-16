@@ -3,7 +3,7 @@
 //   codex       → codex exec 한 번(도구·사용자 MCP 없이 JSON 만 — providers.ts codexExec) + 모양 검사
 //   agy         → agy -p 한 번(도구 없이 JSON 만 — providers.ts agyExec) + 모양 검사
 //   그 밖(gemini·openai·anthropic·local) 또는 codex·agy 명령이 없으면 → 조용히 건너뛴다(기능마다 로그 한 줄, 한 번만)
-// 메일·이슈 MCP 읽기·코드 고치기·워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로.
+// 메일·이슈 MCP 읽기·워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로. 코드 고치기는 codex 도 된다(fixer.ts driveCodex)
 import type { Config } from "./config.ts";
 import { agyExec, agyModel, codexExec, commandOnPath, type ExecFileLike } from "./providers.ts";
 

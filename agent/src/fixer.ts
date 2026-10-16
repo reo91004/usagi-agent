@@ -1,12 +1,13 @@
-// 승인된 수정을 실행한다: 워크트리 → Claude Code가 수정 → 테스트 → 커밋·푸시 → PR.
+// 승인된 수정을 실행한다: 워크트리 → Claude Code(뇌가 codex 면 Codex)가 수정 → 테스트 → 커밋·푸시 → PR.
 // 커밋·푸시·머지는 에이전트가 아니라 이 코드가 한다(작성자·브랜치를 결정적으로 고정).
 // 수정 run 은 여러 개가 동시에 돈다(각자 워크트리). 같은 레포의 공유 참조를 바꾸는 git(fetch·worktree add/remove·branch -D·push)만
 // git-mutex.ts 로 짧게 줄 세우고, 테스트·네트워크 명령은 비동기라 데몬(다른 run·채팅)을 멈추지 않는다.
 // 수정 run 안의 서브에이전트는 isolation: "worktree" 로 각자 워크트리를 하나씩 팔 수 있다(agent-worktrees.ts)
 import { query, getSessionInfo, type HookCallback, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Proposal } from "./store.ts";
@@ -20,6 +21,8 @@ import { repoGit, shAsync } from "./git-mutex.ts";
 import { WorktreeIsolation } from "./agent-worktrees.ts";
 import { IS_WIN, pathWithin, spawnSpec, type Plat, type SpawnSpec } from "./plat.ts";
 import { configSetsAlias, isGitName, shellSegments, shellWordsNorm, shellWrapper, substsOf } from "./permissions.ts";
+import { commandOnPath, killTree, MISSING_CODEX } from "./providers.ts";
+import { shapeError } from "./feature-brain.ts";
 
 export type FixResult = {
   ok: boolean; summary: string; prUrl?: string; branch?: string; log: string[];
@@ -167,6 +170,7 @@ export type FixDeps = {
   prepareWorktree?: (wt: string, repo: string) => void;   // 워크트리를 만든 직후(의존성 링크 등)
   beforeCommit?: (wt: string) => { block?: string; warn?: string } | undefined; // 커밋 직전 검사 — block 이면 커밋 안 하고 실패
   hooks?: (wt: string) => HookCallback[];                 // PreToolUse 훅 더하기(noShip·서브에이전트 가드 뒤)
+  codexRun?: CodexRun;                                    // 뇌가 codex 일 때 codex 한 번 실행(기본 spawn). 테스트는 가짜 JSONL
   trailer?: string;                                       // 커밋 메시지 끝에 더 붙일 줄(Co-Authored-By 등)
   prNote?: string;                                        // PR 본문 끝 줄(기본 "머지는 사용자 승인 뒤")
   onRun?: (runId: string) => void;                        // run 을 만들자마자(세션 창·카드 연결)
@@ -199,6 +203,8 @@ export class InputQueue implements AsyncIterable<SDKUserMessage> {
     return true;
   }
   get pending() { return this.items.length; }
+  // 쌓인 것을 다 꺼낸다(Codex 수정 run: 턴 사이에 보낸 말을 한 번에 다음 턴으로)
+  drain(): SDKUserMessage[] { return this.items.splice(0); }
   async *[Symbol.asyncIterator](): AsyncGenerator<SDKUserMessage> {
     while (true) {
       const m = this.items.shift();
@@ -365,6 +371,121 @@ async function drive(s: Session, sdkQuery: typeof query, options: Record<string,
   if (!out) throw new Error(lastSubtype && lastSubtype !== "success" ? `수정 에이전트 실패: ${lastSubtype}` : "수정 에이전트가 결과를 보고하지 않았어요");
   return out;
 }
+
+// ── Codex 로 돌리기(brain.provider codex) ─────────────────────────────
+// codex exec --json 의 JSONL 을 run 이벤트로 옮기고, 마지막 agent_message(--output-schema = FIX_SCHEMA)를 결과로.
+//   샌드박스 workspace-write·네트워크 끔: 워크트리만 고치고 .git(워크트리 밖)·원격에는 못 닿는다 — 커밋·푸시는 ship 이 한다.
+//   사용자 Codex 설정(MCP 서버·플러그인)은 읽지 않는다(providers.ts CODEX_ARGS 와 같은 이유: 승인 없이 샌드박스 밖에 쓸 수 있다).
+//   턴 단위: 세션 창에서 보낸 말은 턴이 끝나면 exec resume 로, 중단·지금 보내기는 지금 턴을 끊는다. 이어서 하기는 exec fork.
+//   exec resume/fork 에는 -s·-C 가 없어서 샌드박스는 -c, 작업 폴더는 프로세스 cwd 로 준다
+export type CodexRun = (args: string[], o: { cwd: string; input: string; onLine: (line: string) => void; signal: AbortSignal }) => Promise<{ code: number | null; stderr: string }>;
+export const CODEX_SESSION = "codex:"; // run.sdkSessionId 에 붙인다 — Claude 세션(UUID)과 섞이지 않게(resume.js·cli-sync 는 UUID 만 받는다)
+const CODEX_FIX_ARGS = ["--json", "--skip-git-repo-check", "--ignore-user-config", "-c", 'sandbox_mode="workspace-write"', "-c", "sandbox_workspace_write.network_access=false"];
+
+export const codexRun: CodexRun = (args, o) => new Promise((resolve, reject) => {
+  const sp = spawnSpec("codex", args);
+  const child = spawn(sp.file, sp.args, { cwd: o.cwd, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "";
+  const kill = () => { killTree(child.pid); child.kill(); };
+  o.signal.addEventListener("abort", kill, { once: true });
+  createInterface({ input: child.stdout }).on("line", o.onLine);
+  child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
+  child.on("error", () => reject(new Error(MISSING_CODEX)));
+  child.on("close", (code) => { o.signal.removeEventListener("abort", kill); resolve({ code, stderr }); });
+  child.stdin.end(o.input);
+});
+
+// 이어서 하기: 그 Codex 대화 기록이 아직 있나(~/.codex/sessions/…/rollout-…-<id>.jsonl)
+export function codexSessionExists(id: string, dir: string): boolean {
+  const walk = (d: string): boolean => {
+    let es;
+    try { es = readdirSync(d, { withFileTypes: true }); } catch { return false; }
+    return es.some((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith(`${id}.jsonl`)));
+  };
+  return /^[\w-]{8,100}$/.test(id) && walk(dir);
+}
+
+const shellInner = (cmd: string) => /^\S*sh -lc (['"])([\s\S]*)\1$/.exec(cmd)?.[2] ?? cmd; // "/bin/zsh -lc 'git status'" → git status
+
+async function driveCodex(s: Session, cfg: Config, wt: string, deps: FixDeps, step: (s: string) => void, from?: { thread: string; fork: boolean }): Promise<any> {
+  const { run, input, st, inbox } = s;
+  const exec = deps.codexRun ?? codexRun;
+  if (!deps.codexRun && !commandOnPath("codex")) throw new Error(MISSING_CODEX);
+  const schema = join(HOME_DIR, "codex-fix-schema.json");
+  mkdirSync(HOME_DIR, { recursive: true });
+  writeFileSync(schema, JSON.stringify(FIX_SCHEMA));
+  let thread = from?.thread, fork = !!from?.fork, out: any, turn = 0;
+  let cur: AbortController | undefined;
+  // 세션 창 제어(openSession): 중단·지금 보내기 = 지금 턴 끊기. 모델 바꾸기는 Codex 에 Claude 모델 이름을 줄 수 없어 무시
+  st.q = { interrupt: async () => cur?.abort(), setModel: async () => {} } as any;
+  s.abort.signal.addEventListener("abort", () => cur?.abort());
+  const it = input[Symbol.asyncIterator]();
+  try {
+    while (true) {
+      if (turn) {
+        if (st.interrupted) {
+          run.log({ type: "system", text: "중단됨 — 메시지를 보내면 이어서 할게요" });
+          st.idleTimer = setTimeout(() => { st.stopped = true; s.finishInput(); }, deps.awaitAfterInterruptMs ?? 10 * 60e3);
+        } else if (!input.pending) s.finishInput(); // 턴 사이에 보낸 말이 없으면 끝
+      }
+      const next = await it.next();
+      if (next.done || st.stopped) break;
+      s.clearIdle();
+      st.interrupted = false;
+      const msgs = [next.value, ...input.drain()];
+      for (const m of msgs) if (inbox.ack(String(m.uuid), { now: st.nowFor!.has(String(m.uuid)) })) st.nowFor!.delete(String(m.uuid));
+      let text = msgs.map((m) => String(m.message.content)).join("\n\n");
+      if (!thread) text = [loadInstructions(wt), codeGuidelines(), text].filter(Boolean).join("\n\n"); // Claude 쪽 systemPrompt append 와 같은 것
+      const args = ["exec", ...(thread ? [fork ? "fork" : "resume", thread] : []), ...CODEX_FIX_ARGS, "--output-schema", schema, "-"];
+      turn++;
+      let last: string | undefined, failed: string | undefined;
+      const id = (itemId: unknown) => `cx${turn}-${String(itemId)}`;
+      cur = new AbortController();
+      st.inTurn = true;
+      const r = await exec(args, { cwd: wt, input: text, signal: cur.signal, onLine: (line) => {
+        let e: any;
+        try { e = JSON.parse(line); } catch { return; }
+        const item = e?.item ?? {};
+        if (e.type === "thread.started" && typeof e.thread_id === "string") {
+          if (e.thread_id !== thread) { run.setSession(CODEX_SESSION + e.thread_id); run.log({ type: "system", text: `세션 시작 · Codex · ${wt}` }); }
+          thread = e.thread_id;
+        } else if (e.type === "item.started" && item.type === "command_execution") {
+          const cmd = shellInner(String(item.command ?? ""));
+          step(`$ ${cmd.split("\n")[0].slice(0, 80)}`);
+          run.log({ type: "tool_use", name: "Bash", input: cmd.slice(0, 500), toolUseId: id(item.id) });
+        } else if (e.type === "item.completed" && item.type === "command_execution") {
+          run.log({ type: "tool_result", toolUseId: id(item.id), output: String(item.aggregated_output ?? ""), ...(item.exit_code !== 0 ? { isError: true } : {}) });
+        } else if (e.type === "item.completed" && item.type === "file_change") {
+          for (const c of Array.isArray(item.changes) ? item.changes : []) {
+            step(`Edit ${basename(String(c.path))}`);
+            run.log({ type: "tool_use", name: c.kind === "add" ? "Write" : "Edit", input: String(c.path), toolUseId: id(`${item.id}-${c.path}`) });
+          }
+        } else if (e.type === "item.completed" && item.type === "agent_message" && typeof item.text === "string") {
+          last = item.text;
+          run.log({ type: "assistant", text: item.text });
+        } else if (e.type === "item.completed" && item.type === "error") {
+          run.log({ type: "system", text: String(item.message ?? "").slice(0, 300) });
+        } else if (e.type === "turn.failed" || e.type === "error") {
+          failed = String(e.error?.message ?? e.message ?? "알 수 없는 오류");
+        }
+      } });
+      st.inTurn = false;
+      fork = false; // 갈래를 낸 뒤로는 그 새 대화를 이어 간다
+      if (st.stopped) break;
+      if (cur.signal.aborted) { st.interrupted = true; continue; }
+      if (r.code !== 0 || failed) throw new Error(`Codex 수정 실패: ${(failed ?? r.stderr.trim().split("\n").at(-1) ?? `종료 코드 ${r.code}`).slice(0, 300)}`);
+      try { out = JSON.parse(last ?? ""); } catch { out = undefined; }
+      if (out) run.log({ type: "result", text: String(out.summary ?? "") });
+    }
+  } finally {
+    inbox.dropAll();
+  }
+  if (st.stopped) return undefined;
+  if (!out || shapeError(out, FIX_SCHEMA)) throw new Error("수정 에이전트가 결과를 보고하지 않았어요");
+  return out;
+}
+
+const usesCodex = (cfg: Pick<Config, "brain">) => cfg.brain?.provider === "codex";
 
 // 서브에이전트(Agent/Task): 포그라운드·내장 종류만(subagents.ts). isolation "worktree" 면 iso 가 워크트리를 파고 지시를 고친다.
 // 막은 도구(WebFetch·WebSearch)는 서브에이전트 안에서도 훅으로 한 번 더 막는다(disallowedTools 가 서브에이전트에 물려지는지와 상관없이)
@@ -565,7 +686,7 @@ export async function runFix(cfg: Config, p: Proposal, onStep: (s: string) => vo
 
   let pushed = false;
   try {
-    const out = await drive(s, deps.query ?? query, sdkOptions(cfg, wt, {}, deps.hooks?.(wt), iso), deps, step);
+    const out = usesCodex(cfg) ? await driveCodex(s, cfg, wt, deps, step) : await drive(s, deps.query ?? query, sdkOptions(cfg, wt, {}, deps.hooks?.(wt), iso), deps, step);
     await iso.closeAll();
     if (!out) { s.run.end("stopped"); return { ok: false, summary: "사용자가 정지했어요 — 커밋 안 함.", branch, log, runId: s.run.id }; }
     const r = await ship(cfg, s, out, { wt, branch, base, trailer: `Requested-via: cy-agent (proposal ${p.id})`, planLine: `계획: ${p.plan}` }, reg, step, log, deps);
@@ -663,15 +784,19 @@ export function prepareContinue(cfg: Config, spec: ContinueSpec, deps: FixDeps =
       reg.update(run.id, { cwd: wt });
 
       // 이전 SDK 세션을 이어 쓸 수 있으면 resume(fork — 앞선 세션은 그대로), 아니면 요약을 넣고 새 세션
+      // Codex 는 앞선 run 도 Codex 였을 때만 fork(경로가 달라도 된다). Claude 는 같은 경로의 Claude 세션만
       const sid = parent.sdkSessionId;
-      const exists = deps.sessionExists ?? defaultSessionExists;
-      const canResume = !!(reuse && sid && await exists(sid, wt).catch(() => false));
+      const codex = usesCodex(cfg);
+      const exists = deps.sessionExists ?? (codex ? (id: string) => Promise.resolve(codexSessionExists(id.slice(CODEX_SESSION.length), cfg.codexSessionsDir)) : defaultSessionExists);
+      const canResume = !!(sid && (codex ? sid.startsWith(CODEX_SESSION) : reuse && !sid.startsWith(CODEX_SESSION)) && await exists(sid, wt).catch(() => false));
       const prompt = canResume ? continuePrompt(spec.text, { note }) : continuePrompt(spec.text, { summary: spec.summary, note });
       run.log({ type: "system", text: canResume ? `↩︎ 이전 세션 이어서(resume ${sid!.slice(0, 8)}…)` : "📝 이전 세션을 열 수 없어 앞선 기록 요약을 넣고 새로 시작해요" });
       s.input.push(prompt, undefined, true); // 시작 전에 보낸 메시지보다 앞에
 
       iso = new WorktreeIsolation({ roots: [wt], author: cfg.gitAuthor, worktreesDir: wtDir, log: (ev) => run.log(ev) });
-      const out = await drive(s, deps.query ?? query, sdkOptions(cfg, wt, canResume ? { resume: sid, forkSession: true } : {}, [], iso), deps, step);
+      const out = codex
+        ? await driveCodex(s, cfg, wt, deps, step, canResume ? { thread: sid!.slice(CODEX_SESSION.length), fork: true } : undefined)
+        : await drive(s, deps.query ?? query, sdkOptions(cfg, wt, canResume ? { resume: sid, forkSession: true } : {}, [], iso), deps, step);
       await iso.closeAll();
       if (!out) { run.end("stopped"); return { ok: false, summary: "사용자가 정지했어요 — 커밋 안 함.", branch, log }; }
       const r = await ship(cfg, s, out, {
