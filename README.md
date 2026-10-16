@@ -332,20 +332,6 @@ usagi-run -n "resnet 학습" -- python train.py
 - 서버에서 맥으로 들어오는 포트는 열지 않습니다. tmux를 detach하고 ssh를 끊거나 맥을 덮어 둬도, 결과 파일이 남아 있어서 맥이 다시 연결되면 그때 알려 줍니다.
 - 바꾼 `jobHosts`는 데몬을 다시 켜면 적용됩니다.
 
-## 연구 노트 (Tine)
-
-그날 한 일을 Tine(Logseq 형식) 그래프에 날마다 한 페이지로 남깁니다. `~/.cy-agent/config.json`에 그래프 폴더를 적고 데몬을 다시 켜면 됩니다.
-
-```json
-{ "tineGraph": "~/Library/Mobile Documents/com~apple~CloudDocs/PKM" }
-```
-
-- 페이지 이름은 「우사기 연구 노트/2026-10-17」입니다(`pages/우사기 연구 노트___2026-10-17.md`). 페이지에 그날 저널 링크가 있어서 저널의 연결된 참조에 뜹니다. 저널 파일은 건드리지 않습니다.
-- 담는 것: 작업 세션(작업 기록 읽기를 켰을 때, ssh 서버 기록 포함), 끝난 긴 작업(`usagi-run`), 집중 시간, 끝낸 할 일, 레포 폴더(`repoRoots`)의 내 커밋. AI 없이 목록으로 씁니다.
-- 한 시간마다 오늘과 어제 페이지를 다시 만들고, 바뀐 게 있을 때만 씁니다. 한 일이 없는 날은 페이지를 만들지 않습니다.
-- 우사기가 쓴 뒤에 그 페이지를 고치면, 그 날짜 페이지는 더 이상 덮어쓰지 않습니다. 메모는 저널에 적는 걸 권합니다.
-- 바로 써 보려면 `node agent/src/cli.ts note` 또는 `node agent/src/cli.ts note 2026-10-16`(터미널 설치).
-
 ## 연결
 
 기능마다 어디서 읽어 올지는 `~/.cy-agent/config.json`의 `connectors`에서 정합니다. 모드는 세 가지입니다.
@@ -381,6 +367,20 @@ usagi-run -n "resnet 학습" -- python train.py
 ```
 
 전체 예시는 [`ops/config.example.json`](ops/config.example.json)에 있습니다.
+
+## 연구 노트 (Tine)
+
+그날 한 일을 Tine(Logseq 형식) 그래프에 날마다 한 페이지로 남깁니다. `~/.cy-agent/config.json`에 그래프 폴더를 적고 데몬을 다시 켜면 됩니다.
+
+```json
+{ "tineGraph": "~/Library/Mobile Documents/com~apple~CloudDocs/PKM" }
+```
+
+- 페이지 이름은 「우사기 연구 노트/2026-10-17」입니다(`pages/우사기 연구 노트___2026-10-17.md`). 페이지에 그날 저널 링크가 있어서 저널의 연결된 참조에 뜹니다. 저널 파일은 건드리지 않습니다.
+- 담는 것: 작업 세션(작업 기록 읽기를 켰을 때, ssh 서버 기록 포함), 끝난 긴 작업(`usagi-run`), 집중 시간, 끝낸 할 일, 레포 폴더(`repoRoots`)의 내 커밋. AI 없이 목록으로 씁니다.
+- 한 시간마다 오늘과 어제 페이지를 다시 만들고, 바뀐 게 있을 때만 씁니다. 한 일이 없는 날은 페이지를 만들지 않습니다.
+- 우사기가 쓴 뒤에 그 페이지를 고치면, 그 날짜 페이지는 더 이상 덮어쓰지 않습니다. 메모는 저널에 적는 걸 권합니다.
+- 바로 써 보려면 `node agent/src/cli.ts note` 또는 `node agent/src/cli.ts note 2026-10-16`(터미널 설치).
 
 ## 설정 파일 (`~/.cy-agent/config.json`)
 

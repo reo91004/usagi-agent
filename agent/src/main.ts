@@ -40,7 +40,6 @@ import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
 import { jobBubble, pullJobs, type JobDone } from "./jobs.ts";
-import { writeDay } from "./research-note.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
 import { statusOf } from "./status.ts";
@@ -48,6 +47,7 @@ import { featureBrain, NEEDS_CLAUDE_MCP, NEEDS_CODER, withMcpBrain } from "./fea
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
+import { writeDay } from "./research-note.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange } from "./providers.ts";
 import { briefingHours } from "./calendar.ts";
 import { performance } from "node:perf_hooks";
@@ -445,6 +445,19 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
 }));
 setInterval(kgHourly, 60 * 60e3);
 
+// 연구 노트(research-note.ts): 한 시간마다 오늘·어제 페이지를 다시 만든다(바뀐 경우만 쓴다). 어제 것은 자정 넘어 끝난 세션까지 담으려고
+const noteSkipped = new Set<string>(); // 사용자가 고친 페이지는 한 번만 알린다
+const writeNotes = safe("research-note", async () => {
+  if (!cfg.tineGraph) return;
+  const today = localDay(Date.now());
+  for (const day of [localDay(dayStart(today) - 12 * 3600e3), today]) { // 어제 낮 = 어제 날짜
+    const { path, result } = await writeDay(cfg, store, day, { focus });
+    if (result === "written") console.log(`[research-note] ${day} 썼어요`);
+    if (result === "edited" && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 페이지를 누가 고쳐서 덮지 않아요: ${path}`); }
+  }
+});
+if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
+
 // 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts)는 2분마다 ssh 로 가져온다
 function jobDone(j: JobDone) {
   const id = `job-${randomUUID()}`;
@@ -471,19 +484,6 @@ async function pollJobHosts() {
   } finally { jobsBusy = false; }
 }
 if (cfg.jobHosts.length) { setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref(); }
-
-// 연구 노트(research-note.ts): 한 시간마다 오늘·어제 페이지를 다시 만든다(바뀐 경우만 쓴다). 어제 것은 자정 넘어 끝난 세션까지 담으려고
-const noteSkipped = new Set<string>(); // 사용자가 고친 페이지는 한 번만 알린다
-const writeNotes = safe("research-note", async () => {
-  if (!cfg.tineGraph) return;
-  const today = localDay(Date.now());
-  for (const day of [localDay(dayStart(today) - 12 * 3600e3), today]) { // 어제 낮 = 어제 날짜
-    const { path, result } = await writeDay(cfg, store, day, { focus });
-    if (result === "written") console.log(`[research-note] ${day} 썼어요`);
-    if (result === "edited" && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 페이지를 누가 고쳐서 덮지 않아요: ${path}`); }
-  }
-});
-if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
 
 // 연결 상태가 바뀔 때만 한 번씩 알린다. 다시 연결되면 바로 훑어본다
 let mcpState = "ok";
