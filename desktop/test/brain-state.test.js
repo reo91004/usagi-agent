@@ -18,7 +18,7 @@ test('normStatus: 모양이 아니면 null, 이상한 값은 버린다', () => {
   assert.equal(normStatus({ brain: {} }), null);
   const s = normStatus({ ...status(), chat: 'yes', coder: { claude: 'x', codex: true }, connectors: [null, { cap: 'mail' }] });
   assert.equal(s.chat, null);
-  assert.deepEqual(s.coder, { claude: null, codex: true });
+  assert.deepEqual(s.coder, { claude: null, codex: true, agy: false });
   assert.deepEqual(s.connectors.map((c) => c.cap), ['mail']);
 });
 

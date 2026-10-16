@@ -80,10 +80,10 @@ contextBridge.exposeInMainWorld('cy', {
   permissionDelete: (id) => ipcRenderer.invoke('permission-delete', String(id)),
   actionsList: (threadId) => ipcRenderer.invoke('actions-list', threadId == null ? null : String(threadId)),
   openLink: (url) => ipcRenderer.send('open-link', String(url)),
-  caps: () => ipcRenderer.invoke('caps-get'), // { claude, codex } — 이 컴퓨터에 Claude Code·Codex 가 있나(코드 관련 버튼 숨기기)
+  caps: () => ipcRenderer.invoke('caps-get'), // { claude, codex, agy } — 이 컴퓨터에 Claude Code·Codex·Antigravity 가 있나(코드 관련 버튼 숨기기)
   onCaps: on('caps'),
   copyText: (text) => ipcRenderer.invoke('copy-text', String(text)),
-  agentLogin: (agent) => ipcRenderer.invoke('agent-login', agent === 'codex' ? 'codex' : 'claude'),
+  agentLogin: (agent) => ipcRenderer.invoke('agent-login', agent === 'codex' || agent === 'agy' ? agent : 'claude'),
   sisaGet: () => ipcRenderer.invoke('sisa-get'),
   sisaCheck: (provider, apiKey) => ipcRenderer.invoke('sisa-check', String(provider || ''), String(apiKey || '')),
   sisaSkip: () => ipcRenderer.invoke('sisa-skip'),
@@ -92,9 +92,9 @@ contextBridge.exposeInMainWorld('cy', {
   sisaSetVoice: (patch) => ipcRenderer.invoke('sisa-set-voice', patch && typeof patch === 'object' ? patch : {}),
   gskFound: () => ipcRenderer.invoke('gsk-found'), // gsk login 한 Genspark 키가 이 맥에 있나(키는 안 온다)
   sisaUseGsk: () => ipcRenderer.invoke('sisa-use-gsk'),
-  sisaUseCli: (agent) => ipcRenderer.invoke('sisa-use-cli', agent === 'codex' ? 'codex' : 'claude'),
+  sisaUseCli: (agent) => ipcRenderer.invoke('sisa-use-cli', agent === 'codex' || agent === 'agy' ? agent : 'claude'),
   sisaMark: (id, url) => ipcRenderer.invoke('sisa-mark', String(id || ''), url == null ? '' : String(url)),
-  // [연결 해제]: AI(gemini|claude|openai|genspark|claudecode|codexcli) · 커넥터(slack|calendar|mail|issues)
+  // [연결 해제]: AI(gemini|claude|openai|genspark|claudecode|codexcli|agycli) · 커넥터(slack|calendar|mail|issues)
   sisaDisconnect: (provider) => ipcRenderer.invoke('sisa-disconnect', String(provider || '')),
   connectorDisconnect: (cap) => ipcRenderer.invoke('connector-disconnect', String(cap || '')),
   // 캘린더 여러 개: 목록 { ok, items: [{ id, kind, title, label }] }(주소는 없음) · 하나 빼기(id) → { ok, items, note?, error? }

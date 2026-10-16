@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClaudeAuth, codexAuthLoggedIn, findBin, winExts } from '../src/agent-login.js';
+import { parseClaudeAuth, codexAuthLoggedIn, findBin, winExts, parseAgyModels, agyModelsOf, agentLogin } from '../src/agent-login.js';
 
 test('Claude 로그인 상태만 읽는다', () => {
   assert.equal(parseClaudeAuth('{"loggedIn": false, "authMethod": "none"}'), false);
@@ -65,4 +65,13 @@ test('윈도우: ~/.local/bin · %APPDATA%\\npm · PATH(;) 에서 PATHEXT 확장
   assert.equal(findBin('codex', { ...base, pathEnv: 'C:\\x', exists: () => false }), null);
   assert.deepEqual(winExts(''), ['.com', '.exe', '.bat', '.cmd']);
   assert.deepEqual(winExts('.EXE;.CMD;.exe'), ['.exe', '.cmd']);
+});
+
+test('agy: models 출력 파싱 · 종료 코드 0 + 모델이 있어야 로그인', async () => {
+  const out = 'Fetching available models...\ngemini-4-argon-medium\tGemini 4 Argon (Medium)\nclaude-opus-5-5-high\tClaude Opus 5.5 (High)\n';
+  assert.deepEqual(parseAgyModels(out)[0], { id: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)' });
+  assert.equal(parseAgyModels(out).length, 2);
+  assert.deepEqual(parseAgyModels('Fetching available models...\n'), []);
+  assert.deepEqual(agyModelsOf(new Error('exit 1'), out), []);
+  assert.equal((await agentLogin('agy', { findBin: () => null })).installed, false);
 });

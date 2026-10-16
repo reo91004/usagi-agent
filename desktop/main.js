@@ -165,7 +165,7 @@ function editDaemonConfig(fn) {
 }
 
 // [연결 해제] AI: 앱 저장(sisa-ai.json)에서 빼고, 데몬 설정에서도 키를 지우고, 지금 쓰던 뇌면 로컬(AI 없이 쓰기)로.
-// 데몬이 켜져 있으면 PUT /settings(재시작 없이 바로), 꺼져 있으면 파일에 직접. Claude Code·Codex 의 CLI 로그인은 건드리지 않는다
+// 데몬이 켜져 있으면 PUT /settings(재시작 없이 바로), 꺼져 있으면 파일에 직접. Claude Code·Codex·Antigravity 의 CLI 로그인은 건드리지 않는다
 async function disconnectBrain(p) {
   const prev = normalizeSisa(readSisa());
   const appActive = activeProvider(prev) === p;
@@ -187,7 +187,7 @@ async function disconnectBrain(p) {
   }
   if (connected) refreshStatus();
   else pushBrain();
-  if (p === 'claudecode' || p === 'codexcli') refreshCaps(true);
+  if (p === 'claudecode' || p === 'codexcli' || p === 'agycli') refreshCaps(true);
   const view = sisaPublic(next);
   sendPanel('sisa', view);
   return { ok: true, ...view, offline: !connected };
@@ -347,7 +347,7 @@ let settingsUi = null; // 설정 창(src/settings-window.js) — setupIPC 에서
 
 // 이 컴퓨터의 Claude Code·Codex(src/caps.js). Claude Code 가 없으면(Gemini·GPT 키·로컬) 코드 고치기·작업 세션은
 // 메뉴·버튼에서 빼고, 그래도 닿는 길(단축키 등)에서는 쉬운 말로 안내한다
-const capsProbe = createCapsProbe(() => Promise.all([agentLogin('claude'), agentLogin('codex')]));
+const capsProbe = createCapsProbe(() => Promise.all([agentLogin('claude'), agentLogin('codex'), agentLogin('agy')]));
 async function refreshCaps(force = false) {
   const before = capsProbe.get();
   const now = await capsProbe.refresh(force);
@@ -1260,7 +1260,7 @@ function setupIPC() {
     return { ok: true };
   });
   ipcMain.handle('agent-login', (e, agent) => {
-    if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex')) return denied();
+    if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex' && agent !== 'agy')) return denied();
     return agentLogin(agent);
   });
   ipcMain.handle('sisa-get', (e) => (fromOurs(e) ? sisaPublic(readSisa()) : denied()));
@@ -1290,10 +1290,10 @@ function setupIPC() {
     return { ok: true, ...(result.warn ? { warn: result.warn } : {}), brainSaved: await writeBrain(next) };
   });
   ipcMain.handle('sisa-use-cli', async (e, agent) => {
-    if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex')) return denied();
+    if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex' && agent !== 'agy')) return denied();
     const login = await agentLogin(agent);
-    if (!login?.loggedIn) return { ok: false, error: `${agent === 'codex' ? 'Codex' : 'Claude Code'} 에 로그인되어 있지 않습니다.` };
-    const next = withCli(readSisa(), agent === 'codex' ? 'codexcli' : 'claudecode');
+    if (!login?.loggedIn) return { ok: false, error: `${agent === 'codex' ? 'Codex' : agent === 'agy' ? 'Antigravity' : 'Claude Code'} 에 로그인되어 있지 않습니다.` };
+    const next = withCli(readSisa(), agent === 'codex' ? 'codexcli' : agent === 'agy' ? 'agycli' : 'claudecode');
     writeSisa(next);
     refreshCaps(true);
     return { ok: true, brainSaved: await writeBrain(next) };

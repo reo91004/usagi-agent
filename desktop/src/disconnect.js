@@ -12,7 +12,7 @@ const CAP_LABEL = { slack: 'Slack', calendar: '캘린더', mail: '메일', issue
 export const HUB_CAP = { gcal: 'calendar', outlook: 'calendar', slack: 'slack', jira: 'issues' };
 export const hubsOf = (cap) => Object.keys(HUB_CAP).filter((id) => HUB_CAP[id] === cap);
 
-export const BRAIN_TITLE = { claudecode: 'Claude Code', codexcli: 'Codex', gemini: 'Gemini', openai: 'OpenAI(GPT)', claude: 'Claude API 키', genspark: 'Genspark' };
+export const BRAIN_TITLE = { claudecode: 'Claude Code', codexcli: 'Codex', agycli: 'Antigravity', gemini: 'Gemini', openai: 'OpenAI(GPT)', claude: 'Claude API 키', genspark: 'Genspark' };
 // 데몬 provider → 앱 id
 const FROM_DAEMON = Object.fromEntries(Object.entries(DAEMON_BRAIN).map(([k, v]) => [v, k]));
 // 데몬 brain.keys 이름 → 앱 id

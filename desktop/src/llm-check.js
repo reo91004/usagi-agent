@@ -1,10 +1,10 @@
 // 공급자 API 키 확인과 짧은 대화. 키는 오류 문구에 남기지 않는다.
-// 'claudecode'·'codexcli' 는 키 없이, 이 맥에 로그인된 Claude Code(claude -p)·Codex(codex exec)로 말한다.
+// 'claudecode'·'codexcli'·'agycli' 는 키 없이, 이 맥에 로그인된 Claude Code(claude -p)·Codex(codex exec)·Antigravity(agy -p)로 말한다.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findBin } from './agent-login.js';
+import { agyModelsOf, findBin } from './agent-login.js';
 import { execBin } from './win-exec.js';
 
 // gemini 는 모델이 자주 바뀌어(옛 모델은 새 사용자에게 막힌다) 키로 목록을 받아 가장 새 flash 를 쓴다.
@@ -247,9 +247,38 @@ export function completeCodex({ system, messages, model }, { exec = execFile, bi
   });
 }
 
+// agy -p: 프롬프트는 argv 로만 받는다(stdin 아님). 데몬과 같이 --sandbox · 도구 없이 말로만 · 작업공간이 되는 cwd 는 임시 폴더
+export function completeAgy({ system, messages, model }, { exec = execFile, bin = findBin('agy'), cwd = os.tmpdir(), timeout = 90000 } = {}) {
+  return new Promise((resolve) => {
+    if (!bin) { resolve({ ok: false, error: 'Antigravity(agy)를 찾지 못했습니다.' }); return; }
+    const prompt = `${String(system ?? '')}\n명령이나 도구는 쓰지 않고 말로만 답한다.\n\n${cliPrompt(messages)}`;
+    const args = ['-p', prompt, '--output-format', 'json', '--sandbox', ...(model && model !== 'default' ? ['--model', model] : [])];
+    const child = execBin(exec, bin, args, { cwd, timeout, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      let text = '';
+      try { text = String(JSON.parse(String(stdout ?? '')).response ?? '').trim(); } catch { /* JSON 아님 */ }
+      if (err || !text) resolve({ ok: false, error: 'Antigravity 가 대답하지 못했습니다.' });
+      else resolve({ ok: true, text });
+    });
+    child?.stdin?.end();
+  });
+}
+
+// `agy models` → 고를 수 있는 모델(첫 칸은 기본값)
+export function listAgyModels({ exec = execFile, bin = findBin('agy'), timeout = 20000 } = {}) {
+  return new Promise((resolve) => {
+    if (!bin) { resolve({ ok: false, error: 'Antigravity(agy)를 찾지 못했습니다.' }); return; }
+    execBin(exec, bin, ['models'], { timeout, maxBuffer: 64 * 1024 }, (err, stdout) => {
+      const models = agyModelsOf(err, stdout);
+      if (!models.length) resolve({ ok: false, error: '모델 목록을 받지 못했습니다. 터미널에서 agy 로 로그인해 주세요.' });
+      else resolve({ ok: true, models: [{ id: 'default', label: '기본값 (agy 설정 따름)' }, ...models] });
+    })?.stdin?.end();
+  });
+}
+
 export async function completeLlm(provider, apiKey, { system, messages, model }, rawFetch = globalThis.fetch) {
   if (provider === 'claudecode') return completeCli({ system, messages, model });
   if (provider === 'codexcli') return completeCodex({ system, messages, model });
+  if (provider === 'agycli') return completeAgy({ system, messages, model });
   const fetchImpl = keyFetch(rawFetch);
   const key = String(apiKey ?? '').trim();
   if (provider === 'gemini') {
@@ -361,6 +390,7 @@ export function pickModels(provider, json) {
 }
 
 export async function listModels(provider, apiKey, rawFetch = globalThis.fetch) {
+  if (provider === 'agycli') return listAgyModels();
   if (CLI_MODELS[provider]) return { ok: true, models: CLI_MODELS[provider] };
   const fetchImpl = keyFetch(rawFetch);
   const key = String(apiKey ?? '').trim();

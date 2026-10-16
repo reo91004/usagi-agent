@@ -16,11 +16,11 @@ export function normStatus(raw) {
   // 뒤에서 하는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)·MCP 읽기·코드 — 예전 데몬엔 없다(모름)
   const f = obj(s.features) ?? {};
   const bg = obj(f.background) ?? {};
-  const by = bg.by === 'claude-code' || bg.by === 'codex' ? bg.by : null;
+  const by = bg.by === 'claude-code' || bg.by === 'codex' || bg.by === 'agy' ? bg.by : null;
   return {
     brain: { provider: str(b.provider, 40), label: str(b.label, 60) || b.provider, ready: tri(b.ready), local: b.local === true, detail: str(b.detail) },
     chat: tri(s.chat),
-    coder: { claude: tri(coder.claude), codex: coder.codex === true },
+    coder: { claude: tri(coder.claude), codex: coder.codex === true, agy: coder.agy === true },
     features: {
       background: { by, ready: tri(bg.ready), detail: str(bg.detail) },
       mcp: tri(f.mcp),
@@ -33,7 +33,7 @@ export function normStatus(raw) {
 }
 
 // { status, sisa, caps } → { ready, known, provider, label, local, coder, codex, detail, connected: [cap…], background, mcp, needsClaude: [cap…] }
-// background: 뒤에서 하는 정리를 누가 돌리나('claude-code' | 'codex' | null) · mcp: MCP 연결을 읽나(Claude Code 뇌만) · needsClaude: Claude Code 뇌여야 읽는 연결
+// background: 뒤에서 하는 정리를 누가 돌리나('claude-code' | 'codex' | 'agy' | null) · mcp: MCP 연결을 읽나(Claude Code 뇌만) · needsClaude: Claude Code 뇌여야 읽는 연결
 // ready: 말 걸 수 있나. 확인 중(Claude Code 로그인 확인 전)이면 막지 않는다(known=false) — 앱이 본 로그인이 없다고 할 때만 막는다
 export function brainView({ status = null, sisa = null, caps = null } = {}) {
   const st = status ? normStatus(status) : null;
@@ -51,6 +51,7 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
       detail: st.brain.detail,
       coder: claude !== false,
       codex: st.coder.codex || caps?.codex === true,
+      agy: st.coder.agy || caps?.agy === true,
       connected: st.connectors.filter((c) => c.ready).map((c) => c.cap),
       name: st.user.name ?? '',
       background: st.features.background.by,
@@ -62,7 +63,7 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
   const hasKey = !!sisa?.hasKey;
   return {
     ready: hasKey, known: false, provider: str(sisa?.provider, 40), label: '', local: sisa?.provider === 'none', detail: '',
-    coder: capClaude !== false, codex: caps?.codex === true, connected: [], name: '',
+    coder: capClaude !== false, codex: caps?.codex === true, agy: caps?.agy === true, connected: [], name: '',
     background: null, mcp: null, needsClaude: [],
   };
 }
@@ -85,7 +86,7 @@ export function connectCard(view) {
   return {
     title: view?.provider === 'claude-code' && view?.known ? 'Claude Code 로그인이 필요해요' : view?.local ? '지금은 AI 없이 쓰는 중이에요' : '아직 대화할 AI(뇌)가 연결되지 않았어요',
     lines: [
-      'AI는 선택이에요. 대화하고 싶으면 **Claude Code** 나 **Codex** 로그인, 또는 **Gemini·OpenAI·Claude API·Genspark 키** 중 하나를 연결하면 돼요.',
+      'AI는 선택이에요. 대화하고 싶으면 **Claude Code**·**Codex**·**Antigravity** 로그인, 또는 **Gemini·OpenAI·Claude API·Genspark 키** 중 하나를 연결하면 돼요.',
       '연결하면: 캐릭터 더블클릭으로 말 걸기 · 이 채팅 · 브리핑 요약',
       '지금도 되는 것: 할 일 보기 · 오늘 할 일 표 · 회의 알림 · 아래 정해진 말',
     ],
