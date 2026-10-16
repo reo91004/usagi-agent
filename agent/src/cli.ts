@@ -2,6 +2,7 @@
 import { loadConfig, HOME_DIR } from "./config.ts";
 import { Store } from "./store.ts";
 import { ingestSessions } from "./ingest/sessions.ts";
+import { sessionDirs } from "./ingest/remote-sessions.ts";
 import { think, BRIEFING_TASK } from "./brain.ts";
 import { KgBackfill } from "./kg/backfill.ts";
 import { kgContext } from "./kg/context.ts";
@@ -19,13 +20,13 @@ const [cmd, sub, ...rest] = process.argv.slice(2);
 if (cmd === "kg") {
   await kg(sub, rest);
 } else if (cmd === "sessions") {
-  // --all: 14일 컷오프 없이 로컬 세션 전부(모델 호출 없음)
+  // --all: 14일 컷오프 없이 세션 전부(받아 둔 ssh 서버 기록 포함, 모델 호출 없음)
   const all = [sub, ...rest].includes("--all");
   const t0 = Date.now();
-  const n = ingestSessions(store, { claude: cfg.claudeProjectsDir, codex: cfg.codexSessionsDir }, { skipCwdPrefix: HOME_DIR, ...(all ? { sinceMs: Infinity } : {}) });
+  const n = sessionDirs(cfg).reduce((n, d) => n + ingestSessions(store, d, { skipCwdPrefix: HOME_DIR, host: d.host, ...(all ? { sinceMs: Infinity } : {}) }), 0);
   console.log(`세션 ${n}개 반영${all ? " (전체)" : ""} · ${Date.now() - t0}ms`);
 } else {
-  const n = ingestSessions(store, { claude: cfg.claudeProjectsDir, codex: cfg.codexSessionsDir }, { skipCwdPrefix: HOME_DIR });
+  const n = sessionDirs(cfg).reduce((n, d) => n + ingestSessions(store, d, { skipCwdPrefix: HOME_DIR, host: d.host }), 0);
   console.log(`세션 ${n}개 반영`);
   if (cmd === "brief") {
     const t = await think(cfg, store, BRIEFING_TASK, (s) => console.log("  →", s));

@@ -121,10 +121,10 @@ export const BRAIN_CHOICES = [
 // 「더 연결하기」(선택): 캘린더 ICS · Slack · 레포 폴더
 export const EXTRAS = ['gcal', 'outlook', 'slack', 'repos'];
 
-// 「더 연결하기」의 작업 기록 읽기(선택, 처음엔 꺼짐). 켜야만 데몬이 이 맥의 세션 기록을 읽는다
+// 「더 연결하기」의 작업 기록 읽기(선택, 처음엔 꺼짐). 켜야만 데몬이 이 맥(과 sessionHosts 서버)의 세션 기록을 읽는다
 export const SESSIONS_CONSENT = {
   title: '내 Claude Code·Codex 작업 기록 읽기',
-  blurb: '이 맥에 남은 Claude Code·Codex 대화 기록(~/.claude/projects, ~/.codex/sessions)을 읽어서 최근 프로젝트와 할 일 진행을 정리해요.',
+  blurb: '이 맥에 남은 Claude Code·Codex 대화 기록(~/.claude/projects, ~/.codex/sessions)을 읽어서 최근 프로젝트와 할 일 진행을 정리해요. config.json 의 sessionHosts 에 ssh 서버를 적어 두면 그 서버의 기록도 받아 와요.',
   warn: '기록에는 다른 프로젝트 내용이나 대화 중에 붙여 넣은 메시지도 들어 있을 수 있어요. 켜지 않으면 읽지 않고, 설정에서 언제든 끌 수 있어요.',
 };
 

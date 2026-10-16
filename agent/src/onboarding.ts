@@ -1,6 +1,6 @@
 // 처음 쓰는 사람: 설치 마법사를 마치기(또는 건너뛰기) 전에는 아무것도 읽지 않고 모델도 부르지 않는다.
 //   config.json "onboarded": false(새 설치) | true(마법사를 마침·건너뜀). 키가 없으면 예전 설정 = 이미 쓰던 사람(true)
-//   "readSessions": 이 맥의 Claude Code·Codex 작업 기록(~/.claude/projects·~/.codex/sessions)을 읽을지. 새 설치는 끔, 예전 설정은 켬
+//   "readSessions": 이 맥의 Claude Code·Codex 작업 기록(~/.claude/projects·~/.codex/sessions)을 읽을지(sessionHosts 서버 기록도 같이). 새 설치는 끔, 예전 설정은 켬
 //   repoRoots: 새 설치는 비어 있음(사용자가 고른 폴더만), 예전 설정은 ~/code
 // 새 설치인지는 데몬이 처음 켤 때 한 번 정해 config.json 에 "onboarded": false 로 남긴다(재시작해도 그대로)
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";

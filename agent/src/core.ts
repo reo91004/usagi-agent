@@ -10,6 +10,7 @@ import { ledgerDay } from "./todo-ledger.ts";
 import { describeTodo as realDescribe, originOf, resolveOrigin, type Describe, type GitShow } from "./todo-source.ts";
 import type { TodoSource } from "./store.ts";
 import { ingestSessions } from "./ingest/sessions.ts";
+import { sessionDirs } from "./ingest/remote-sessions.ts";
 import { attentionSince, formatAttention } from "./ingest/slack.ts";
 import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, listFacts, forgetFact, factId } from "./profile.ts";
 import { think as realThink, type Thought } from "./brain.ts";
@@ -450,10 +451,10 @@ export class Agent {
     };
   }
 
-  // 작업 기록(세션) 읽기: 마법사를 마치고 사용자가 켰을 때만(onboarding.ts)
+  // 작업 기록(세션) 읽기: 마법사를 마치고 사용자가 켰을 때만(onboarding.ts). 이 맥 + 받아 온 ssh 서버 기록(remote-sessions.ts)
   ingest(): number {
     if (!sessionsAllowed(this.cfg)) return 0;
-    return ingestSessions(this.store, { claude: this.cfg.claudeProjectsDir, codex: this.cfg.codexSessionsDir }, { skipCwdPrefix: HOME_DIR });
+    return sessionDirs(this.cfg).reduce((n, d) => n + ingestSessions(this.store, d, { skipCwdPrefix: HOME_DIR, host: d.host }), 0);
   }
 
   // 동시에 두 번 돌지 않게 진행 중이면 그걸 돌려준다
