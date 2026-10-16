@@ -1,6 +1,6 @@
 // 설정: 환경변수 > ~/.cy-agent/config.json > 기본값. 비밀값(토큰)은 레포 밖에만 둔다.
 // 설정 창(PUT /settings, settings.ts)이 models·briefing·phrases·autoMerge·todayReminder·calendarAlert 를 config.json 에 합쳐 쓰고 메모리의 cfg 도 바로 바꾼다.
-import { readFileSync, mkdirSync, chmodSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolveConnectors, type Connectors } from "./connectors.ts";
 import { homedir, userInfo } from "node:os";
@@ -48,6 +48,8 @@ export type Config = {
   jobHosts: string[];
   // 캐릭터(characters.ts id). 없으면 우사기(START_CHARACTER), 모르는 값이면 시사
   character?: string;
+  // 연구 노트를 남길 Tine(Logseq 형식) 그래프 폴더(research-note.ts). 없으면 안 쓴다
+  tineGraph?: string;
   // 지식그래프 2단계(엔티티·관계 추출) 모델. 1단계(업무 판정)는 늘 경량. 기본은 경량(대량 작업이라 비용 우선)
   kgModel: string;
   // 대화 에이전트의 로컬 도구(Bash·Edit/Write·파일 읽기)를 승인 카드 없이 허용(permissions.ts 2-1). 하드 차단은 그대로. 기본 켜짐
@@ -248,6 +250,15 @@ export function repoRootsOf(raw: unknown, notes: string[]): string[] | undefined
   return out;
 }
 
+// 그래프 폴더(~ 허용). logseq/config.edn 이 없으면 Tine 그래프가 아니라 쓰지 않는다(엉뚱한 폴더에 pages/ 를 만들지 않게)
+function tineGraphOf(raw: unknown, notes: string[]): string | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const p = typeof raw === "string" ? resolve(raw.trim().replace(/^~(?=\/|$)/, homedir())) : "";
+  if (p && existsSync(join(p, "logseq", "config.edn"))) return p;
+  notes.push("tineGraph 가 Tine 그래프 폴더(logseq/config.edn 이 있는 곳)가 아니라서 연구 노트를 쓰지 않아요");
+  return undefined;
+}
+
 // env CY_AGENT_GITHUB=0/1 > config.json github(또는 connectors.github): true/false 또는 { enabled, bin }
 function githubConfig(env: NodeJS.ProcessEnv, raw: unknown): Config["github"] {
   const o = typeof raw === "boolean" ? { enabled: raw } : raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -308,6 +319,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     calendarAlert: calendarAlertOf(f.calendarAlert),
     jobHosts: jobHostsOf(f.jobHosts, notes),
     character: typeof f.character === "string" && f.character ? f.character : START_CHARACTER,
+    tineGraph: tineGraphOf(f.tineGraph, notes),
     kgModel: env.CY_AGENT_KG_MODEL ?? (f.kgModel as string) ?? (env.CY_AGENT_MODEL_LIGHT ?? (f.models as any)?.light ?? "claude-haiku-5-5"),
     localAutoAllow: env.CY_AGENT_LOCAL_ASK === "1" ? false : f.localAutoAllow !== false,
     repoRoots: repoRootsOf(f.repoRoots, notes) ?? (isNewStyle(f) ? [] : [join(homedir(), "code")]),

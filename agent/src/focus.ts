@@ -237,28 +237,32 @@ export class Focus {
     return { active, day, today: this.stats(day, day)?.total ?? 0, now };
   }
 
-  // 날마다 집중한 초(from~to, 로컬 날짜, 양끝 포함). 지금 집중 중인 구간은 지금까지 친다. 날짜가 틀리면 undefined
-  stats(from: string, to: string): { from: string; to: string; days: FocusDay[]; total: number } | undefined {
-    const a = dayStart(from), z = dayStart(to);
-    if (Number.isNaN(a) || Number.isNaN(z) || a > z) return undefined;
-    if ((z - a) / 864e5 > STATS_MAX_DAYS) return undefined; // 입력 검증: 지나치게 넓은 범위(날마다 한 줄씩 만든다)
-    const end = nextDayStart(z), now = this.now();
-    const rows = this.store.db.prepare("SELECT start, end, open FROM focus_spans WHERE start < ? AND (end > ? OR open = 1)").all(end, a) as any[];
-    const spans = rows.map((r) => ({ start: Number(r.start), end: r.open ? Math.max(Number(r.end), now) : Number(r.end) }));
-    const ms = splitByDay(spans, a, end), long = longestByDay(spans, a, end);
-    const days: FocusDay[] = [];
-    let total = 0;
-    for (let t = a; t < end; t = nextDayStart(t)) {
-      const date = localDay(t), seconds = Math.floor((ms.get(date) ?? 0) / 1000);
-      days.push({ date, seconds, longest: Math.floor((long.get(date) ?? 0) / 1000) });
-      total += seconds;
-    }
-    return { from, to, days, total };
-  }
+  stats(from: string, to: string) { return focusStats(this.store, from, to, this.now()); }
 
   private changed() {
     try { this.onChange?.(this.view()); } catch (e: any) { console.warn("[focus] onChange:", e?.message ?? e); }
   }
+}
+
+// 날마다 집중한 초(from~to, 로컬 날짜, 양끝 포함). 지금 집중 중인 구간은 지금까지 친다. 날짜가 틀리면 undefined
+// 읽기만 한다(Focus 를 만들면 recover 가 돌던 구간을 바꾼다 — 데몬 밖 CLI 는 이걸 쓴다)
+export function focusStats(store: Store, from: string, to: string, now = Date.now()): { from: string; to: string; days: FocusDay[]; total: number } | undefined {
+  const a = dayStart(from), z = dayStart(to);
+  if (Number.isNaN(a) || Number.isNaN(z) || a > z) return undefined;
+  if ((z - a) / 864e5 > STATS_MAX_DAYS) return undefined; // 입력 검증: 지나치게 넓은 범위(날마다 한 줄씩 만든다)
+  const end = nextDayStart(z);
+  store.db.exec(SCHEMA); // 집중을 한 번도 안 켠 DB(CLI)에도 표가 있게. 이미 있으면 그대로
+  const rows = store.db.prepare("SELECT start, end, open FROM focus_spans WHERE start < ? AND (end > ? OR open = 1)").all(end, a) as any[];
+  const spans = rows.map((r) => ({ start: Number(r.start), end: r.open ? Math.max(Number(r.end), now) : Number(r.end) }));
+  const ms = splitByDay(spans, a, end), long = longestByDay(spans, a, end);
+  const days: FocusDay[] = [];
+  let total = 0;
+  for (let t = a; t < end; t = nextDayStart(t)) {
+    const date = localDay(t), seconds = Math.floor((ms.get(date) ?? 0) / 1000);
+    days.push({ date, seconds, longest: Math.floor((long.get(date) ?? 0) / 1000) });
+    total += seconds;
+  }
+  return { from, to, days, total };
 }
 
 // 마무리 말: 「25분 집중했어요」

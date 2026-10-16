@@ -1,4 +1,4 @@
-// 수동 실행: node src/cli.ts ingest | brief | sessions [--all] | kg crawl [--no-channels] [--workers N] [--rate N] | kg estimate | kg start [--budget N] [--no-crawl] [--parallel N] | kg status | kg sample [N] | kg context [질문] | kg refine [--budget N] [--dry-run] [--parallel N] | kg refine-inc [--budget N]
+// 수동 실행: node src/cli.ts ingest | brief | sessions [--all] | note [YYYY-MM-DD] | kg crawl [--no-channels] [--workers N] [--rate N] | kg estimate | kg start [--budget N] [--no-crawl] [--parallel N] | kg status | kg sample [N] | kg context [질문] | kg refine [--budget N] [--dry-run] [--parallel N] | kg refine-inc [--budget N]
 import { loadConfig, HOME_DIR } from "./config.ts";
 import { Store } from "./store.ts";
 import { ingestSessions } from "./ingest/sessions.ts";
@@ -9,6 +9,8 @@ import { SlackDeepBackfill } from "./ingest/slack-deep.ts";
 import { RateGate } from "./ingest/slack.ts";
 import { crawlSlack } from "./kg/crawl.ts";
 import { refineAll, refineIncremental, type RefineReport } from "./kg/refine.ts";
+import { DAY_RE, focusStats, localDay } from "./focus.ts";
+import { writeDay } from "./research-note.ts";
 
 const cfg = loadConfig();
 const store = new Store(cfg.dbPath);
@@ -16,7 +18,14 @@ const store = new Store(cfg.dbPath);
 store.db.exec("PRAGMA busy_timeout = 5000;");
 const [cmd, sub, ...rest] = process.argv.slice(2);
 
-if (cmd === "kg") {
+if (cmd === "note") {
+  // 연구 노트 한 장(날짜 없으면 오늘)을 Tine 그래프에 쓴다. 세션은 데몬이 읽어 둔 것까지
+  const day = sub ?? localDay(Date.now());
+  if (!cfg.tineGraph) { console.error("config.json 에 tineGraph(Tine 그래프 폴더)를 적어 주세요"); process.exit(2); }
+  if (!DAY_RE.test(day)) { console.error("날짜는 YYYY-MM-DD 로 주세요"); process.exit(2); }
+  const { path, result } = await writeDay(cfg, store, day, { focus: { stats: (a, b) => focusStats(store, a, b) } });
+  console.log(`${result} ${path}`);
+} else if (cmd === "kg") {
   await kg(sub, rest);
 } else if (cmd === "sessions") {
   // --all: 14일 컷오프 없이 로컬 세션 전부(모델 호출 없음)
