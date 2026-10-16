@@ -332,6 +332,20 @@ usagi-run -n "resnet 학습" -- python train.py
 - 서버에서 맥으로 들어오는 포트는 열지 않습니다. tmux를 detach하고 ssh를 끊거나 맥을 덮어 둬도, 결과 파일이 남아 있어서 맥이 다시 연결되면 그때 알려 줍니다.
 - 바꾼 `jobHosts`는 데몬을 다시 켜면 적용됩니다.
 
+### ssh 서버의 Claude Code·Codex 작업 기록
+
+서버에서 쓴 Claude Code·Codex 기록도 「내 Claude Code·Codex 작업 기록 읽기」에 넣을 수 있습니다. `config.json`에 서버를 적어 두면 우사기가 10분마다 ssh로 서버의 `~/.claude/projects`, `~/.codex/sessions`에서 최근 14일 안에 바뀐 기록을 받아 와, 이 맥의 기록과 같이 정리합니다.
+
+```json
+{ "sessionHosts": ["gpu1", "reo@lab.example.ac.kr"] }
+```
+
+- 처음 한 번은 14일 치를 받고, 그다음부터는 기록 파일에서 늘어난 부분만 받습니다. 받아 둔 기록은 `~/.cy-agent/remote-sessions/<서버>/`에 있고, 서버에서 14일이 지나거나 지워진 파일은 여기서도 지웁니다.
+- 프로젝트 이름은 `gpu1:/home/me/exp`처럼 서버 이름을 붙여 이 맥의 폴더와 섞이지 않게 합니다.
+- 「작업 기록 읽기」가 꺼져 있으면 서버에서도 받지 않습니다. 끈 뒤 받아 둔 기록까지 지우려면 `~/.cy-agent/remote-sessions/`를 지우면 됩니다.
+- ssh 접속 조건은 위 `jobHosts`와 같습니다(키 인증, `BatchMode=yes`). 서버에는 아무것도 설치하지 않습니다(`find`, `wc`, `tail`만 씁니다).
+- 바꾼 `sessionHosts`는 데몬을 다시 켜면 적용됩니다.
+
 ## 연결
 
 기능마다 어디서 읽어 올지는 `~/.cy-agent/config.json`의 `connectors`에서 정합니다. 모드는 세 가지입니다.
@@ -376,6 +390,7 @@ usagi-run -n "resnet 학습" -- python train.py
 |---|---|---|---|
 | `onboarded` |  | 새 설치는 `false` | 설치 마법사를 마쳤는지. `false`인 동안은 브리핑·정리 작업(모델)을 하나도 돌리지 않고, 작업 기록과 레포도 읽지 않습니다. 마법사의 「다 했어요」나 「설치는 나중에 할게요」를 누르면 `true`가 됩니다. 이 키가 없는 예전 설정은 마친 것으로 봅니다 |
 | `readSessions` |  | 새 설치는 `false` | 이 맥의 Claude Code·Codex 작업 기록(`~/.claude/projects`, `~/.codex/sessions`)을 읽을지. 마법사의 「더 연결하기」나 설정 창 「이 맥에서 읽는 것」에서 켜고 끕니다. 예전 설정은 `true` |
+| `sessionHosts` |  | `[]` | 작업 기록도 받아 올 ssh 서버(별칭이나 `user@host`). `readSessions`가 켜져 있을 때만 받습니다. [ssh 서버의 작업 기록](#ssh-서버의-claude-codecodex-작업-기록) |
 | `brain.provider` | `CY_AGENT_BRAIN` | 새 설치는 `local`(아직 안 고름), 예전 설정은 `claude-code` | 뇌. `claude-code` · `codex` · `gemini` · `openai` · `anthropic`(Claude API 키) · `genspark` · `local`(뇌 없음) |
 | `brain.geminiApiKey` | `CY_AGENT_GEMINI_API_KEY` / `GEMINI_API_KEY` |  | Gemini 키 |
 | `brain.openaiApiKey` | `CY_AGENT_OPENAI_API_KEY` / `OPENAI_API_KEY` |  | OpenAI 키 |
@@ -400,7 +415,7 @@ usagi-run -n "resnet 학습" -- python train.py
 
 ## 개인정보와 안전
 
-수집한 메시지, 세션 기록, 지식그래프, 토큰은 모두 이 맥의 `~/.cy-agent/`(`cy.db`, `config.json`, `logs/`) 안에만 있습니다. 레포에는 데이터가 들어가지 않습니다.
+수집한 메시지, 세션 기록, 지식그래프, 토큰은 모두 이 맥의 `~/.cy-agent/`(`cy.db`, `config.json`, `logs/`, ssh 서버에서 받은 작업 기록 `remote-sessions/`) 안에만 있습니다. 레포에는 데이터가 들어가지 않습니다.
 
 토큰·API 키·ICS 주소는 `config.json`에 평문으로 저장됩니다. 대신 이 파일은 권한 600(나만 읽기)으로 만들고(터미널 설치는 `install.sh`를 돌릴 때마다 다시 맞춥니다), 데몬은 키나 ICS 주소를 로그·오류 메시지에 남기지 않습니다. ICS 주소는 비밀번호나 마찬가지이니, 어딘가에 노출됐다면 캘린더에서 주소를 재설정하세요.
 

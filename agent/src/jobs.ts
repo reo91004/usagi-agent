@@ -43,7 +43,7 @@ const FILE_RE = /^[A-Za-z0-9_.-]{1,80}\.json$/;
 const LIST_CMD = `cd ${REMOTE_DIR} 2>/dev/null || exit 0; for f in *.json; do [ -f "$f" ] || continue; printf '%s\\t' "$f"; tr -d '\\n' < "$f"; echo; done`;
 
 export type RunSsh = (args: string[], timeoutMs: number) => Promise<string>;
-const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"];
+export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"];
 export const runSsh: RunSsh = (args, timeoutMs) => new Promise((resolve, reject) => {
   execFile("ssh", [...SSH_OPTS, ...args], { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
     if (err) reject(new Error(String(stderr || err.message).trim().split("\n").at(-1) || "ssh 실패"));

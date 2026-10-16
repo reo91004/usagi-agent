@@ -46,6 +46,8 @@ export type Config = {
   calendarAlert?: CalendarAlertConfig;
   // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host
   jobHosts: string[];
+  // Claude Code·Codex 작업 기록을 10분마다 받아 와 읽을 ssh 서버(ingest/remote-sessions.ts). readSessions 가 켜져 있을 때만
+  sessionHosts: string[];
   // 캐릭터(characters.ts id). 없으면 우사기(START_CHARACTER), 모르는 값이면 시사
   character?: string;
   // 지식그래프 2단계(엔티티·관계 추출) 모델. 1단계(업무 판정)는 늘 경량. 기본은 경량(대량 작업이라 비용 우선)
@@ -57,7 +59,7 @@ export type Config = {
   repoRoots: string[];
   // 설치 마법사를 마쳤나(onboarding.ts). false 면 모델 작업·작업 기록·git 읽기를 하지 않는다. 예전 설정(키 없음)은 true
   onboarded?: boolean;
-  // 이 맥의 Claude Code·Codex 작업 기록(claudeProjectsDir·codexSessionsDir)을 읽나. 새 설치는 끔(마법사·설정에서 켠다)
+  // 이 맥의 Claude Code·Codex 작업 기록(claudeProjectsDir·codexSessionsDir)과 sessionHosts 서버 기록을 읽나. 새 설치는 끔(마법사·설정에서 켠다)
   readSessions?: boolean;
   // 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(~/.claude.json 에 등록한 것, 예: notion). 없으면 커넥터 서버·gh·cy 만(guard.ts)
   allowMcp?: string[];
@@ -207,11 +209,11 @@ function readFileConfig(): FileConfig {
 // 분 간격(setInterval 에 들어가는 값): 유한한 수이고 1분 이상이어야. 아니면 기본값(위로는 막지 않는다)
 // allowZero: 0 = 끔이 뜻이 있는 값(progressCheckMin)
 // 이름 하나도 받는다. 옵션처럼 읽힐 수 있는 값은 빼고 알린다
-function jobHostsOf(raw: unknown, notes: string[]): string[] {
+function sshHostsOf(key: string, raw: unknown, notes: string[]): string[] {
   if (raw === undefined) return [];
   const list = Array.isArray(raw) ? raw : [raw];
   const ok = list.filter(okJobHost);
-  if (ok.length !== list.length) notes.push("jobHosts 에 ssh 별칭이나 user@host 가 아닌 값이 있어서 뺐어요");
+  if (ok.length !== list.length) notes.push(`${key} 에 ssh 별칭이나 user@host 가 아닌 값이 있어서 뺐어요`);
   return [...new Set(ok)];
 }
 
@@ -306,7 +308,8 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     autoMerge: autoMergeList(f.autoMerge),
     todayReminder: todayReminderOf(f.todayReminder, notes),
     calendarAlert: calendarAlertOf(f.calendarAlert),
-    jobHosts: jobHostsOf(f.jobHosts, notes),
+    jobHosts: sshHostsOf("jobHosts", f.jobHosts, notes),
+    sessionHosts: sshHostsOf("sessionHosts", f.sessionHosts, notes),
     character: typeof f.character === "string" && f.character ? f.character : START_CHARACTER,
     kgModel: env.CY_AGENT_KG_MODEL ?? (f.kgModel as string) ?? (env.CY_AGENT_MODEL_LIGHT ?? (f.models as any)?.light ?? "claude-haiku-5-5"),
     localAutoAllow: env.CY_AGENT_LOCAL_ASK === "1" ? false : f.localAutoAllow !== false,

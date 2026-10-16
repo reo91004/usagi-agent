@@ -223,8 +223,9 @@ export type ScanResult = { files: number; changed: number; skipped: number; chun
 
 // 세션 디렉터리 전체를 훑어 청크 레지스트리에 반영한다(mtime이 바뀐 파일만 다시 읽음).
 // skipCwdPrefixes: 데몬 자신의 세션(cwd가 CY_AGENT_HOME 아래)은 뺀다
+// host: ssh 서버에서 받아 온 기록(ingest/remote-sessions.ts) — cwd 를 「서버:/경로」로(ingestSessions 와 같게)
 export async function scanSessions(
-  store: Store, dirs: { claude: string; codex: string }, opts: { skipCwdPrefixes?: string[]; yieldEvery?: number } = {},
+  store: Store, dirs: { claude: string; codex: string }, opts: { skipCwdPrefixes?: string[]; yieldEvery?: number; host?: string } = {},
 ): Promise<ScanResult> {
   ensureChunkTables(store);
   const skip = (cwd?: string) => !!cwd && (opts.skipCwdPrefixes ?? []).some((p) => p && (IS_WIN ? winNorm(cwd).startsWith(winNorm(p)) : cwd.startsWith(p))); // Windows: 대소문자·구분자 무시
@@ -236,7 +237,7 @@ export async function scanSessions(
     for await (const path of walkJsonl(dir)) {
       if (path.includes("/subagents/") || path.includes(`${sep}subagents${sep}`)) { subagents.push(path); continue; }
       r.files++;
-      const res = await scanFile(store, path, tool, undefined, skip, parentCwd);
+      const res = await scanFile(store, path, tool, undefined, skip, parentCwd, opts.host);
       if (res === "skip") r.skipped++;
       else if (res) { r.changed++; r.newOrChanged += res; }
       if (r.files % (opts.yieldEvery ?? 20) === 0) await new Promise((ok) => setImmediate(ok));
@@ -246,7 +247,7 @@ export async function scanSessions(
     r.files++;
     // <project>/<parentSessionId>/subagents/agent-<id>.jsonl
     const parent = basename(dirname(dirname(path)));
-    const res = await scanFile(store, path, "claude", parent, skip, parentCwd);
+    const res = await scanFile(store, path, "claude", parent, skip, parentCwd, opts.host);
     if (res === "skip") r.skipped++;
     else if (res) { r.changed++; r.newOrChanged += res; }
     if (r.files % (opts.yieldEvery ?? 20) === 0) await new Promise((ok) => setImmediate(ok));
@@ -258,7 +259,7 @@ export async function scanSessions(
 // 반환: 새로/바뀐 청크 수, "skip"(데몬 세션), 0(그대로)
 async function scanFile(
   store: Store, path: string, tool: "claude" | "codex", parent: string | undefined,
-  skip: (cwd?: string) => boolean, parentCwd: Map<string, string | undefined>,
+  skip: (cwd?: string) => boolean, parentCwd: Map<string, string | undefined>, host?: string,
 ): Promise<number | "skip"> {
   let mtime: number;
   try { mtime = (await stat(path)).mtimeMs; } catch { return 0; }
@@ -275,9 +276,9 @@ async function scanFile(
   if (!parent) parentCwd.set(id, s.cwd);
   const cwd = s.cwd ?? (parent ? parentCwd.get(parent) : undefined);
   if (skip(cwd) || (parent && skip(parentCwd.get(parent)))) { setMark(); return "skip"; }
+  s.cwd = host && cwd ? `${host}:${cwd}` : cwd; // 서브에이전트는 부모 cwd 를 이어받는다
   let chunks: Chunk[];
   if (parent) {
-    s.cwd = cwd;
     chunks = sessionChunks(s, `${parent}/sub:${id}`, `session:${parent}`);
   } else {
     chunks = sessionChunks(s, s.id);

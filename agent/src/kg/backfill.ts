@@ -17,6 +17,7 @@ import { stage1, stage1Batches, stage2, stage2Batches, type CallStat, type Verdi
 import { ensureMergeTables, knownNames, mergeExtraction, Resolver, type MergeResult } from "./merge.ts";
 import { featureBrain, NEEDS_CODER, skipQuietly, type CodexDeps } from "../feature-brain.ts";
 import { sessionsAllowed } from "../onboarding.ts";
+import { sessionDirs } from "../ingest/remote-sessions.ts";
 
 export type KgPhase = "idle" | "estimating" | "running" | "paused" | "done" | "error";
 export type KgEstimate = { chunks: number; usd: number; minutes: number };
@@ -182,8 +183,8 @@ export class KgBackfill {
   private skipPrefixes(): string[] {
     return this.deps.skipCwdPrefixes ?? [HOME_DIR, join(homedir(), ".cy-agent")];
   }
-  private dirs() {
-    return this.deps.dirs ?? { claude: this.cfg.claudeProjectsDir, codex: this.cfg.codexSessionsDir };
+  private dirs(): { claude: string; codex: string; host?: string }[] {
+    return this.deps.dirs ? [this.deps.dirs] : sessionDirs(this.cfg);
   }
   private extractDeps() {
     return { query: this.deps.query, cwd: this.deps.extractCwd, codex: this.deps.codex };
@@ -309,9 +310,16 @@ export class KgBackfill {
   // ── 견적
   // 추출을 돌릴 뇌(Claude Code·Codex)가 있나
   private brainOk(): boolean { return !!featureBrain(this.cfg, this.deps.codex?.commandExists); }
-  // 작업 기록(세션 파일)은 사용자가 켰을 때만 청크로 만든다(onboarding.ts)
-  private scan() {
-    return sessionsAllowed(this.cfg) ? scanSessions(this.store, this.dirs(), { skipCwdPrefixes: this.skipPrefixes() }) : Promise.resolve<ScanResult>({ files: 0, changed: 0, skipped: 0, chunks: 0, newOrChanged: 0 });
+  // 작업 기록(세션 파일)은 사용자가 켰을 때만 청크로 만든다(onboarding.ts). 이 맥 + 받아 온 ssh 서버 기록(remote-sessions.ts)
+  private async scan(): Promise<ScanResult> {
+    const r: ScanResult = { files: 0, changed: 0, skipped: 0, chunks: 0, newOrChanged: 0 };
+    if (!sessionsAllowed(this.cfg)) return r;
+    for (const d of this.dirs()) {
+      const x = await scanSessions(this.store, d, { skipCwdPrefixes: this.skipPrefixes(), host: d.host });
+      r.files += x.files; r.changed += x.changed; r.skipped += x.skipped; r.newOrChanged += x.newOrChanged;
+      r.chunks = x.chunks; // 전체 세션 청크 수라 마지막 값
+    }
+    return r;
   }
 
   async estimate(): Promise<EstimateDetail> {

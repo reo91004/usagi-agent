@@ -164,10 +164,11 @@ export function isCyAgentCwd(cwd: string | undefined, skipCwdPrefix?: string, ho
 
 // 바뀐 파일만 다시 읽는다(mtime 기준). 반환: 새로 반영한 세션 수
 // skipCwdPrefix: 데몬 자신이 돌린 세션(브리핑·자동수정)은 기록에서 뺀다(같은 맥의 다른 시사 설치 폴더도 — isCyAgentCwd)
+// host: ssh 서버에서 받아 온 기록(ingest/remote-sessions.ts) — cwd 를 「서버:/경로」로 적어 이 맥의 폴더와 섞이지 않게
 export function ingestSessions(
-  store: Store, dirs: { claude: string; codex: string }, opts: { sinceMs?: number; skipCwdPrefix?: string } = {},
+  store: Store, dirs: { claude: string; codex: string }, opts: { sinceMs?: number; skipCwdPrefix?: string; host?: string } = {},
 ): number {
-  const { sinceMs = 14 * 864e5, skipCwdPrefix } = opts;
+  const { sinceMs = 14 * 864e5, skipCwdPrefix, host } = opts;
   let n = 0;
   const cutoff = Date.now() - sinceMs;
   for (const [tool, dir] of [["claude", dirs.claude], ["codex", dirs.codex]] as const) {
@@ -179,7 +180,11 @@ export function ingestSessions(
       const id = basename(path, ".jsonl");
       let s: SessionDigest | undefined;
       try { s = tool === "claude" ? parseClaudeSession(readLines(path), id) : parseCodexSession(readLines(path), id); } catch { continue; }
-      if (s && !isCyAgentCwd(s.cwd, skipCwdPrefix)) { recordSession(store, s); n++; }
+      if (s && !isCyAgentCwd(s.cwd, skipCwdPrefix)) {
+        if (host && s.cwd) s.cwd = `${host}:${s.cwd}`;
+        recordSession(store, s);
+        n++;
+      }
       store.setMark(path, mtime);
     }
   }

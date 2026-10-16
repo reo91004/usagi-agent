@@ -40,6 +40,7 @@ import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
 import { jobBubble, pullJobs, type JobDone } from "./jobs.ts";
+import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
 import { statusOf } from "./status.ts";
@@ -468,6 +469,28 @@ async function pollJobHosts() {
   } finally { jobsBusy = false; }
 }
 if (cfg.jobHosts.length) { setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref(); }
+
+// ssh 서버의 작업 기록(ingest/remote-sessions.ts): sessionHosts 에서 늘어난 만큼 받아 와 이 맥 기록과 같이 읽는다
+const sessionHostDown = new Set<string>();
+let remoteBusy = false;
+async function pollSessionHosts() {
+  if (remoteBusy || !sessionsAllowed(cfg)) return;
+  remoteBusy = true;
+  try {
+    let got = 0;
+    for (const host of cfg.sessionHosts) {
+      try {
+        got += await syncRemoteSessions(host);
+        if (sessionHostDown.delete(host)) console.log(`[sessions] ${host} 다시 연결됨`);
+      } catch (e: any) {
+        if (!sessionHostDown.has(host)) console.warn(`[sessions] ${host} 작업 기록을 못 받음: ${e?.message ?? e}`);
+        sessionHostDown.add(host);
+      }
+    }
+    if (got) await ingest();
+  } finally { remoteBusy = false; }
+}
+if (cfg.sessionHosts.length) { setTimeout(pollSessionHosts, 30e3).unref(); setInterval(pollSessionHosts, 10 * 60e3).unref(); }
 
 // 연결 상태가 바뀔 때만 한 번씩 알린다. 다시 연결되면 바로 훑어본다
 let mcpState = "ok";
