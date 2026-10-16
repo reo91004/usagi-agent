@@ -1,0 +1,52 @@
+#!/bin/sh
+# 오래 걸리는 작업(실험·학습·빌드)이 끝나면 우사기가 말풍선으로 알려 준다.
+#   usagi-run [-n 이름] -- 명령 [인자…]   명령을 돌리고 끝나면 알린다. 종료 코드는 명령 그대로 돌려준다
+#   usagi-run [-n 이름] --pid PID          이미 돌고 있는 프로세스가 끝날 때까지 10초마다 본다(종료 코드는 모름)
+# 이 맥(우사기 비서가 켜져 있음)에서는 바로 알린다. ssh 서버에서는 ~/.usagi-agent/jobs/ 에 남기고,
+# 맥의 우사기가 config.json "jobHosts" 에 적힌 서버를 2분마다 가져간다. 맥·리눅스 sh 공용(curl 만 있으면 된다)
+set -u
+usage() { sed -n '3,4p' "$0" | sed 's/^# *//' >&2; exit 2; }
+NAME=""
+PID=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--name) [ $# -ge 2 ] || usage; NAME=$2; shift 2 ;;
+    --pid) [ $# -ge 2 ] || usage; PID=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+
+start=$(date +%s)
+if [ -n "$PID" ]; then
+  case $PID in *[!0-9]*) echo "usagi-run: --pid 에는 숫자를 주세요" >&2; exit 2 ;; esac
+  kill -0 "$PID" 2>/dev/null || { echo "usagi-run: $PID 프로세스가 없어요" >&2; exit 2; }
+  [ -n "$NAME" ] || NAME=$(ps -o comm= -p "$PID" 2>/dev/null | sed 's#.*/##')
+  [ -n "$NAME" ] || NAME="PID $PID"
+  while kill -0 "$PID" 2>/dev/null; do sleep 10; done
+  CODE=null
+else
+  [ $# -gt 0 ] || usage
+  [ -n "$NAME" ] || NAME="$*"
+  "$@"
+  CODE=$?
+fi
+SECS=$(( $(date +%s) - start ))
+
+# JSON 문자열로: 제어 문자는 빼거나 공백으로, 역슬래시·따옴표는 이스케이프(길이는 데몬이 자른다)
+esc() { printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\t\r\n' '   ' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+BODY=$(printf '{"name":"%s","seconds":%s,"code":%s}' "$(esc "$NAME")" "$SECS" "$CODE")
+
+HOME_DIR=${CY_AGENT_HOME:-$HOME/.cy-agent}
+PORT=${CY_AGENT_PORT:-}
+[ -n "$PORT" ] || PORT=$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$HOME_DIR/config.json" 2>/dev/null | head -1)
+[ -n "$PORT" ] || PORT=47823
+if ! curl -fs -m 3 -X POST -H 'x-cy-agent: 1' -H 'content-type: application/json' --data-binary "$BODY" "http://127.0.0.1:$PORT/jobs/done" >/dev/null 2>&1; then
+  # 데몬이 없는 곳(ssh 서버): 파일로. 다 쓴 뒤에 이름을 바꿔 반쯤 쓴 파일을 맥이 읽지 않게
+  DIR=$HOME/.usagi-agent/jobs
+  f="$DIR/$(date +%Y%m%d-%H%M%S)-$$.json"
+  { mkdir -p "$DIR" && printf '%s\n' "$BODY" > "$f.tmp" && mv "$f.tmp" "$f"; } || echo "usagi-run: 알림을 남기지 못했어요($DIR)" >&2
+fi
+[ "$CODE" = null ] && exit 0
+exit "$CODE"

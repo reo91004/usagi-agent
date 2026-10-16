@@ -51,6 +51,7 @@ cask "usagi-agent" do
   depends_on macos: ">= :monterey"
 
   app "우사기.app"
+  binary "#{appdir}/우사기.app/Contents/Resources/bin/usagi-run"
 
   # ad-hoc 서명(개발자 인증서 없음)이라 받은 그대로면 Gatekeeper 가 열지 못하게 막는다
   postflight do

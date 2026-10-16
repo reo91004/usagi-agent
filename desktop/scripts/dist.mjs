@@ -83,6 +83,12 @@ execFileSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta
 const ASSETS = path.join(STAGE, 'assets');
 fs.cpSync(path.join(REPO, 'assets'), ASSETS, { recursive: true, filter: (src) => path.basename(src) !== '.DS_Store' });
 
+// 긴 작업 알림 명령(ops/usagi-run) — Resources/bin. brew cask 가 PATH 에 링크한다
+const BIN = path.join(STAGE, 'bin');
+fs.mkdirSync(BIN, { recursive: true });
+fs.copyFileSync(path.join(REPO, 'ops', 'usagi-run'), path.join(BIN, 'usagi-run'));
+fs.chmodSync(path.join(BIN, 'usagi-run'), 0o755);
+
 // 3) 아이콘: 개인 그림(~/.cy-agent/assets)이 아니라 레포 그림으로
 step('아이콘 만들기');
 const ICON_DIR = path.join(STAGE, 'icon');
@@ -112,7 +118,7 @@ const paths = await packager({
   asar: true,
   prune: true,
   ignore: (p) => p !== '' && !KEEP.some((re) => re.test(p)),
-  extraResource: [AGENT, ASSETS],
+  extraResource: [AGENT, ASSETS, BIN],
   extendInfo: {
     CFBundleDisplayName: APP_NAME,
     CFBundleName: APP_NAME,
@@ -122,7 +128,7 @@ const paths = await packager({
   quiet: true,
 });
 const APP = path.join(paths[0], `${APP_NAME}.app`);
-for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png']) {
+for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run']) {
   if (!fs.existsSync(path.join(APP, need))) throw new Error(`앱 번들에 ${need} 가 없어요`);
 }
 

@@ -74,5 +74,8 @@ launchctl bootout "gui/$(id -u)/com.cy-agent.desktop" 2>/dev/null || true
 rm -rf "$APP"
 ditto "$ROOT/desktop/dist/cy-darwin-$ARCH/cy.app" "$APP"
 
+# 긴 작업 알림 명령: ~/.local/bin/usagi-run (launchd PATH 에도 있는 폴더)
+mkdir -p "$HOME/.local/bin" && ln -sf "$ROOT/ops/usagi-run" "$HOME/.local/bin/usagi-run"
+
 register_jobs
 echo "✓ 설치 완료. 로그: $HOME_DIR/logs/"

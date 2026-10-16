@@ -11,6 +11,7 @@ import { RUN_STATUSES, type RunRegistry, type RunStatus } from "./runs.ts";
 import { ACTION_STATUSES, type ActionStatus, type ConfirmOut } from "./actions.ts";
 import type { GuidelinesApi } from "./guidelines.ts";
 import { FOCUS_CMDS, DAY_RE, type FocusApi, type FocusCmd } from "./focus.ts";
+import { parseJobDone, type JobDone } from "./jobs.ts";
 import { createReadStream, statSync } from "node:fs";
 import { extname } from "node:path";
 import { ATTACH_ID, attachmentInput, attachmentRef, type Attachment, type ContentBlock } from "./attachments.ts";
@@ -96,6 +97,8 @@ export type BusHandlers = {
   threadSync?(id: string): { ok: boolean; status?: number; error?: string; imported?: number } | Promise<{ ok: boolean; status?: number; error?: string; imported?: number }>;
   // Claude Code 세션 id 로 세션 창에 불러오기(cli-sync.ts importSession). 없으면 503
   runImport?(sessionId: string): { ok: boolean; status?: number; error?: string; runId?: string; imported?: number; existing?: boolean };
+  // 긴 작업 끝(jobs.ts, ops/usagi-run 이 POST /jobs/done). 없으면 503
+  jobDone?(j: JobDone): void;
   // 그 대화에서 띄운 서브에이전트들(thread-agents.ts). 없는 대화면 undefined → 404, 없으면 503
   threadAgents?(id: string): unknown;
   // 백그라운드 에이전트 멈추기(대화 속 카드): 대기 중이면 빼고, 돌고 있으면 abort. 모르는·끝난 것이면 false → 404. 없으면 503
@@ -542,6 +545,14 @@ export class Bus {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
       if (url.pathname === "/connectors/reload") {
         return h.connectorsReload ? json(res, 200, h.connectorsReload()) : json(res, 503, { error: "reload unavailable" });
+      }
+      // 긴 작업 끝: { name, seconds, code(null = 모름) } → 캐릭터 말풍선
+      if (url.pathname === "/jobs/done") {
+        if (!h.jobDone) return json(res, 503, { error: "jobs unavailable" });
+        const j = parseJobDone(await readJson(req, false));
+        if (!j) throw new BadRequest("name·seconds·code 를 확인해 주세요");
+        h.jobDone(j);
+        return json(res, 200, { ok: true });
       }
       if (url.pathname === "/connectors/disconnect") {
         if (!h.connectorDisconnect) return json(res, 503, { error: "disconnect unavailable" });

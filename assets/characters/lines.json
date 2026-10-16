@@ -76,6 +76,12 @@
       "focus_done": [
         "{duration} 동안 집중한 거야? 대단한데!"
       ],
+      "job_done": [
+        "'{name}' 끝났어! {duration} 걸렸어. 수고했어!"
+      ],
+      "job_failed": [
+        "앗, '{name}' 멈췄어… {duration} 만에 종료 코드 {code}. 로그 한번 같이 보자!"
+      ],
       "todo_new_one": [
         "새 할 일이 생겼어: '{title}'"
       ],
@@ -374,6 +380,12 @@
       ],
       "focus_done": [
         "음, {duration} 집중했군. 나쁘지 않아."
+      ],
+      "job_done": [
+        "'{name}' 끝났다. {duration} 걸렸군."
+      ],
+      "job_failed": [
+        "'{name}', {duration} 만에 실패다. 종료 코드 {code}. 원인부터 찾아."
       ],
       "todo_new_one": [
         "새 할 일이군: '{title}'"
@@ -686,6 +698,12 @@
       "focus_done": [
         "{duration} 집중했어? 흥, 제법인걸"
       ],
+      "job_done": [
+        "흥, '{name}' 끝났어. {duration}이나 걸렸네"
+      ],
+      "job_failed": [
+        "'{name}' 망했어! {duration} 만에 종료 코드 {code}. 내 탓 아니야"
+      ],
       "todo_new_one": [
         "새 할 일 생겼어: '{title}'"
       ],
@@ -968,6 +986,13 @@
       "focus_done": [
         "이야하~!!!({duration} 동안 집중했어. 잠깐 기지개 켜자!)",
         "푸루루루루루루루({duration} 집중 끝. 수고했어!)"
+      ],
+      "job_done": [
+        "야하!('{name}' 끝났어. {duration} 걸렸어!)",
+        "이야하~!!!('{name}' 다 돌았어. {duration} 걸렸어!)"
+      ],
+      "job_failed": [
+        "하아~~?('{name}' 이(가) {duration} 만에 멈췄어. 종료 코드 {code}. 로그부터 보자!)"
       ],
       "todo_new_one": [
         "야하!(새 할 일이 생겼어: '{title}')"
