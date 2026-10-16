@@ -46,6 +46,7 @@ import { RELEASES_API, checkDue, newestRelease, shouldNotify, updateBubble } fro
 import { denied } from './src/denied.js';
 import { withCalendarAdded, withCalendarRemoved, calendarRows, calendarUrlById, calendarUrls, hubDoneFor, calendarReloadNote, okCalendarId, CALENDAR_DUP } from './src/calendars.js';
 import { squirrelPlan, loginItemTarget, appUserModelId } from './src/squirrel.js';
+import { editCommand } from './src/edit-keys.js';
 
 // 윈도우 Squirrel 설치기가 --squirrel-* 로 띄운 실행이면 바로 가기만 고치고 끝낸다(맨 아래 시작 부분에서 갈린다)
 const SQUIRREL = squirrelPlan({ platform: process.platform, argv: process.argv, execPath: process.execPath });
@@ -2030,6 +2031,13 @@ if (SQUIRREL) {
   // 맞춤법 검사는 안 쓴다(창마다 spellcheck:false). 그래도 세션의 검사기는 첫 실행에 사전(ko-3-0.bdic, 11MB)을
   // redirector.gvt1.com 에서 받는다 → 세션 단위로 끈다. 나중에 생기는 세션(fromPartition 등)도 같게
   app.on('session-created', (s) => s.setSpellCheckerEnabled(false));
+  // 맥 입력창 ⌘C·⌘V·⌘X·⌘A 는 숨은 「편집」 메뉴에 기대지 않고 직접(src/edit-keys.js). preventDefault 로 메뉴 단축키는 겹쳐 돌지 않는다
+  if (process.platform === 'darwin') app.on('web-contents-created', (_e, wc) => {
+    wc.on('before-input-event', (e, input) => {
+      const cmd = editCommand(input);
+      if (cmd) { e.preventDefault(); wc[cmd](); }
+    });
+  });
   app.whenReady().then(() => {
     session.defaultSession.setSpellCheckerEnabled(false); // 창보다 먼저
     const firstRun = !fs.existsSync(statePath()); // 이 앱 저장소를 처음 쓴다 → 마법사를 바로 연다
