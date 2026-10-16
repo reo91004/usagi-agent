@@ -25,9 +25,57 @@ for a in $ARCHS; do FILES="$FILES $DIST/Usagi-$VER-$a.dmg"; done
 (cd "$DIST" && shasum -a 256 $(for a in $ARCHS; do printf '%s ' "Usagi-$VER-$a.dmg"; done) > "SHA256SUMS-$VER.txt")
 FILES="$FILES $DIST/SHA256SUMS-$VER.txt"
 
+# Homebrew cask(reo91004/homebrew-tap 의 Casks/usagi-agent.rb 로 복사): 두 아키텍처 dmg 가 다 있을 때만
+CASK="$DIST/usagi-agent.rb"
+rm -f "$CASK"
+case " $ARCHS " in *" arm64 "*) case " $ARCHS " in *" x64 "*)
+  sha() { shasum -a 256 "$DIST/Usagi-$VER-$1.dmg" | cut -d' ' -f1; }
+  cat > "$CASK" <<EOF
+cask "usagi-agent" do
+  arch arm: "arm64", intel: "x64"
+
+  version "$VER"
+  sha256 arm:   "$(sha arm64)",
+         intel: "$(sha x64)"
+
+  url "https://github.com/$REPO_SLUG/releases/download/v#{version}/Usagi-#{version}-#{arch}.dmg"
+  name "우사기 비서"
+  desc "Desktop character assistant for todos, briefings and focus timers"
+  homepage "https://github.com/$REPO_SLUG"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: ">= :monterey"
+
+  app "우사기.app"
+
+  # ad-hoc 서명(개발자 인증서 없음)이라 받은 그대로면 Gatekeeper 가 열지 못하게 막는다
+  postflight do
+    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/우사기.app"]
+  end
+
+  uninstall quit:       "com.cy-agent.desktop",
+            login_item: "우사기"
+
+  zap trash: [
+    "~/.cy-agent",
+    "~/Library/Application Support/cy-agent-desktop",
+    "~/Library/Preferences/com.cy-agent.desktop.plist",
+    "~/Library/Saved Application State/com.cy-agent.desktop.savedState",
+  ]
+end
+EOF
+  echo "✓ $CASK  →  cp \"$CASK\" \"\$(brew --repo reo91004/tap)/Casks/\""
+;; esac;; esac
+
 NOTES="$DIST/release-notes-$VER.md"
 cat > "$NOTES" <<EOF
 ## 받기
+
+Homebrew: \`brew install --cask reo91004/tap/usagi-agent\` (업데이트는 \`brew upgrade --cask usagi-agent\`)
 
 - 애플 실리콘 맥(M1 이후): \`Usagi-$VER-arm64.dmg\`
 - 인텔 맥: \`Usagi-$VER-x64.dmg\`
