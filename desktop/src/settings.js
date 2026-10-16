@@ -291,7 +291,7 @@ export function metaText(row, now = new Date()) {
 export function sanitizeAppPrefs(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const keys = Object.keys(p);
-  if (!keys.length || !keys.every((k) => k === 'openAtLogin' || k === 'updateCheck')) return null;
+  if (!keys.length || !keys.every((k) => k === 'openAtLogin' || k === 'updateCheck' || k === 'showInDock')) return null;
   const out = {};
   for (const k of keys) {
     if (typeof p[k] !== 'boolean') return null;

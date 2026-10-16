@@ -36,7 +36,7 @@ const paths = await packager({
   extendInfo: {
     CFBundleDisplayName: '시사 비서', // Cmd+Tab·Dock 에 보이는 이름 (번들 파일명은 cy.app 유지)
     CFBundleName: '시사 비서',
-    LSUIElement: false,
+    LSUIElement: true, // Dock 아이콘 없이 켠다(설정에서 켜면 app.dock.show)
   },
   quiet: true,
 });

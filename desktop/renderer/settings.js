@@ -157,7 +157,7 @@ function renderBrains() {
   }
 }
 
-// ---- 이 앱(로그인할 때 켜기 · 새 버전 알림) ----
+// ---- 이 앱(로그인할 때 켜기 · 새 버전 알림 · Dock 아이콘) ----
 let appPrefs = null;
 function renderAppPrefs() {
   const box = $('app-prefs');
@@ -168,6 +168,8 @@ function renderAppPrefs() {
   const rows = [
     { key: 'openAtLogin', on: login.on === true, label: `로그인할 때 ${who()} 켜기`, disabled: !login.available },
     { key: 'updateCheck', on: appPrefs.updateCheck !== false, label: '새 버전이 나오면 알려 주기 (하루 한 번 확인)' },
+    // 맥만: 꺼도 메뉴 막대 아이콘·캐릭터로 그대로 쓴다
+    ...(typeof appPrefs.showInDock === 'boolean' ? [{ key: 'showInDock', on: appPrefs.showInDock, label: 'Dock에 아이콘 보이기 (꺼도 메뉴 막대 아이콘과 캐릭터로 계속 쓸 수 있어요)' }] : []),
   ];
   for (const r of rows) {
     const lab = el('label', `toggle${r.on ? '' : ' off'}`);

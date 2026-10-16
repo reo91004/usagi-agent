@@ -116,7 +116,7 @@ const paths = await packager({
   extendInfo: {
     CFBundleDisplayName: APP_NAME,
     CFBundleName: APP_NAME,
-    LSUIElement: false,
+    LSUIElement: true, // Dock 아이콘 없이 켠다(설정에서 켜면 app.dock.show)
     LSMinimumSystemVersion: '12.0',
   },
   quiet: true,

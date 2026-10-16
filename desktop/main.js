@@ -945,7 +945,7 @@ function createTray() {
 }
 
 // ---- 앱(Dock·Cmd+Tab·메뉴 막대) ----
-// Dock 에 보이는 일반 앱 — Cmd+Tab/Dock 으로 돌아오면 대시보드 패널이 앞으로 온다.
+// Dock 아이콘은 기본으로 숨긴다(applyDock). 켜 두면 Cmd+Tab/Dock 으로 돌아올 때 대시보드 패널이 앞으로 온다.
 // 오버레이는 비활성 패널이라 앱 활성화와 상관없이 항상 위·모든 Space 에 그대로 있다.
 function toggleCharacter() {
   if (!win) return;
@@ -1049,13 +1049,20 @@ function loadCharacters() {
   return charactersLoading;
 }
 
+// Dock 아이콘은 기본으로 숨긴다(번들 LSUIElement). 숨겨도 메뉴 막대 아이콘·캐릭터·패널은 그대로 — 설정 「이 앱」에서 켠다
+function applyDock() {
+  if (process.platform !== 'darwin' || !app.dock) return;
+  if (state.showInDock === true) app.dock.show().catch(() => {});
+  else app.dock.hide();
+}
+
 function setupAppActivation() {
   if (process.platform === 'darwin') {
     app.setName(appTitle());
     const icon = path.join(__dirname, 'assets', 'icon.png');
     // 번들(cy.app)은 icns 를 쓰고, 개발 실행은 Dock 아이콘을 바꿔 준다
     if (!app.isPackaged && fs.existsSync(icon)) app.dock?.setIcon(nativeImage.createFromPath(icon));
-    app.dock?.show();
+    applyDock();
     setDockMenu();
   }
   quietActivation(2000); // 시작 직후(로그인 자동 실행) 패널을 띄우지 않음
@@ -1941,7 +1948,8 @@ const appPrefs = {
     if (p.manage) {
       try { on = app.getLoginItemSettings(loginTarget()).openAtLogin === true; } catch { on = state.openAtLogin === true; }
     }
-    return { ok: true, version: app.getVersion(), openAtLogin: { available: p.manage, on, hint: loginItemHint(p.reason) }, updateCheck: state.updateCheck !== false };
+    return { ok: true, version: app.getVersion(), openAtLogin: { available: p.manage, on, hint: loginItemHint(p.reason) }, updateCheck: state.updateCheck !== false,
+      ...(process.platform === 'darwin' ? { showInDock: state.showInDock === true } : {}) };
   },
   set(patch) {
     if ('openAtLogin' in patch) {
@@ -1950,6 +1958,11 @@ const appPrefs = {
       state.openAtLogin = patch.openAtLogin;
       saveState();
       applyLoginItem();
+    }
+    if ('showInDock' in patch && process.platform === 'darwin') {
+      state.showInDock = patch.showInDock;
+      saveState();
+      applyDock();
     }
     if ('updateCheck' in patch) {
       state.updateCheck = patch.updateCheck;
