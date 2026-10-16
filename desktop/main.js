@@ -907,7 +907,9 @@ function menuIcon(symbol) {
   if (!menuIcons.has(symbol)) {
     let img;
     try { img = nativeImage.createFromNamedImage(symbol); } catch { /* 이 Electron 이 못 읽는 이름 */ }
-    menuIcons.set(symbol, img && !img.isEmpty() ? img.resize({ width: 16, height: 16 }) : undefined);
+    const icon = img && !img.isEmpty() ? img.resize({ width: 16, height: 16 }) : undefined;
+    icon?.setTemplateImage(true); // 줄이면 템플릿 표시가 빠져 다크 모드 메뉴에서 검게 보인다 — 메뉴 글자색을 따르게
+    menuIcons.set(symbol, icon);
   }
   return menuIcons.get(symbol);
 }
