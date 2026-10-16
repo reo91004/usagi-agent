@@ -47,7 +47,8 @@ import { statusOf } from "./status.ts";
 import { featureBrain, NEEDS_CLAUDE_MCP, NEEDS_CODER, withMcpBrain } from "./feature-brain.ts";
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
-import { Focus, focusApi, focusDoneText } from "./focus.ts";
+import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
+import { writeDay } from "./research-note.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange } from "./providers.ts";
 import { briefingHours } from "./calendar.ts";
 import { performance } from "node:perf_hooks";
@@ -445,9 +446,24 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
 }));
 setInterval(kgHourly, 60 * 60e3);
 
+// 연구 노트(research-note.ts): 한 시간마다 오늘·어제 페이지를 다시 만든다(바뀐 경우만 쓴다). 어제 것은 자정 넘어 끝난 세션까지 담으려고
+const noteSkipped = new Set<string>(); // 사용자가 고친 페이지는 한 번만 알린다
+const writeNotes = safe("research-note", async () => {
+  if (!cfg.tineGraph) return;
+  const today = localDay(Date.now());
+  for (const day of [localDay(dayStart(today) - 12 * 3600e3), today]) { // 어제 낮 = 어제 날짜
+    const { path, result } = await writeDay(cfg, store, day, { focus });
+    if (result === "written") console.log(`[research-note] ${day} 썼어요`);
+    if (result === "edited" && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 페이지를 누가 고쳐서 덮지 않아요: ${path}`); }
+  }
+});
+if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
+
 // 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts)는 2분마다 ssh 로 가져온다
 function jobDone(j: JobDone) {
-  const b = jobBubble(j, `job-${randomUUID()}`);
+  const id = `job-${randomUUID()}`;
+  store.upsertNode(`job:${id}`, "job", j.name, { seconds: j.seconds, code: j.code, ...(j.host ? { host: j.host } : {}) }); // 연구 노트(research-note.ts)가 그날 것을 읽는다
+  const b = jobBubble(j, id);
   bus.bubble(b);
   if (b.kind === "done") bus.activity.startDance(8000, "cheer");
 }

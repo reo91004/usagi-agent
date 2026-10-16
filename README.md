@@ -382,6 +382,20 @@ usagi-run -n "resnet 학습" -- python train.py
 
 전체 예시는 [`ops/config.example.json`](ops/config.example.json)에 있습니다.
 
+## 연구 노트 (Tine)
+
+그날 한 일을 Tine(Logseq 형식) 그래프에 날마다 한 페이지로 남깁니다. `~/.cy-agent/config.json`에 그래프 폴더를 적고 데몬을 다시 켜면 됩니다.
+
+```json
+{ "tineGraph": "~/Library/Mobile Documents/com~apple~CloudDocs/PKM" }
+```
+
+- 페이지 이름은 「우사기 연구 노트/2026-10-17」입니다(`pages/우사기 연구 노트___2026-10-17.md`). 페이지에 그날 저널 링크가 있어서 저널의 연결된 참조에 뜹니다. 저널 파일은 건드리지 않습니다.
+- 담는 것: 작업 세션(작업 기록 읽기를 켰을 때, ssh 서버 기록 포함), 끝난 긴 작업(`usagi-run`), 집중 시간, 끝낸 할 일, 레포 폴더(`repoRoots`)의 내 커밋. AI 없이 목록으로 씁니다.
+- 한 시간마다 오늘과 어제 페이지를 다시 만들고, 바뀐 게 있을 때만 씁니다. 한 일이 없는 날은 페이지를 만들지 않습니다.
+- 우사기가 쓴 뒤에 그 페이지를 고치면, 그 날짜 페이지는 더 이상 덮어쓰지 않습니다. 메모는 저널에 적는 걸 권합니다.
+- 바로 써 보려면 `node agent/src/cli.ts note` 또는 `node agent/src/cli.ts note 2026-10-16`(터미널 설치).
+
 ## 설정 파일 (`~/.cy-agent/config.json`)
 
 같은 값이 여러 군데 있으면 환경변수 → `config.json` → 기본값 순으로 씁니다. 설정 창(⚙)이나 설치 마법사에서 바꾼 값도 이 파일에 저장됩니다.
@@ -398,6 +412,7 @@ usagi-run -n "resnet 학습" -- python train.py
 | `brain.gensparkApiKey` | `CY_AGENT_GENSPARK_API_KEY` |  | Genspark 키. 비워 두면 `gsk login`이 남긴 키(`~/.genspark-tool-cli/config.json`)를 쓸 때마다 읽습니다. 유료 플랜이 있어야 대답합니다 |
 | `user.name` / `user.aliases` | `CY_AGENT_USER_NAME` | git `user.name` | 부를 이름 / 지식그래프에서 "나"로 볼 다른 이름들. 비워 두면 git 이름을 부르고, git 이름·이메일 아이디·맥 계정 이름도 "나"로 봅니다 |
 | `repoRoots` |  | 새 설치는 `[]`, 예전 설정은 `["~/code"]` | 코드를 고쳐도 되는 레포 폴더. 개요의 내 커밋도 이 폴더에서만 읽습니다. 이 밖은 건드리지 않습니다 |
+| `tineGraph` |  |  | 연구 노트를 남길 Tine 그래프 폴더(`logseq/config.edn`이 있는 곳). [연구 노트](#연구-노트-tine) |
 | `allowMcp` |  | `[]` | 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(예: `["notion"]`). 여기 없는 서버는 Claude Code에 등록돼 있어도 브리핑·채팅에서 쓰지 않습니다 |
 | `connectors.<기능>` | `CY_AGENT_SLACK_USER_TOKEN`, `CY_AGENT_CALENDAR_ICS_URL` | 전부 off | 위 [연결](#연결) 참고 |
 | `slackBotToken` / `slackAppToken` / `slackUserId` | `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `SLACK_USER_ID` |  | (선택) Slack 봇 DM·할 일 캔버스. [slack.md](docs/connect/slack.md) |
