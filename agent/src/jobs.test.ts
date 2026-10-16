@@ -2,11 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseJobDone, jobBubble, okJobHost, pullJobs, type RunSsh } from "./jobs.ts";
+import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, pullJobs, type RunSsh } from "./jobs.ts";
 import { setCharacter } from "./characters.ts";
 import { Bus } from "./bus.ts";
 
@@ -39,29 +39,55 @@ test("okJobHost: ssh 별칭·user@host 만, 옵션처럼 읽히거나 셸 문자
   for (const h of ["-oProxyCommand=sh", "a b", "h;rm -rf ~", "$(id)", "", "x".repeat(200), 3, null]) assert.ok(!okJobHost(h), String(h));
 });
 
-test("pullJobs: 파일 이름<TAB>내용을 읽고 읽은 파일만 지운다. 깨진 내용·이상한 이름은 건너뛰되 깨진 파일은 지운다", async () => {
+test("pullJobs: 끝난 것(D)은 읽고 지우고, 도는 것(R)은 두되 끊긴 표시(살아 있지 않음)·깨진 것은 지운다", async () => {
   const calls: string[][] = [];
   const run: RunSsh = async (args) => {
     calls.push(args);
     if (calls.length > 1) return "";
     return [
-      `20261016-1-1.json\t{"name":"학습","seconds":10,"code":0}`,
-      `20261016-1-2.json\t{"name":"평가","seconds":5,"code":2}`,
-      `broken.json\t{oops`,
-      `../evil.json\t{"name":"x","seconds":1,"code":0}`,
+      `D\t20261016-1-1.json\t{"name":"학습","seconds":10,"code":0,"id":"20261016-1-1","cwd":"/home/u/exp","files":["r.json"]}`,
+      `D\t20261016-1-2.json\t{"name":"평가","seconds":5,"code":2}`,
+      `D\tbroken.json\t{oops`,
+      `D\t../evil.json\t{"name":"x","seconds":1,"code":0}`,
+      `R\t20261017-1-3.running\t1\t{"id":"20261017-1-3","name":"긴 학습","cwd":"/home/u/exp","cmd":"python t.py","start":1792171509,"pid":42}`,
+      `R\t20261017-1-4.running\t0\t{"id":"20261017-1-4","name":"죽은 학습","start":1792171000,"pid":43}`,
+      `R\tbad.running\t1\t{"name":"id 없음"}`,
       `no tab line`,
     ].join("\n");
   };
-  const jobs = await pullJobs("gpu1", run);
-  assert.deepEqual(jobs, [{ name: "학습", seconds: 10, code: 0, host: "gpu1" }, { name: "평가", seconds: 5, code: 2, host: "gpu1" }]);
+  const { done, running } = await pullJobs("gpu1", run);
+  assert.deepEqual(done, [
+    { name: "학습", seconds: 10, code: 0, host: "gpu1", id: "20261016-1-1", cwd: "/home/u/exp", files: ["r.json"] },
+    { name: "평가", seconds: 5, code: 2, host: "gpu1" },
+  ]);
+  assert.deepEqual(running, [
+    { id: "20261017-1-3", name: "긴 학습", host: "gpu1", start: 1792171509, alive: true, cwd: "/home/u/exp", cmd: "python t.py" },
+    { id: "20261017-1-4", name: "죽은 학습", host: "gpu1", start: 1792171000, alive: false },
+  ]);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].slice(0, 2), ["--", "gpu1"]);
-  assert.equal(calls[1][2], "cd ~/.usagi-agent/jobs && rm -f -- '20261016-1-1.json' '20261016-1-2.json' 'broken.json'");
-  // 끝난 게 없으면 지우지 않는다
+  assert.equal(calls[1][2], "cd ~/.usagi-agent/jobs && rm -f -- '20261016-1-1.json' '20261016-1-2.json' 'broken.json' '20261017-1-4.running' 'bad.running'");
+  // 끝난 게 없고 도는 것만 있으면 지우지 않는다
   const quiet: string[][] = [];
-  assert.deepEqual(await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; }), []);
+  assert.deepEqual(await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; }), { done: [], running: [] });
   assert.equal(quiet.length, 1);
   await assert.rejects(pullJobs("-oProxyCommand=x", run), /jobHosts/);
+});
+
+test("parseJobDone·parseRunning: 덧붙는 칸은 믿지 않는 입력 — 이상한 칸만 빼고, 파일은 8개까지", () => {
+  const j = parseJobDone({ name: "a", seconds: 1, code: 0, id: "../x", cwd: "  /h/e\nx ", cmd: 3, start: -1, files: ["a", 2, "", ...Array(20).fill("f")] });
+  assert.deepEqual(j, { name: "a", seconds: 1, code: 0, cwd: "/h/e x", files: ["a", "f", "f", "f", "f", "f", "f", "f"] });
+  assert.equal(parseRunning({ name: "a", id: "1", start: 1.5 }, "h", true), null);
+  assert.equal(parseRunning({ name: "", id: "1", start: 1 }, "h", true), null);
+});
+
+test("jobNodeId·jobProps: 도는 중과 끝이 같은 노드, 상태 표시는 하나만", () => {
+  assert.equal(jobNodeId({ id: "20261017-1-3", host: "gpu1" }), "job:gpu1:20261017-1-3");
+  assert.equal(jobNodeId({ id: "20261017-1-3" }), "job:20261017-1-3");
+  assert.match(jobNodeId({}), /^job:job-[0-9a-f-]{36}$/);
+  const r = { id: "1", name: "a", host: "gpu1", start: 10, alive: true, cwd: "/w" };
+  assert.deepEqual(jobProps(r, "running"), { host: "gpu1", cwd: "/w", start: 10, running: true });
+  assert.deepEqual(jobProps({ name: "a", seconds: 5, code: 1, host: "gpu1", start: 10, files: ["o.txt"] }), { host: "gpu1", start: 10, seconds: 5, code: 1, files: ["o.txt"] });
 });
 
 test("HTTP: POST /jobs/done 은 헤더 필수, 잘못된 본문은 400, 맞으면 처리기로", async () => {
@@ -95,7 +121,8 @@ test("usagi-run: 데몬이 없으면 ~/.usagi-agent/jobs 에 JSON 을 남기고 
   assert.equal(files.length, 1);
   assert.match(files[0], /^\d{8}-\d{6}-\d+\.json$/);
   const j = parseJobDone(JSON.parse(readFileSync(join(dir, files[0]), "utf8")));
-  assert.deepEqual(j, { name: `학습 "v2"\\끝 탭`, seconds: j!.seconds, code: 3 });
+  assert.deepEqual({ name: j!.name, code: j!.code, cmd: j!.cmd }, { name: `학습 "v2"\\끝 탭`, code: 3, cmd: "sh -c exit 3" });
+  assert.equal(`${j!.id}.json`, files[0]);
   // 이름이 없으면 명령 자체가 이름, 인자가 없으면 사용법(2)
   assert.equal(spawnSync("sh", [SCRIPT], { env, encoding: "utf8" }).status, 2);
   assert.equal(spawnSync("sh", [SCRIPT, "--pid", "abc"], { env, encoding: "utf8" }).status, 2);
@@ -118,7 +145,7 @@ test("usagi-run: 이 맥에서 데몬이 켜져 있으면 POST /jobs/done 으로
     assert.equal(bodies.length, 1);
     assert.deepEqual(parseJobDone(JSON.parse(bodies[0]))?.code, 0);
     assert.equal(JSON.parse(bodies[0]).name, "true");
-    assert.throws(() => readdirSync(join(home, ".usagi-agent", "jobs")), /ENOENT/);
+    assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []); // 도는 중 표시는 끝나면 지운다
   } finally {
     srv.close();
   }
@@ -134,10 +161,47 @@ test("usagi-run 이 남긴 파일 → pullJobs(원격 명령을 실제 sh 로) �
     if (r.status !== 0) throw new Error(r.stderr);
     return r.stdout;
   };
-  const jobs = await pullJobs("gpu1", localSh);
-  assert.deepEqual(jobs.map((j) => [j.name, j.code, j.host]).sort(), [["학습 A", 0, "gpu1"], ["학습 B", 1, "gpu1"]]);
+  const { done } = await pullJobs("gpu1", localSh);
+  assert.deepEqual(done.map((j) => [j.name, j.code, j.host]).sort(), [["학습 A", 0, "gpu1"], ["학습 B", 1, "gpu1"]]);
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
-  assert.deepEqual(await pullJobs("gpu1", localSh), []);
+  assert.deepEqual(await pullJobs("gpu1", localSh), { done: [], running: [] });
   // 폴더가 아직 없는 서버도 조용히 빈 목록
-  assert.deepEqual(await pullJobs("gpu1", async (a) => spawnSync("sh", ["-c", a[2]], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "empty-")) }, encoding: "utf8" }).stdout), []);
+  assert.deepEqual(await pullJobs("gpu1", async (a) => spawnSync("sh", ["-c", a[2]], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "empty-")) }, encoding: "utf8" }).stdout), { done: [], running: [] });
+});
+
+test("usagi-run: 도는 동안 .running 표시(pullJobs 가 살아 있음으로 읽음), 끝나면 지우고 폴더·명령·바뀐 파일을 남긴다", async () => {
+  const home = mkdtempSync(join(tmpdir(), "usagi-run-"));
+  const work = mkdtempSync(join(tmpdir(), "usagi-work-"));
+  const env = { ...process.env, HOME: home, CY_AGENT_PORT: "9" };
+  const localSh: RunSsh = async (args) => spawnSync("sh", ["-c", args[2]], { env, encoding: "utf8" }).stdout;
+  const child = spawn("sh", [SCRIPT, "-n", "학습", "--", "sh", "-c", "sleep 1; mkdir -p out; echo 1 > out/m.json; echo x > log.txt"], { env, cwd: work });
+  await new Promise((r) => setTimeout(r, 400));
+  const mid = await pullJobs("gpu1", localSh);
+  assert.equal(mid.done.length, 0);
+  assert.equal(mid.running.length, 1);
+  assert.equal(mid.running[0].alive, true);
+  assert.equal(mid.running[0].name, "학습");
+  assert.match(mid.running[0].cmd!, /^sh -c sleep 1/);
+  assert.equal(await new Promise((r) => child.on("close", r)), 0);
+  const { done, running } = await pullJobs("gpu1", localSh);
+  assert.deepEqual(running, []);
+  assert.equal(done.length, 1);
+  assert.equal(done[0].id, mid.running[0].id); // 도는 중 표시와 같은 id → 같은 노드
+  assert.equal(done[0].cwd, realpathSync(work));
+  assert.deepEqual([...done[0].files!].sort(), ["log.txt", "out/m.json"]);
+  assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
+});
+
+test("usagi-run: 프로세스가 끝 기록 없이 죽으면 표시만 남고 pullJobs 가 끊김으로 읽은 뒤 지운다", async () => {
+  const home = mkdtempSync(join(tmpdir(), "usagi-run-"));
+  const env = { ...process.env, HOME: home, CY_AGENT_PORT: "9" };
+  const child = spawn("sh", [SCRIPT, "-n", "죽을 학습", "--", "sleep", "3"], { env, stdio: "ignore" }); // 남는 sleep 이 파이프를 붙잡지 않게
+  await new Promise((r) => setTimeout(r, 300));
+  child.kill("SIGKILL"); // usagi-run 자체를 강제 종료(서버 재시작과 같은 효과)
+  await new Promise((r) => child.on("exit", r));
+  const localSh: RunSsh = async (args) => spawnSync("sh", ["-c", args[2]], { env, encoding: "utf8" }).stdout;
+  const { running } = await pullJobs("gpu1", localSh);
+  assert.equal(running.length, 1);
+  assert.equal(running[0].alive, false);
+  assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
 });

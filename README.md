@@ -331,6 +331,23 @@ usagi-run -n "resnet 학습" -- python train.py
 - `~/.ssh/config`의 별칭, ProxyJump 같은 설정을 그대로 씁니다. 비밀번호를 묻지 않는 키 인증이어야 합니다(뒤에서 `BatchMode=yes`로 접속합니다). OTP를 묻는 서버라면 `ControlMaster`·`ControlPersist`로 연결을 열어 두세요.
 - 서버에서 맥으로 들어오는 포트는 열지 않습니다. tmux를 detach하고 ssh를 끊거나 맥을 덮어 둬도, 결과 파일이 남아 있어서 맥이 다시 연결되면 그때 알려 줍니다.
 - 바꾼 `jobHosts`는 데몬을 다시 켜면 적용됩니다.
+- 도는 동안에는 서버의 `~/.usagi-agent/jobs/`에 `<id>.running` 표시가 있고, 끝나면 지워집니다. 우사기는 이걸로 지금 돌고 있는 실험을 압니다. 표시만 남고 `usagi-run`이 사라졌으면(서버 재시작, 강제 종료) 「끊김」으로 봅니다.
+- 끝날 때 작업 폴더, 명령, 실행 중에 그 폴더에서 바뀐 파일(최근 것 8개, 깊이 3)을 같이 남깁니다. 「어제 돌린 실험 결과 어때?」라고 물으면 이 파일부터 봅니다.
+
+### 실험 서버 둘러보기 (sshHosts)
+
+우사기에게 서버의 폴더, 결과 파일, GPU 상황을 물어볼 수 있습니다. 둘러볼 서버를 `config.json`에 적어 두면 됩니다. 여기 적은 서버의 끝난 작업도 `jobHosts`처럼 2분마다 가져옵니다.
+
+```json
+{ "sshHosts": ["gpu1", "reo@lab.example.ac.kr"] }
+```
+
+- 물어볼 때만 접속합니다. 주기적으로 서버를 훑지 않고, 읽은 내용을 맥에 쌓아 두지 않습니다.
+- 처음 한 번은 1초쯤 걸리고, 2분 안에 이어지는 질문은 같은 연결(`ControlMaster`, `~/.cy-agent/ssh/`)을 다시 써서 0.1초 안팎입니다.
+- 읽기만 합니다. 폴더 목록, 파일 찾기(이름이나 최근 N시간), 파일 앞이나 끝 일부, 특정 글이 든 줄, `nvidia-smi` 요약만 하고, 우사기가 정해 둔 명령 말고는 보내지 않습니다.
+- 키, 토큰, `.env`, `~/.ssh` 같은 비밀 파일은 열지 않습니다. 심볼릭 링크로 가리켜도 실제 경로로 판단합니다. 바이너리 파일은 내용을 보여 주지 않습니다.
+- 서버는 리눅스(GNU `find`, `stat`, `timeout`)라고 봅니다.
+- 지금은 뇌가 Claude Code 일 때 이 도구를 씁니다. Codex·agy 는 #38 에서 붙입니다.
 
 ### ssh 서버의 Claude Code·Codex 작업 기록
 
@@ -404,6 +421,7 @@ usagi-run -n "resnet 학습" -- python train.py
 |---|---|---|---|
 | `onboarded` |  | 새 설치는 `false` | 설치 마법사를 마쳤는지. `false`인 동안은 브리핑·정리 작업(모델)을 하나도 돌리지 않고, 작업 기록과 레포도 읽지 않습니다. 마법사의 「다 했어요」나 「설치는 나중에 할게요」를 누르면 `true`가 됩니다. 이 키가 없는 예전 설정은 마친 것으로 봅니다 |
 | `readSessions` |  | 새 설치는 `false` | 이 맥의 Claude Code·Codex 작업 기록(`~/.claude/projects`, `~/.codex/sessions`)을 읽을지. 마법사의 「더 연결하기」나 설정 창 「이 맥에서 읽는 것」에서 켜고 끕니다. 예전 설정은 `true` |
+| `sshHosts` |  | `[]` | 물어볼 때 둘러볼 실험 서버(폴더·파일·GPU). 끝난 작업도 같이 가져옵니다. [실험 서버 둘러보기](#실험-서버-둘러보기-sshhosts) |
 | `sessionHosts` |  | `[]` | 작업 기록도 받아 올 ssh 서버(별칭이나 `user@host`). `readSessions`가 켜져 있을 때만 받습니다. [ssh 서버의 작업 기록](#ssh-서버의-claude-codecodex-작업-기록) |
 | `brain.provider` | `CY_AGENT_BRAIN` | 새 설치는 `local`(아직 안 고름), 예전 설정은 `claude-code` | 뇌. `claude-code` · `codex` · `gemini` · `openai` · `anthropic`(Claude API 키) · `genspark` · `local`(뇌 없음) |
 | `brain.geminiApiKey` | `CY_AGENT_GEMINI_API_KEY` / `GEMINI_API_KEY` |  | Gemini 키 |

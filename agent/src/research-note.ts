@@ -87,7 +87,7 @@ export async function collectDay(
     day,
     focus: { seconds: f?.seconds ?? 0, longest: f?.longest ?? 0 },
     sessions: [...byProject].map(([project, items]) => ({ project, items })),
-    jobs: nodes("job").map((j) => ({ name: j.label, seconds: Number(j.props.seconds) || 0, code: Number.isInteger(j.props.code) ? Number(j.props.code) : null, ...(j.props.host ? { host: String(j.props.host) } : {}) })),
+    jobs: nodes("job").filter((j) => !j.props.running && !j.props.lost).map((j) => ({ name: j.label, seconds: Number(j.props.seconds) || 0, code: Number.isInteger(j.props.code) ? Number(j.props.code) : null, ...(j.props.host ? { host: String(j.props.host) } : {}) })),
     done: [...done.values()],
     commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, sha: c.sha, subject: c.subject }))),
   };

@@ -44,8 +44,10 @@ export type Config = {
   todayReminder?: TodayReminder;
   // 일정 알림(설정 창 「일정 알림」): 일정 몇 분 전에 알릴지. 없으면 10분 전 한 번, minutesBefore: [] 이면 끔(calendar-alert.ts)
   calendarAlert?: CalendarAlertConfig;
-  // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host
+  // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host. sshHosts 도 들어간다
   jobHosts: string[];
+  // 물어볼 때 둘러볼 실험 서버(remote-fs.ts: 폴더·파일·GPU). 주기적으로 훑지는 않는다
+  sshHosts: string[];
   // Claude Code·Codex 작업 기록을 10분마다 받아 와 읽을 ssh 서버(ingest/remote-sessions.ts). readSessions 가 켜져 있을 때만
   sessionHosts: string[];
   // 캐릭터(characters.ts id). 없으면 우사기(START_CHARACTER), 모르는 값이면 시사
@@ -319,7 +321,8 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     autoMerge: autoMergeList(f.autoMerge),
     todayReminder: todayReminderOf(f.todayReminder, notes),
     calendarAlert: calendarAlertOf(f.calendarAlert),
-    jobHosts: sshHostsOf("jobHosts", f.jobHosts, notes),
+    jobHosts: [...new Set([...sshHostsOf("jobHosts", f.jobHosts, notes), ...sshHostsOf("sshHosts", f.sshHosts, [])])], // 실험 서버의 끝난 작업도 가져온다
+    sshHosts: sshHostsOf("sshHosts", f.sshHosts, notes),
     sessionHosts: sshHostsOf("sessionHosts", f.sessionHosts, notes),
     character: typeof f.character === "string" && f.character ? f.character : START_CHARACTER,
     tineGraph: tineGraphOf(f.tineGraph, notes),
