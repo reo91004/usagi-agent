@@ -49,6 +49,8 @@ import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
+import { notePathFor, researchSummary } from "./research.ts";
+import { remoteGpuData } from "./remote-fs.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange } from "./providers.ts";
 import { briefingHours } from "./calendar.ts";
 import { performance } from "node:perf_hooks";
@@ -186,7 +188,10 @@ await bus.listen(cfg.port, {
     ...(await agent.dashboard()),
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns)), // MCP 연결은 Claude Code 뇌일 때만 읽는다
+    ...(() => { const r = researchSummary(cfg, store); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
   }),
+  researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
+  researchNote: (day) => notePathFor(cfg, day),
   todoDone: (id) => agent.todoDone(id),
   todoAdd: (t) => agent.addTodo(t),
   todoEdit: (id, patch) => agent.editTodo(id, patch),

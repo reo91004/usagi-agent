@@ -822,6 +822,7 @@ async function request(method, pathname, body, timeoutMs) {
     headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body ?? {});
   } else if (method === 'DELETE') headers['X-CY-Agent'] = '1'; // 쓰기는 다 헤더(DELETE /guidelines/:id)
+  if (pathname.startsWith('/research/')) headers['X-CY-Agent'] = '1'; // 연구 카드는 읽기라도 헤더(서버 접속·파일 경로)
   try {
     const res = await fetch(`${BASE}${pathname}`, init);
     const text = await res.text();
@@ -1567,6 +1568,16 @@ function setupIPC() {
 
   ipcMain.handle('get-dashboard', (e) => (fromOurs(e) ? request('GET', '/dashboard') : denied()));
   ipcMain.handle('briefing-now', (e) => (fromOurs(e) ? post('/briefing') : denied()));
+  // 연구 카드: GPU 는 누를 때만 서버에 묻는다(서버 셋이면 처음 몇 초). 노트 「열기」는 데몬이 확인한 그날 파일만 기본 앱으로
+  ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
+  ipcMain.handle('research-note-open', async (e, day) => {
+    if (!fromOurs(e) || typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return denied();
+    const r = await request('GET', `/research/note?day=${day}`);
+    if (!r.ok || typeof r.data?.path !== 'string') return r;
+    // shortcut: Tine 의 tine:// 페이지 링크 형식을 몰라 .md 파일을 기본 앱으로 연다 — 형식을 알면 그 링크로
+    const err = await shell.openPath(r.data.path);
+    return err ? { ok: false, error: err } : { ok: true };
+  });
   ipcMain.handle('refresh-sources', (e) => (fromOurs(e) ? post('/refresh') : denied()));
   ipcMain.handle('get-chat-history', (e) => (fromOurs(e) ? request('GET', '/chat/history') : denied()));
   ipcMain.handle('todo-done', (e, id) => {

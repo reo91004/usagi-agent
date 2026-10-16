@@ -37,6 +37,9 @@ export type BusHandlers = {
   briefing(): Promise<unknown>;
   refresh?(): Promise<unknown>; // ↻ 새로고침: 슬랙 다시 훑기 → 새 DM·멘션 할 일 → 브리핑(메일 등)
   dashboard(): Promise<unknown>;
+  // 연구 카드(research.ts): GPU 는 버튼을 누를 때만 서버에 묻는다. 노트 「열기」는 그 날짜 파일 경로. 없으면 503
+  researchGpu?(): Promise<unknown>;
+  researchNote?(day: string): string | null;
   todoDone(id: string): boolean | Promise<boolean>; // false → 404
   todoAdd?(t: NewTodo): { id: string } | Promise<{ id: string }>; // 없으면 503
   todoEdit?(id: string, patch: TodoPatch): unknown; // 없는 id면 undefined/false → 404, 있으면 바뀐 할 일
@@ -342,6 +345,14 @@ export class Bus {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, mood: this.mood, activity: this.activity.snapshot().activity });
     if (req.method === "GET" && url.pathname === "/dashboard") return json(res, 200, await h.dashboard());
+    // 연구 카드: 서버 접속(ssh)·파일 경로라 다른 웹 페이지가 부르지 못하게 읽기라도 커스텀 헤더 필수
+    if (req.method === "GET" && (url.pathname === "/research/gpu" || url.pathname === "/research/note")) {
+      if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
+      if (url.pathname === "/research/gpu") return h.researchGpu ? json(res, 200, await h.researchGpu()) : json(res, 503, { error: "research unavailable" });
+      if (!h.researchNote) return json(res, 503, { error: "research unavailable" });
+      const p = h.researchNote(url.searchParams.get("day") ?? "");
+      return p ? json(res, 200, { path: p }) : json(res, 404, { error: "no note" });
+    }
     if (req.method === "GET" && url.pathname === "/chat/history") return json(res, 200, await h.chatHistory());
     // 첨부 파일 하나 — 읽기라도 쓰기와 같은 헤더 규칙(다른 웹 페이지가 <img> 로 못 읽게)
     const af = url.pathname.match(/^\/chat\/attachments\/([\w-]{1,64})\/([^/]{1,600})$/);

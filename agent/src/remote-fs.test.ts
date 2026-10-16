@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatGpu, formatList, formatRead, readScript, remoteFind, remoteGpu, remoteLs, remotePath, remoteRead, size, when, type RemoteRun } from "./remote-fs.ts";
+import { formatGpu, formatList, parseGpu, remoteGpuData, formatRead, readScript, remoteFind, remoteGpu, remoteLs, remotePath, remoteRead, size, when, type RemoteRun } from "./remote-fs.ts";
 
 const cfg = { sshHosts: ["gpu1"], jobHosts: ["gpu2"] };
 const sh = (script: string, home: string) => spawnSync("sh", ["-c", script], { env: { ...process.env, HOME: home }, encoding: "utf8" }).stdout;
@@ -74,4 +74,14 @@ test("도구 본체: 설정한 서버만, 숫자는 범위 안으로, 접속 실
   const r = await remoteRead(cfg, { host: "gpu1", path: "~/log" }, down);
   assert.deepEqual([r.ok, r.body], [false, "gpu1 에 접속하지 못했어요: Connection timed out"]);
   assert.deepEqual((await remoteGpu(cfg, {}, async (h) => `ERR nvidia-smi 가 없어요 ${h}`)).map((x) => x.title), ["GPU gpu1", "GPU gpu2"]);
+});
+
+test("parseGpu·remoteGpuData: 패널 카드용 구조, 서버 하나가 안 되면 그 서버만 실패", async () => {
+  const out = "OK\nG\t0, 00000000:01:00.0, NVIDIA RTX 4090, 97, 20000, 24564, 71\nG\t1, 00000000:02:00.0, NVIDIA RTX 4090, 0, 15, 24564, 40\nP\t00000000:01:00.0\t4242\t19000\tuser 01:02:03 python train.py\n";
+  assert.deepEqual(parseGpu(out, "g"), { host: "g", ok: true, gpus: [
+    { idx: "0", name: "NVIDIA RTX 4090", util: 97, memUsed: 20000, memTotal: 24564, temp: 71 },
+    { idx: "1", name: "NVIDIA RTX 4090", util: 0, memUsed: 15, memTotal: 24564, temp: 40 },
+  ], procs: [{ gpu: "0", pid: "4242", mem: 19000, who: "user 01:02:03 python train.py" }] });
+  const r = await remoteGpuData(cfg, async (h) => { if (h === "gpu2") throw new Error("timeout"); return out; });
+  assert.deepEqual(r.map((x) => [x.host, x.ok, x.gpus.length, x.error]), [["gpu1", true, 2, undefined], ["gpu2", false, 0, "접속하지 못했어요: timeout"]]);
 });

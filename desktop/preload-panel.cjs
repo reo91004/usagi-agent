@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('cy', {
   getCharacter: () => ipcRenderer.invoke('get-character'), // 지금 캐릭터 id(데몬 state.character, 모르면 'shisa')
   getDashboard: () => ipcRenderer.invoke('get-dashboard'),
   briefingNow: () => ipcRenderer.invoke('briefing-now'),
+  researchGpu: () => ipcRenderer.invoke('research-gpu'), // 연구 카드: 실험 서버 GPU(누를 때만)
+  researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
   refreshSources: () => ipcRenderer.invoke('refresh-sources'), // ↻: 슬랙·메일 지금 다시 읽고 할 일 반영
   openSettings: () => ipcRenderer.send('open-settings'), // ⚙ 설정 창(모델·브리핑 출처·연결 상태)
   getChatHistory: () => ipcRenderer.invoke('get-chat-history'),
