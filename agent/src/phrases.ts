@@ -20,6 +20,8 @@ export const PHRASES = [
   { key: "refresh_prog", group: "캐릭터", label: "↻ 슬랙·메일 다시 읽는 중", vars: [], default: ["슬랙·메일 새로 읽는 중이에요…"] },
   { key: "refresh_none", group: "캐릭터", label: "↻ 새 할 일 없음", vars: [], default: ["새로 들어온 할 일은 없어요"] },
   { key: "focus_done", group: "캐릭터", label: "집중 끝({duration} = 25분 등)", vars: ["duration"], default: ["{duration} 집중했어요. 수고했어요!"] },
+  { key: "job_done", group: "캐릭터", label: "긴 작업 끝(usagi-run, {name} = 작업 이름)", vars: ["name", "duration"], default: ["'{name}' 끝났어요! {duration} 걸렸어요"] },
+  { key: "job_failed", group: "캐릭터", label: "긴 작업 실패({code} = 종료 코드)", vars: ["name", "duration", "code"], default: ["'{name}' 이(가) {duration} 만에 멈췄어요. 종료 코드 {code}"] },
   // 할 일
   { key: "todo_new_one", group: "할 일", label: "새 할 일 하나", vars: ["title"], default: ["새 할 일이 생겼어요: '{title}'"] },
   { key: "todo_new_many", group: "할 일", label: "새 할 일 여러 개", vars: ["n"], default: ["새 할 일이 {n}개 생겼어요~"] },

@@ -12,6 +12,7 @@ import { todayReminderOf, type TodayReminder } from "./daily-plan.ts";
 import { isNewStyle, onboardedOf, readSessionsOf } from "./onboarding.ts";
 import { calendarAlertOf, type CalendarAlertConfig } from "./calendar-alert.ts";
 import { START_CHARACTER } from "./characters.ts";
+import { okJobHost } from "./jobs.ts";
 
 export const HOME_DIR = process.env.CY_AGENT_HOME ?? join(homedir(), ".cy-agent");
 
@@ -43,6 +44,8 @@ export type Config = {
   todayReminder?: TodayReminder;
   // 일정 알림(설정 창 「일정 알림」): 일정 몇 분 전에 알릴지. 없으면 10분 전 한 번, minutesBefore: [] 이면 끔(calendar-alert.ts)
   calendarAlert?: CalendarAlertConfig;
+  // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host
+  jobHosts: string[];
   // 캐릭터(characters.ts id). 없으면 우사기(START_CHARACTER), 모르는 값이면 시사
   character?: string;
   // 지식그래프 2단계(엔티티·관계 추출) 모델. 1단계(업무 판정)는 늘 경량. 기본은 경량(대량 작업이라 비용 우선)
@@ -203,6 +206,15 @@ function readFileConfig(): FileConfig {
 
 // 분 간격(setInterval 에 들어가는 값): 유한한 수이고 1분 이상이어야. 아니면 기본값(위로는 막지 않는다)
 // allowZero: 0 = 끔이 뜻이 있는 값(progressCheckMin)
+// 이름 하나도 받는다. 옵션처럼 읽힐 수 있는 값은 빼고 알린다
+function jobHostsOf(raw: unknown, notes: string[]): string[] {
+  if (raw === undefined) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const ok = list.filter(okJobHost);
+  if (ok.length !== list.length) notes.push("jobHosts 에 ssh 별칭이나 user@host 가 아닌 값이 있어서 뺐어요");
+  return [...new Set(ok)];
+}
+
 export function minutesOf(key: string, raw: unknown, def: number, notes: string[], opts: { allowZero?: boolean } = {}): number {
   if (raw === undefined || raw === null) return def;
   const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
@@ -294,6 +306,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     autoMerge: autoMergeList(f.autoMerge),
     todayReminder: todayReminderOf(f.todayReminder, notes),
     calendarAlert: calendarAlertOf(f.calendarAlert),
+    jobHosts: jobHostsOf(f.jobHosts, notes),
     character: typeof f.character === "string" && f.character ? f.character : START_CHARACTER,
     kgModel: env.CY_AGENT_KG_MODEL ?? (f.kgModel as string) ?? (env.CY_AGENT_MODEL_LIGHT ?? (f.models as any)?.light ?? "claude-haiku-5-5"),
     localAutoAllow: env.CY_AGENT_LOCAL_ASK === "1" ? false : f.localAutoAllow !== false,

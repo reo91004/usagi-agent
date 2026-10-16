@@ -22,6 +22,7 @@ import { Reactions, realMergeAsk } from "./reactions.ts";
 import { HOME_DIR } from "./config.ts";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { WAIT_SETUP, markFreshInstall, modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 import { execFile } from "node:child_process";
 import { openSpec } from "./plat.ts";
@@ -38,6 +39,7 @@ import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
+import { jobBubble, pullJobs, type JobDone } from "./jobs.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
 import { statusOf } from "./status.ts";
@@ -278,6 +280,7 @@ await bus.listen(cfg.port, {
     return status();
   },
   connectorsReload: () => reloadConnectors(),
+  jobDone: (j) => jobDone(j),
   // [연결 해제]: 그 기능만 off(토큰·ICS 주소도 지움) → 다시 읽기 → 메모리도 바로 off
   connectorDisconnect: (cap) => disconnectConnector(cap, {
     path: join(HOME_DIR, "config.json"), cfg, reload: reloadConnectors,
@@ -440,6 +443,31 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
   } finally { kgBusy = false; }
 }));
 setInterval(kgHourly, 60 * 60e3);
+
+// 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts)는 2분마다 ssh 로 가져온다
+function jobDone(j: JobDone) {
+  const b = jobBubble(j, `job-${randomUUID()}`);
+  bus.bubble(b);
+  if (b.kind === "done") bus.activity.startDance(8000, "cheer");
+}
+const jobHostDown = new Set<string>(); // 끊긴 서버는 상태가 바뀔 때만 로그
+let jobsBusy = false;
+async function pollJobHosts() {
+  if (jobsBusy) return;
+  jobsBusy = true;
+  try {
+    for (const host of cfg.jobHosts) {
+      try {
+        for (const j of await pullJobs(host)) jobDone(j);
+        if (jobHostDown.delete(host)) console.log(`[jobs] ${host} 다시 연결됨`);
+      } catch (e: any) {
+        if (!jobHostDown.has(host)) console.warn(`[jobs] ${host} 확인 못 함: ${e?.message ?? e}`);
+        jobHostDown.add(host);
+      }
+    }
+  } finally { jobsBusy = false; }
+}
+if (cfg.jobHosts.length) { setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref(); }
 
 // 연결 상태가 바뀔 때만 한 번씩 알린다. 다시 연결되면 바로 훑어본다
 let mcpState = "ok";
