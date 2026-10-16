@@ -899,6 +899,11 @@ cy.onVisibility(({ hidden }) => {
   stack.classList.toggle('hidden', !!hidden);
   requestAnimationFrame(recheckHit);
 });
+// 화면 위쪽에 놓으면 메인이 창을 뒤집는다(geometry.js dropPlacement): 캐릭터가 위, 입력창·말풍선은 아래
+cy.onFlip?.((on) => {
+  document.getElementById('stage').classList.toggle('flip', !!on);
+  requestAnimationFrame(recheckHit);
+});
 
 // ---- 클릭 투과: 캐릭터/말풍선 위에서만 마우스 받기 ----
 let interactive = false;
