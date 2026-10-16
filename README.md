@@ -347,7 +347,7 @@ usagi-run -n "resnet 학습" -- python train.py
 - 읽기만 합니다. 폴더 목록, 파일 찾기(이름이나 최근 N시간), 파일 앞이나 끝 일부, 특정 글이 든 줄, `nvidia-smi` 요약만 하고, 우사기가 정해 둔 명령 말고는 보내지 않습니다.
 - 키, 토큰, `.env`, `~/.ssh` 같은 비밀 파일은 열지 않습니다. 심볼릭 링크로 가리켜도 실제 경로로 판단합니다. 바이너리 파일은 내용을 보여 주지 않습니다.
 - 서버는 리눅스(GNU `find`, `stat`, `timeout`)라고 봅니다.
-- 지금은 뇌가 Claude Code 일 때 이 도구를 씁니다. Codex·agy 는 #38 에서 붙입니다.
+- 뇌가 Claude Code, Codex, agy 어느 것이든 채팅에서 이 도구를 씁니다(Codex·agy 는 데몬의 MCP 주소로 붙습니다).
 
 ### ssh 서버의 Claude Code·Codex 작업 기록
 
