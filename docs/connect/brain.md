@@ -12,6 +12,7 @@
 |---|---|---|---|
 | Claude Code | `claude-code`(기본) | Claude Code 설치·로그인(Pro·Max·Team·Enterprise 또는 Console), [claude-code.md](claude-code.md) 참고 | 전부: 대화·브리핑, 할 일 자동 완료·진척, 지식그래프, mcp 연결, 코드 고치기·작업 세션·자동 머지 |
 | Codex | `codex` | Codex CLI 설치·로그인(ChatGPT 유료 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기 |
+| Antigravity | `agy` | Antigravity CLI(`agy`) 설치·로그인(Google 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기 |
 | Gemini | `gemini` | Google AI Studio 키 | 대화·브리핑 |
 | OpenAI | `openai` | OpenAI 플랫폼 키(크레딧 필요) | 대화·브리핑 |
 | Claude API | `anthropic` | Anthropic 콘솔 키(크레딧 필요) | 대화·브리핑 |
@@ -21,6 +22,16 @@
 코드 고치기, 워크트리, 백그라운드 에이전트, 작업 세션의 「새 작업」·「이어서 하기」, 자동 머지는 뇌를 무엇으로 골랐든 Claude Code로 돌아갑니다. Claude Code가 없으면 이 버튼들은 아예 보이지 않습니다.
 
 Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 받습니다. 그래서 브리핑도 Slack(api)이나 캘린더(ICS)처럼 시사가 직접 모아 둔 자료만 가지고 합니다.
+
+## Antigravity(agy)
+
+키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(도구·코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. 코드 고치기·MCP·워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.
+
+1. Antigravity CLI를 설치하고 터미널에서 `agy`를 실행해 로그인한 뒤 나옵니다.
+2. 로그인됐는지는 `agy models`로 확인합니다. 종료 코드 0과 함께 `<id>  <이름>` 목록이 나오면 됩니다. 목록이 비거나 실패하면 로그인 전으로 봅니다.
+3. 설치 마법사의 「뇌 고르기」에서 Antigravity를 고르거나 `brain.provider`를 `agy`로 정합니다.
+
+모델은 패널 [모델] 탭에 `agy models` 목록이 나오고, 고르지 않으면 agy 기본 모델을 씁니다. 파일로 정하려면 `models.general`에 목록의 id(예: `gemini-4-argon-medium`)를 넣습니다. 시사는 agy를 데몬의 `~/.cy-agent/brain` 폴더에서 돌리고, 레포 안에서는 돌리지 않습니다. 프롬프트는 명령줄 인자로 넘기므로 너무 긴 맥락(약 400KB 초과)은 오류로 알려 줍니다.
 
 ## Genspark
 
