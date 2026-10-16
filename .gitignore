@@ -23,3 +23,7 @@ logs/
 
 # desktop: 생성되는 아이콘
 desktop/assets/icon.*
+
+# 개인 작업 원장·로컬 에이전트 메모(커밋하지 않음)
+.plans/
+CLAUDE.local.md
