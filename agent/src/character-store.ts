@@ -6,7 +6,7 @@
 // 자리표시({title} 등)는 그 칸에 원래 있던 것만 쓸 수 있다(모르는 건 저장 거절 — phrases.ts unknownVars 와 같은 검사).
 // 바뀌면 installCharacters 로 데몬 목록(characters.ts)을 바로 바꾸고 onChange 로 알린다(main 이 SSE characters 를 보낸다).
 // HTTP: GET/POST /characters · PUT/DELETE /characters/:id · DELETE /characters/:id/lines · PUT/DELETE /characters/:id/media/:slot (docs/contract.md)
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, lstatSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
@@ -425,7 +425,8 @@ export class CharacterStore {
     if (isBuiltinId(id)) return fail(400, "기본 캐릭터는 지울 수 없어요");
     if (!this.users.has(id) || !isUserId(id)) return fail(404, "no such character");
     const dir = join(this.dir, id);
-    try { if (existsSync(dir) && !lstatSync(dir).isSymbolicLink()) rmSync(dir, { recursive: true, force: true }); else rmSync(dir, { force: true }); }
+    // 링크면 링크만: Node 24 의 rmSync 는 폴더를 가리키는 링크에 EISDIR 를 던진다
+    try { if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) unlinkSync(dir); else rmSync(dir, { recursive: true, force: true }); }
     catch (e: any) { return fail(500, `지우지 못했어요(${e?.code ?? "오류"})`); }
     this.users.delete(id);
     const removedCurrent = this.install();
