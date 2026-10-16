@@ -925,9 +925,13 @@ function recheckHit() {
 
 // 눌린 상태로 알았는데 실제로는 버튼이 안 눌려 있으면(메뉴가 mouseup 을 삼킨 경우) 드래그를 풀어 준다
 function resetPress() {
-  if (dragging) cy.dragEnd();
+  if (dragging) endDragging();
   down = null;
   dragging = false;
+}
+function endDragging() {
+  cy.dragEnd();
+  dragEndAt = performance.now();
 }
 
 document.addEventListener('mousemove', (e) => {
@@ -935,6 +939,9 @@ document.addEventListener('mousemove', (e) => {
   if (down && (e.buttons & 1) === 0) resetPress();
   if (down && !dragging && Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) {
     dragging = true;
+    // 바로 앞 클릭이 기다리던 패널 열기는 취소한다(트랙패드 「탭 후 끌기」는 클릭 한 번 + 끌기로 들어온다)
+    clearTimeout(clickTimer);
+    clickTimer = null;
     cy.dragStart();
   }
   recheckHit();
@@ -950,7 +957,7 @@ document.addEventListener('mouseleave', (e) => {
 
 wrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0 || e.ctrlKey) return; // Ctrl+클릭은 macOS 에서 오른쪽 클릭(메뉴) — 드래그로 치지 않는다
-  down = { x: e.screenX, y: e.screenY };
+  down = { x: e.screenX, y: e.screenY, at: performance.now() };
   clearTimeout(hoverTimer);
   hoverTimer = null;
   e.preventDefault();
@@ -959,7 +966,10 @@ wrap.addEventListener('mousedown', (e) => {
 // 한 번 클릭 = 패널(공부 중이면 세션 창), 더블클릭 = 말 걸기(입력창). 두 번째 클릭이 올 때까지 잠깐 기다렸다가 패널을 연다.
 // 뇌(AI)가 아직 없으면 더블클릭 = 짧은 춤 + 고르는 질문 칩(AI 없이 답하는 것 · AI 연결하기)
 const DOUBLE_CLICK_MS = 280;
+const LONG_PRESS_MS = 500; // 이보다 오래 누르고 있다 뗀 건 옮기려다 만 것 — 클릭이 아니다
+const AFTER_DRAG_MS = 600; // 옮긴 직후 들어온 클릭(드래그 잠금을 끝내는 탭 등)은 무시
 let clickTimer = null;
+let dragEndAt = -Infinity;
 let brain = { ready: true }; // 모르면 막지 않는다(main 이 GET /status 로 알려 준다)
 cy.brain?.().then((v) => { if (v) brain = v; }).catch(() => {});
 cy.onBrain?.((v) => { if (v) brain = v; if (brain.ready === false && askOpen) hideAsk(); });
@@ -1035,10 +1045,12 @@ function onCharacterClick() {
 window.addEventListener('mouseup', (e) => {
   if (!down) return;
   const wasDrag = dragging;
+  const now = performance.now();
+  const held = now - down.at;
   down = null;
   dragging = false;
-  if (wasDrag) cy.dragEnd();
-  else if (e.button === 0 && e.target.closest('#char-wrap')) onCharacterClick();
+  if (wasDrag) endDragging();
+  else if (e.button === 0 && e.target.closest('#char-wrap') && held < LONG_PRESS_MS && now - dragEndAt > AFTER_DRAG_MS) onCharacterClick();
   recheckHit();
 });
 
