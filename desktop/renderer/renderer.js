@@ -112,6 +112,11 @@ let act = initialActivity();
 let shownView = 'idle';
 let danceCap = null;
 const setPoster = (v, p) => { if (p) v.poster = p; else v.removeAttribute('poster'); };
+// 공부 영상(집중·데몬 작업 중 — 수십 분 이어진다)은 몇 바퀴 돌고 마지막 장면에 멈춘다.
+// 투명 VP9 는 하드웨어 디코딩이 안 돼 계속 돌리면 가만히 있어도 CPU 18%. 춤은 DANCE_MAX_MS 로 끝나니 그대로 반복
+const STUDY_LOOPS = 3;
+let studyLoops = 0;
+videos.studying.addEventListener('ended', () => { if (shownView === 'studying' && ++studyLoops < STUDY_LOOPS) videos.studying.play().catch(() => {}); });
 for (const [k, v] of Object.entries(videos)) {
   v.muted = true;
   setPoster(v, charA.videos[k]?.poster);
@@ -156,6 +161,7 @@ function startVideo(k) {
   if (v.dataset.clip !== c.src) { v.removeAttribute('src'); v.dataset.clip = c.src; setPoster(v, c.poster); v.classList.toggle('scene', !!c.scene); }
   if (!v.getAttribute('src') || v.dataset.failed) { delete v.dataset.failed; v.src = c.src; }
   try { v.currentTime = 0; } catch { /* 아직 메타데이터 전 */ }
+  if (k === 'studying') studyLoops = 0;
   const p = v.play();
   if (p) p.catch(() => {});
 }
