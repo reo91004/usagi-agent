@@ -234,10 +234,10 @@ export function ctxHandlers(cfg: Config, store: Store, deps: CtxDeps = {}) {
 
 const RO = { annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } };
 
-// 쿼리마다 새로 만든다(MCP 서버 인스턴스는 한 연결에만 붙는다)
-export function ctxMcpServer(cfg: Config, store: Store, deps: CtxDeps = {}) {
+// 도구 정의(이름·설명·입력 모양·처리기). Claude 는 프로세스 안 MCP(ctxMcpServer), Codex·agy 는 HTTP MCP(mcp-http.ts)로 같은 것을 쓴다
+export function ctxTools(cfg: Config, store: Store, deps: CtxDeps = {}) {
   const h = ctxHandlers(cfg, store, deps);
-  const tools = [
+  return [
     tool("kg_search", "업무 지식그래프(내 세션·Slack 에서 뽑은 프로젝트·사람·이슈·결정) 검색. 사람·프로젝트·이슈가 뭔지/누군지 물을 때", { query: z.string().describe("이름·키워드(공백으로 여러 개)"), kinds: z.array(z.enum(KG_KINDS)).optional().describe("종류 거르기"), limit: z.number().int().min(1).max(20).optional() }, h.kg_search, RO),
     tool("kg_node", "지식그래프 엔티티 하나(이름·별칭·id)와 이웃(누가 무슨 일에 엮였나)", { name: z.string() }, h.kg_node, RO),
     tool("kg_overview", "지식그래프 한눈에: 진행 중 프로젝트·함께 일하는 사람·열린 이슈·최근 결정(query 가 있으면 관련된 것 먼저)", { query: z.string().optional() }, h.kg_overview, RO),
@@ -250,6 +250,11 @@ export function ctxMcpServer(cfg: Config, store: Store, deps: CtxDeps = {}) {
     tool("projects_recent", "최근 7일 프로젝트(레포 경로·마지막 활동·세션·커밋·브랜치)", {}, h.projects_recent, RO),
     tool("meetings_upcoming", "다가오는 회의(eventId·시간·내 응답) — 회의 수락·거절할 때", {}, h.meetings_upcoming, RO),
   ];
+}
+
+// 쿼리마다 새로 만든다(MCP 서버 인스턴스는 한 연결에만 붙는다)
+export function ctxMcpServer(cfg: Config, store: Store, deps: CtxDeps = {}) {
+  const tools = ctxTools(cfg, store, deps);
   return createSdkMcpServer({
     name: CTX_SERVER,
     version: "1.0.0",

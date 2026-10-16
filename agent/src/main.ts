@@ -49,7 +49,9 @@ import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { writeDay } from "./research-note.ts";
-import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange } from "./providers.ts";
+import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
+import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
+import { ctxTools } from "./ctx-tools.ts";
 import { briefingHours } from "./calendar.ts";
 import { performance } from "node:perf_hooks";
 
@@ -177,7 +179,10 @@ function pushStatus() {
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 
+// 맥락 도구 MCP(mcp-http.ts): Codex·agy 뇌의 채팅이 Claude 와 같은 cy 도구를 부른다
+const mcpTok = mcpToken();
 await bus.listen(cfg.port, {
+  mcp: mcpHandler(mcpTok, () => ctxTools(cfg, store, { dashboard: () => agent.dashboard() })),
   approve: (id) => agent.approve(id),
   hold: (id) => agent.hold(id),
   briefing: () => agent.runBriefing(),
@@ -295,6 +300,7 @@ await bus.listen(cfg.port, {
     },
   }),
 });
+setCliMcpUrl(mcpUrl(cfg.port, mcpTok));
 console.log(`[cy-agent] 버스 http://127.0.0.1:${cfg.port}`);
 
 // ── 할 일 캔버스: 데이터가 바뀔 때마다(디바운스·해시로 실제 호출은 변경 시에만)
