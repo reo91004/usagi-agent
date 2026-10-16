@@ -11,7 +11,7 @@ import { createAttachTray } from './attach-tray.js';
 import { hasFiles, filesFromTransfer, ATTACH_ERRORS } from '../src/attachments.js';
 import { normFocus, focusBubble, doingBubble } from '../src/focus.js';
 import { who, setWho } from './who.js';
-import { characterAssets, okCharacter, localSay, clipFor, danceClipOf, DANCE_MAX_MS, nextBlinkDelay, blinkPlan, initialActivity, activityReducer, viewOf, fitBox } from '../src/character.js';
+import { characterAssets, okCharacter, localSay, clipFor, danceClipOf, DANCE_MAX_MS, nextBlinkDelay, blinkPlan, initialActivity, activityReducer, viewOf, fitBox, START_CHARACTER } from '../src/character.js';
 import { applyCharacters } from '../src/character-registry.js';
 
 const cy = window.cy;
@@ -30,7 +30,8 @@ const savedCharacter = () => { try { return localStorage.getItem(CHAR_KEY); } ca
 // 사용자 캐릭터·고친 대사(데몬 GET /characters → 메인 → 'characters'). 지난번 목록을 먼저 써서 켤 때 시사가 잠깐 보이지 않게
 const CHARS_KEY = 'cy-characters';
 try { const c = JSON.parse(localStorage.getItem(CHARS_KEY) ?? 'null'); if (c) applyCharacters(c); } catch { /* 없거나 깨짐 → 기본값 */ }
-let wantChar = savedCharacter(); // 데몬이 고른 id 그대로(목록을 받기 전엔 모를 수 있다)
+// 처음 켤 땐 지난번 캐릭터가 없다 → 새 설치 캐릭터(우사기)로. 모르는 id 대체(시사)로 그리지 않게
+let wantChar = savedCharacter() ?? START_CHARACTER; // 데몬이 고른 id 그대로(목록을 받기 전엔 모를 수 있다)
 let charA = characterAssets(wantChar);
 const probe = (url) => new Promise((ok) => {
   const im = new Image();
