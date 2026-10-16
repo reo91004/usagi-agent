@@ -11,6 +11,7 @@ import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { findOnPath, spawnSpec } from "./plat.ts";
+import { CLI_TOOL_GUIDE, MCP_NAME, ensureAgyMcp } from "./mcp-http.ts";
 import type { ContentBlock } from "./attachments.ts";
 import { DEFAULT_GENERAL_MODEL, HOME_DIR, type BrainProvider, type Config } from "./config.ts";
 
@@ -756,23 +757,33 @@ export function parseCodexUsage(stdout: string): CodexUsage {
   return { inTokens, outTokens };
 }
 
+// 데몬이 연 맥락 도구 MCP 주소(mcp-http.ts). main 이 버스를 연 뒤 넣는다. 없으면 CLI 뇌는 도구 없이 답한다
+let cliMcp: string | undefined;
+export const setCliMcpUrl = (url: string | undefined) => { cliMcp = url; };
+
 // CLI 뇌(codex·agy)에 넘기는 글: 글 첨부는 그대로, 그림·PDF 는 못 본다고 적는다(본 척하지 않게)
-function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: string }, who: string, schemaBelow: boolean): string[] {
+// tools: 맥락 도구를 붙인 실행(채팅)이면 도구 안내, 아니면 도구를 부르지 말라고
+function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: string }, who: string, schemaBelow: boolean, tools = false): string[] {
   const att = (opts.blocks ?? []).map((b) => (b.type === "text" ? b.text : `[첨부 ${b.type === "document" ? b.title ?? "PDF" : "그림"} — 이 AI 연결(${who})로는 그림·PDF 내용을 받지 못했다. 내용을 봤다고 하지 말고 그렇다고 말하라]`));
-  return [opts.system ?? "", prompt, ...att, `도구를 부르지 말고 코드도 고치지 마라. ${schemaBelow ? "아래 " : ""}JSON 스키마에 맞는 객체 하나만 답하라.`];
+  const end = `${schemaBelow ? "아래 " : ""}JSON 스키마에 맞는 객체 하나만 답하라.`;
+  return [opts.system ?? "", prompt, ...att, tools ? `${CLI_TOOL_GUIDE}\n${end}` : `도구를 부르지 말고 코드도 고치지 마라. ${end}`];
 }
 
-export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number };
+// mcp: 맥락 도구를 붙인다(채팅처럼 사용자에게 바로 답하는 실행만 — 뒤에서 하는 정리는 도구 없이 빨리)
+export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean };
 
 // codex exec 한 번 → 마지막 답의 JSON + 토큰 수. 실패는 짧은 한국어(출력 본문은 넣지 않는다)
 export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
   const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
   if (!exists("codex")) throw new Error(MISSING_CODEX);
   const exec = opts.execFile ?? defaultExecFile;
-  const input = [...cliParts(prompt, opts, "Codex", true), JSON.stringify(schema)].filter(Boolean).join("\n\n");
+  const mcp = opts.mcp ? cliMcp : undefined;
+  const input = [...cliParts(prompt, opts, "Codex", true, !!mcp), JSON.stringify(schema)].filter(Boolean).join("\n\n");
+  // 사용자 Codex 설정은 여전히 안 읽고(--ignore-user-config) 우사기 도구 서버 하나만 -c 로 붙인다
+  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, "-"] : CODEX_ARGS;
   let stdout = "";
   try {
-    const result = await exec("codex", CODEX_ARGS, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir() });
+    const result = await exec("codex", args, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir() });
     stdout = result.stdout;
   } catch (e) {
     throw new Error(/초과/.test(String((e as Error)?.message ?? "")) ? "codex 실행 시간이 초과됐어요." : "codex 실행이 실패했어요.");
@@ -823,11 +834,28 @@ export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: str
 
 export type AgyOpts = CodexOpts & { model?: string };
 
+// agy 는 실행마다 MCP 를 넘길 수 없어 전역 설정에 넣는다(mcp-http.ts ensureAgyMcp). 못 넣으면 도구 없이(한 번만 알림)
+let agyMcpWarned = false;
+let agyMcpHome: string | undefined; // 테스트가 가짜 홈으로 바꾼다
+export const setAgyMcpHome = (h: string | undefined) => { agyMcpHome = h; };
+function agyMcpReady(url: string): boolean {
+  try {
+    const changed = ensureAgyMcp(url, agyMcpHome);
+    if (changed.length) console.log(`[agy] 우사기 도구(MCP)를 agy 설정에 넣었어요: ${changed.join(", ")}`);
+    return true;
+  } catch (e: any) {
+    if (!agyMcpWarned) console.warn(`[agy] ${e?.message ?? e} — agy 채팅은 도구 없이 답해요`);
+    agyMcpWarned = true;
+    return false;
+  }
+}
+
 // agy 한 번 → 답 JSON + 토큰 수. 실패는 짧은 한국어
 export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
   const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
   if (!exists("agy")) throw new Error(MISSING_AGY);
-  const input = cliParts(prompt, opts, "Antigravity", false).filter(Boolean).join("\n\n");
+  const mcp = opts.mcp && cliMcp && agyMcpReady(cliMcp);
+  const input = cliParts(prompt, opts, "Antigravity", false, !!mcp).filter(Boolean).join("\n\n");
   if (Buffer.byteLength(input) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요. 대화나 맥락을 줄여서 다시 시도해 주세요.");
   const dir = join(HOME_DIR, "brain");
   if (!opts.execFile) mkdirSync(dir, { recursive: true });
@@ -843,7 +871,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
 export async function remoteJson(
   provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[] } & ProviderDeps = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean } & ProviderDeps = {},
 ): Promise<unknown> {
   if (provider === "gemini") return geminiJson(cfg, prompt, schema, opts);
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);

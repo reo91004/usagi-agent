@@ -40,6 +40,8 @@ export type BusHandlers = {
   // 연구 카드(research.ts): GPU 는 버튼을 누를 때만 서버에 묻는다. 노트 「열기」는 그 날짜 파일 경로. 없으면 503
   researchGpu?(): Promise<unknown>;
   researchNote?(day: string): string | null;
+  // 맥락 도구 MCP(mcp-http.ts) — Codex·agy 뇌가 부른다. 경로의 토큰 검사·본문 읽기는 처리기가 한다. 없으면 503
+  mcp?(req: IncomingMessage, res: ServerResponse, token: string): Promise<void>;
   todoDone(id: string): boolean | Promise<boolean>; // false → 404
   todoAdd?(t: NewTodo): { id: string } | Promise<{ id: string }>; // 없으면 503
   todoEdit?(id: string, patch: TodoPatch): unknown; // 없는 id면 undefined/false → 404, 있으면 바뀐 할 일
@@ -343,6 +345,8 @@ export class Bus {
     // DNS 리바인딩 막기: Host 가 127.0.0.1:포트 · localhost:포트 가 아니면(다른 이름이 127.0.0.1 을 가리켜도) 모든 경로 403(/events 포함)
     if (!hostOk(req.headers.host, (this.server?.address() as AddressInfo | null)?.port)) return json(res, 403, { error: "forbidden host" });
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    // Codex·agy 는 커스텀 헤더(x-cy-agent)를 못 붙여서 경로의 토큰으로 막는다(mcp-http.ts)
+    if (url.pathname.startsWith("/mcp/")) return h.mcp ? h.mcp(req, res, url.pathname.slice(5)) : json(res, 503, { error: "mcp unavailable" });
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, mood: this.mood, activity: this.activity.snapshot().activity });
     if (req.method === "GET" && url.pathname === "/dashboard") return json(res, 200, await h.dashboard());
     // 연구 카드: 서버 접속(ssh)·파일 경로라 다른 웹 페이지가 부르지 못하게 읽기라도 커스텀 헤더 필수
