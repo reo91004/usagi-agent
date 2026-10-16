@@ -10,10 +10,10 @@ import { packager } from '@electron/packager';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const icns = path.join(ROOT, 'assets', 'icon.icns');
 const mtime = (p) => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : 0);
-// 아이콘은 캐릭터 그림에서 만든다(생성물이라 git 에 없음). ~/.cy-agent/assets/character.png 가 있으면 그게 기준
-const userChar = path.join(process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent'), 'assets', 'character.png');
-const src = fs.existsSync(userChar) ? userChar
-  : path.join(ROOT, 'assets', fs.existsSync(path.join(ROOT, 'assets', 'character.png')) ? 'character.png' : 'character.svg');
+// 아이콘은 우사기 그림에서 만든다(생성물이라 git 에 없음). ~/.cy-agent/assets 에 바꾼 그림이 있으면 그게 기준
+const usagi = path.join('characters', 'usagi', 'eyes_open.png');
+const userChar = path.join(process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent'), 'assets', usagi);
+const src = fs.existsSync(userChar) ? userChar : path.join(ROOT, '..', 'assets', usagi);
 if (mtime(icns) < mtime(src)) {
   execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'make-icon.mjs')], { stdio: 'inherit' });
 }
