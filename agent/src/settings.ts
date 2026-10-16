@@ -83,6 +83,7 @@ export type SettingsPatch = {
   onboarded?: boolean; readSessions?: boolean;
   calendarAlert?: CalendarAlertConfig;
   character?: CharacterId;
+  directiveFrom?: string[];
 };
 const MODEL_ID = /^[A-Za-z0-9._:/-]{1,100}$/;
 export type PutResult = { ok: true; settings: SettingsView; applied: "live"; restartNeeded: false; note?: string } | { ok: false; status: 400 | 409 | 500; error: string };
@@ -95,8 +96,12 @@ export class ConfigFileError extends Error {}
 export function validatePatch(body: unknown, cfg: Pick<Config, "models">): SettingsPatch {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsError("json object required");
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
+  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
   const out: SettingsPatch = {};
+  if (b.directiveFrom !== undefined) {
+    if (!Array.isArray(b.directiveFrom) || b.directiveFrom.length > 20 || !b.directiveFrom.every((x) => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("directiveFrom: Slack 사용자 id(U…) 목록, 20개까지");
+    out.directiveFrom = [...new Set(b.directiveFrom as string[])];
+  }
   if (b.models !== undefined) {
     if (!b.models || typeof b.models !== "object" || Array.isArray(b.models)) throw new SettingsError("models must be an object");
     const allowed = new Set(modelOptions(cfg).map((o) => o.id));
@@ -243,6 +248,7 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): void {
     else delete next.phrases;
   }
   if (patch.autoMerge) next.autoMerge = patch.autoMerge; // 빈 목록도 그대로 쓴다(씨앗으로 돌아가지 않게)
+  if (patch.directiveFrom) next.directiveFrom = patch.directiveFrom;
   if (patch.brain) {
     const br = { ...obj(cur.brain) };
     if (patch.brain.provider) br.provider = patch.brain.provider;
@@ -365,6 +371,7 @@ export class Settings {
       setPhrases(this.cfg.phrases); // 다음 말풍선부터 바로
     }
     if (patch.autoMerge) this.cfg.autoMerge = [...patch.autoMerge];
+    if (patch.directiveFrom) this.cfg.directiveFrom = [...patch.directiveFrom];
     if (patch.brain) {
       const b = { ...this.cfg.brain };
       if (patch.brain.provider) b.provider = patch.brain.provider;

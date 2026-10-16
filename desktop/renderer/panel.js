@@ -367,6 +367,7 @@ function renderOverview() {
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
     ...(researchSection() ?? []),
+    ...(directivesSection() ?? []),
     h('h2', null, h('span', { text: '오늘 할 일 ' }),
       h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('today') })),
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
@@ -471,6 +472,48 @@ function researchSection() {
         : null));
   }
   return out;
+}
+
+// ---- Slack 지시사항(#41) — Slack 을 연결했을 때만. 지시자를 고르고, 지시마다 [할 일로]·[괜찮아요] ----
+let dirEdit = false; // 지시자 바꾸기 열림
+const dirBusy = new Set();
+async function decideDirective(id, decision) {
+  if (dirBusy.has(id)) return;
+  dirBusy.add(id);
+  renderOverview();
+  const r = await cy.directiveDecide(id, decision).catch(() => ({ ok: false }));
+  dirBusy.delete(id);
+  if (r?.ok) { vm.directives.open = vm.directives.open.filter((x) => x.id !== id); loadSoon(); }
+  renderOverview();
+}
+async function setDirectiveFrom(ids) {
+  const r = await cy.directiveFrom(ids).catch(() => ({ ok: false }));
+  if (r?.ok) { dirEdit = false; loadSoon(); }
+}
+function directivesSection() {
+  const d = vm.directives;
+  if (!d) return null;
+  const picking = !d.from.length || dirEdit;
+  const head = h('h2', null, h('span', { text: '지시사항 ' }),
+    d.from.length ? h('span.muted.small', { text: `${d.from.map((p) => p.name).join(', ')} · DM·멘션 ` }) : null,
+    d.from.length ? h('button.ghost.small', { type: 'button', text: dirEdit ? '닫기' : '바꾸기', onclick: () => { dirEdit = !dirEdit; renderOverview(); } }) : null);
+  const picker = picking ? h('div.card.dir-pick', null,
+    h('div.small', { text: d.from.length ? '지시를 줄 사람(누르면 빼거나 넣어요)' : '지시를 줄 사람을 골라 주세요. 그 사람이 나에게 보낸 DM과 나를 멘션한 글을 따로 모아요.' }),
+    h('div.row.dir-chips', null,
+      ...d.from.map((p) => h('button.chip.accent.click', { type: 'button', text: `✓ ${p.name}`, onclick: () => setDirectiveFrom(d.from.filter((x) => x.id !== p.id).map((x) => x.id)) })),
+      ...d.candidates.map((p) => h('button.chip.click', { type: 'button', text: `+ ${p.name}${p.count ? ` · DM ${p.count}` : ''}`, onclick: () => setDirectiveFrom([...d.from.map((x) => x.id), p.id]) }))),
+    !d.candidates.length && !d.from.length ? h('div.muted.small', { text: '최근 30일 DM 이 아직 없어요. Slack 을 읽기 시작하면 여기 사람이 나와요.' }) : null) : null;
+  const list = d.from.length ? (d.open.length
+    ? h('div.card.dir-list', null, d.open.map((x) => h('div.dir-row', { dataset: { id: x.id } },
+      h('span.chip.accent', { text: x.where }),
+      h('div.dir-main', null,
+        h('div.dir-text', { text: x.text, title: x.text }),
+        h('div.muted.small', null, h('span', { text: `${x.who} · ${x.rel}` }), x.link ? h('a', { href: '#', text: ' · Slack', onclick: (ev) => { ev.preventDefault(); cy.openLink(x.link); } }) : null)),
+      h('div.dir-acts', null,
+        h('button.primary.small', { type: 'button', text: '할 일로', disabled: dirBusy.has(x.id), onclick: () => decideDirective(x.id, 'todo') }),
+        h('button.ghost.small', { type: 'button', text: '괜찮아요', disabled: dirBusy.has(x.id), onclick: () => decideDirective(x.id, 'dismiss') })))))
+    : h('div.card.empty.small', { text: '아직 정하지 않은 지시가 없어요.' })) : null;
+  return [head, picker, list];
 }
 
 // ---- 권한([항상 허용]으로 저장한 도구 규칙) — 개요 아래. 지우면 다음부터 다시 묻는다 ----

@@ -452,3 +452,38 @@ test("새 Slack DM·멘션 → 바로 할 일: 새 것만 한 번 묻고, 말풍
   assert.equal(await s.agent.slackTodosNow(), 0); // 이미 본 것 → 다시 안 묻는다
   assert.equal(tasks.length, 1);
 });
+
+test("지시자(directiveFrom)의 DM·멘션은 바로 할 일로 넣지 않고 알림만, [할 일로]·[괜찮아요]로 정한다", async () => {
+  const tasks: string[] = [];
+  const s = setup({ ok: true }, {
+    think: async (_c: any, _s: any, task: string) => {
+      tasks.push(task);
+      return { bubble: "", reply_md: "", todos: [{ key: "slack:C1:1.1", title: "동준 요청", source: "slack", priority: 2 }], done_todo_ids: [], proposals: [] };
+    },
+  });
+  (s.agent as any).cfg.directiveFrom = ["UPROF"];
+  s.store.db.exec("CREATE TABLE IF NOT EXISTS slack_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  const at = new Date(Date.now() - 60e3).toISOString();
+  s.store.upsertNode("channel:D9", "channel", "교수님", { isDM: true });
+  s.store.upsertNode("message:D9:2.2", "message", "x", { channel: "D9", ts: "2.2", text: "내일 랩미팅 전까지 ablation 표 정리해서 올려 주세요", author: "UPROF", authorName: "교수님", isDM: true, mentionsMe: false, fromMe: false }, at);
+  // 교수님 것만 있으면 모델을 안 부르고 알림만
+  assert.equal(await s.agent.slackTodosNow(), 0);
+  assert.equal(tasks.length, 0);
+  assert.match(s.bubbles.at(-1).text, /^교수님님 지시가 왔어요: 내일 랩미팅/);
+  assert.deepEqual(s.bubbles.at(-1).open, { section: "overview" });
+  assert.equal(await s.agent.slackTodosNow(), 0); // 한 번만 알린다
+  assert.equal(s.bubbles.filter((b: any) => /지시가 왔어요/.test(b.text)).length, 1);
+  // 다른 사람 것은 지금처럼 할 일로, 교수님 글은 모델에 넘기지 않는다
+  s.store.upsertNode("message:C1:1.1", "message", "x", { channel: "C1", ts: "1.1", text: "입력창이 안 비어요", author: "U2", authorName: "동준", isDM: false, mentionsMe: true, fromMe: false }, new Date().toISOString());
+  assert.equal(await s.agent.slackTodosNow(), 1);
+  assert.ok(!tasks[0].includes("ablation"));
+  // 카드에서 [할 일로]
+  const r = s.agent.directiveDecide("message:D9:2.2", "todo");
+  assert.ok(r.ok && r.todo);
+  const t = s.store.getTodo((r as any).todo.id)!;
+  assert.equal(t.title, "내일 랩미팅 전까지 ablation 표 정리해서 올려 주세요");
+  assert.match(t.note!, /^교수님 지시\(DM\): /);
+  assert.deepEqual(s.agent.directiveDecide("message:D9:2.2", "todo"), { ok: true, todo: s.store.getTodo(t.id) }); // 두 번 눌러도 하나
+  assert.equal(s.store.openTodos().filter((x) => x.title.startsWith("내일 랩미팅")).length, 1);
+  assert.deepEqual(s.agent.directiveDecide("message:없음", "dismiss"), { ok: false });
+});

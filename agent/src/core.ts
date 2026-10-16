@@ -12,6 +12,7 @@ import type { TodoSource } from "./store.ts";
 import { ingestSessions } from "./ingest/sessions.ts";
 import { sessionDirs } from "./ingest/remote-sessions.ts";
 import { attentionSince, formatAttention } from "./ingest/slack.ts";
+import { directivesSince, directiveTodo, markDirective } from "./directives.ts";
 import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, listFacts, forgetFact, factId } from "./profile.ts";
 import { think as realThink, type Thought } from "./brain.ts";
 import { briefingMilestone, briefingTask, readySources, type SourceId } from "./briefing-sources.ts";
@@ -483,9 +484,22 @@ export class Agent {
     let since: string;
     try { since = (db.prepare("SELECT value FROM slack_meta WHERE key = 'quickTodoAt'").get() as any)?.value; } catch { return 0; } // 슬랙 수집 전(표 없음)
     since ||= new Date(Date.now() - 3 * 3600e3).toISOString();
-    const items = attentionSince(this.store, since, { limit: 50 }).filter((i) => i.at > since);
-    if (!items.length) return 0;
-    const newest = items.reduce((m, i) => (i.at > m ? i.at : m), since);
+    const all = attentionSince(this.store, since, { limit: 50 }).filter((i) => i.at > since);
+    if (!all.length) return 0;
+    const newest = all.reduce((m, i) => (i.at > m ? i.at : m), since);
+    // 지시자(directiveFrom)의 DM·멘션은 할 일로 바로 넣지 않고 지시사항 카드로(directives.ts). 새로 왔다고 한 번 알린다
+    const from = new Set(this.cfg.directiveFrom ?? []);
+    const items = all.filter((i) => !from.has(i.author));
+    const fresh = directivesSince(this.store, [...from], since, { state: "open", limit: 10 }).filter((d) => d.at > since);
+    if (fresh.length) {
+      const d = fresh[0];
+      this.bus.bubble({ kind: "todo", ttlMs: 10 * 60e3, text: `${d.authorName}님 지시가 ${fresh.length > 1 ? `${fresh.length}개 ` : ""}왔어요: ${d.text.replace(/\s+/g, " ").slice(0, 60)}`, open: { section: "overview" } });
+    }
+    if (!items.length) {
+      db.prepare("INSERT INTO slack_meta (key, value) VALUES ('quickTodoAt', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(newest);
+      if (fresh.length) this.changed();
+      return 0;
+    }
     const t = await this.deps.think(this.cfg, this.store, slackTodoTask(formatAttention(items), items.map((i) => `slack:${i.channel}:${i.ts}`)), () => {}, { run: { kind: "briefing", title: "새 Slack → 할 일" } });
     db.prepare("INSERT INTO slack_meta (key, value) VALUES ('quickTodoAt', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(newest);
     const notable = this.addTodos(t.todos).filter((x) => x.priority !== 4);
@@ -903,6 +917,18 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     if (rule.rule) { this.store.setAppliedRule(todo.id, rule.rule); this.rules.hit(rule.ruleIds); }
     this.changed();
     return this.store.getTodo(todo.id) ?? todo;
+  }
+
+  // ---- Slack 지시사항(directives.ts): 패널 카드 [할 일로]·[괜찮아요] ----
+  directiveDecide(id: string, decision: "todo" | "dismiss"): { ok: true; todo?: Todo } | { ok: false } {
+    const d = directivesSince(this.store, this.cfg.directiveFrom ?? [], "1970-01-01T00:00:00.000Z", { limit: 200 }).find((x) => x.id === id);
+    if (!d) return { ok: false };
+    if (decision === "dismiss") { markDirective(this.store.db, id, "dismissed"); this.changed(); return { ok: true }; }
+    if (d.state === "todo" && d.todoId) return { ok: true, ...(this.store.getTodo(d.todoId) ? { todo: this.store.getTodo(d.todoId)! } : {}) };
+    const todo = this.addTodo(directiveTodo(d));
+    markDirective(this.store.db, id, "todo", todo.id);
+    this.changed();
+    return { ok: true, todo };
   }
 
   // ---- 할 일 규칙(todo-rules.ts) ----

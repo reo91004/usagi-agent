@@ -42,6 +42,8 @@ export type BusHandlers = {
   researchNote?(day: string): string | null;
   // 맥락 도구 MCP(mcp-http.ts) — Codex·agy 뇌가 부른다. 경로의 토큰 검사·본문 읽기는 처리기가 한다. 없으면 503
   mcp?(req: IncomingMessage, res: ServerResponse, token: string): Promise<void>;
+  // Slack 지시사항 카드(directives.ts): [할 일로]·[괜찮아요]. 모르는 지시면 false → 404. 없으면 503
+  directiveDecide?(id: string, decision: "todo" | "dismiss"): { ok: boolean; todo?: unknown };
   todoDone(id: string): boolean | Promise<boolean>; // false → 404
   todoAdd?(t: NewTodo): { id: string } | Promise<{ id: string }>; // 없으면 503
   todoEdit?(id: string, patch: TodoPatch): unknown; // 없는 id면 undefined/false → 404, 있으면 바뀐 할 일
@@ -560,6 +562,13 @@ export class Bus {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
       if (url.pathname === "/connectors/reload") {
         return h.connectorsReload ? json(res, 200, h.connectorsReload()) : json(res, 503, { error: "reload unavailable" });
+      }
+      // Slack 지시사항 카드: POST /directives/<메시지 id>/todo|dismiss
+      const dm = url.pathname.match(/^\/directives\/(message:[\w.:-]{1,120})\/(todo|dismiss)$/);
+      if (dm) {
+        if (!h.directiveDecide) return json(res, 503, { error: "directives unavailable" });
+        const r = h.directiveDecide(decodeURIComponent(dm[1]), dm[2] as "todo" | "dismiss");
+        return r.ok ? json(res, 200, r) : json(res, 404, { error: "no directive" });
       }
       // 긴 작업 끝: { name, seconds, code(null = 모름) } → 캐릭터 말풍선
       if (url.pathname === "/jobs/done") {

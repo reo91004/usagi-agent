@@ -20,6 +20,7 @@ import { buildDashboard, dashboardSummary, type Dashboard } from "./dashboard.ts
 import { sessionsAllowed } from "./onboarding.ts";
 import { remoteFind, remoteGpu, remoteHosts, remoteLs, remoteRead, when, type FindArgs, type LsArgs, type ReadArgs, type RemoteResult, type RemoteRun } from "./remote-fs.ts";
 import { focusDuration } from "./focus.ts";
+import { directivesSince, formatDirectives } from "./directives.ts";
 
 export { CTX_SERVER, CTX_TOOL_NAMES };
 export type ContextMode = "tools" | "inline";
@@ -66,7 +67,7 @@ export const CTX_GUIDE = `- 업무 맥락은 프롬프트에 넣지 않았다. �
   - 누군지·무슨 프로젝트/이슈/결정인지 → kg_search(질의) → 더 자세히는 kg_node(이름). 진행 중 프로젝트·함께 일하는 사람·열린 이슈 한눈에 → kg_overview
   - 할 일(뭐 해야 돼·열린 일·백로그·끝낸 일·todo_ops 에 쓸 id·할 일 규칙) → todos_list(status)
   - 어제·최근에 한 작업 → sessions_recent(project?, hours?) — 한 세션의 마지막 요청·응답 전문은 session_get(id)
-  - 답 안 한 Slack DM·멘션 → slack_unanswered · 다가오는 회의(respond_event 의 event_id) → meetings_upcoming
+  - 답 안 한 Slack DM·멘션 → slack_unanswered · 교수님·선배 등 지시자(directiveFrom)가 준 지시 → slack_directives · 다가오는 회의(respond_event 의 event_id) → meetings_upcoming
   - 프로젝트 현황·오늘 커밋·진행 중인 제안 → dashboard_summary · 최근 7일 프로젝트(레포 경로) → projects_recent
   - 사용자 취향·습관·자주 일하는 사람 → profile_get
   - 실험(긴 작업)이 끝났나·돌고 있나·어디서 무엇을 돌렸나 → jobs_recent. 그 결과·로그·폴더는 실험 서버에서 remote_ls(폴더) · remote_find(이름·최근 N시간) · remote_read(파일 끝·앞·찾을 글) · GPU 상황은 remote_gpu. 서버 접속이라 첫 호출은 1초쯤 걸린다
@@ -232,6 +233,13 @@ export function ctxHandlers(cfg: Config, store: Store, deps: CtxDeps = {}) {
       const hint = hosts.length ? `\n(결과 파일은 remote_read(host, "<폴더>/<파일>")로. 서버: ${hosts.join(", ")})` : "";
       return out(`최근 ${hours}시간 긴 작업(usagi-run)${q ? ` "${clip(q, 30)}"` : ""}`, (lines.join("\n") || "(없음 — usagi-run 으로 돌린 작업만 보인다)") + hint);
     }),
+    slack_directives: (a: { days?: number; open?: boolean }) => guard("Slack 지시사항", () => {
+      const from = cfg.directiveFrom ?? [];
+      if (!from.length) return out("Slack 지시사항", "지시자가 정해지지 않았다(설정 directiveFrom — 패널 개요의 지시사항 카드에서 고른다)");
+      const days = Math.min(Math.max(a.days ?? 14, 1), 90);
+      const items = directivesSince(store, from, new Date(now().getTime() - days * 86400e3).toISOString(), { limit: 30, ...(a.open ? { state: "open" as const } : {}) });
+      return out(`Slack 지시사항 (최근 ${days}일, DM·멘션${a.open ? ", 아직 정하지 않은 것만" : ""})`, formatDirectives(items));
+    }),
     remote_ls: (a: LsArgs) => guard("서버 폴더", async () => rOut(await remoteLs(cfg, a, deps.remote))),
     remote_find: (a: FindArgs) => guard("서버 파일 찾기", async () => rOut(await remoteFind(cfg, a, deps.remote))),
     remote_read: (a: ReadArgs) => guard("서버 파일", async () => rOut(await remoteRead(cfg, a, deps.remote))),
@@ -281,6 +289,7 @@ export function ctxTools(cfg: Config, store: Store, deps: CtxDeps = {}) {
     tool("dashboard_summary", "오늘 커밋 수·진행 중인 제안·마지막 브리핑", {}, h.dashboard_summary, RO),
     tool("projects_recent", "최근 7일 프로젝트(레포 경로·마지막 활동·세션·커밋·브랜치)", {}, h.projects_recent, RO),
     tool("jobs_recent", "긴 작업(usagi-run 으로 돌린 실험·학습): 돌고 있음·끝·실패·끊김, 서버·폴더·명령, 실행 중 바뀐 파일(결과 후보)", { hours: z.number().int().min(1).max(720).optional().describe("기본 72"), query: z.string().optional().describe("이름·폴더·명령·서버 거르기") }, h.jobs_recent, RO),
+    tool("slack_directives", "지시자(교수님·선배 등, 설정 directiveFrom)가 나에게 준 Slack DM·멘션 지시. 할 일로 넣었는지·넘겼는지 표시", { days: z.number().int().min(1).max(90).optional().describe("기본 14"), open: z.boolean().optional().describe("아직 정하지 않은 것만") }, h.slack_directives, RO),
     tool("remote_ls", "실험 서버(ssh) 폴더 목록, 최근 바뀐 순. 읽기 전용", { host: z.string().describe("서버(sshHosts)"), path: z.string().optional().describe("~/… 또는 /…, 기본 ~"), depth: z.number().int().min(1).max(4).optional(), limit: z.number().int().min(1).max(200).optional() }, h.remote_ls, RO),
     tool("remote_find", "실험 서버에서 파일 찾기(이름 조각·최근 N시간 안에 바뀐 것), 최근 바뀐 순", { host: z.string(), path: z.string().optional().describe("찾을 폴더, 기본 ~"), name: z.string().optional().describe("파일 이름 조각(대소문자 무시)"), hours: z.number().int().min(1).max(1440).optional(), limit: z.number().int().min(1).max(100).optional() }, h.remote_find, RO),
     tool("remote_read", "실험 서버 파일 일부: 끝(기본, 로그·지표)·앞, 또는 match 글이 든 줄. 비밀 파일·바이너리는 안 읽음", { host: z.string(), path: z.string(), from: z.enum(["head", "tail"]).optional(), bytes: z.number().int().min(200).max(5000).optional(), match: z.string().optional().describe("이 글이 든 줄만(대소문자 무시)") }, h.remote_read, RO),

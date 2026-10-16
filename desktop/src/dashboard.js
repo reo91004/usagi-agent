@@ -227,6 +227,21 @@ export function shapeGpu(hosts) {
   }));
 }
 
+// Slack 지시사항 카드(#41): 지시자·고를 후보·아직 정하지 않은 지시. Slack 을 연결하지 않았으면 null
+export function shapeDirectives(d, now = Date.now()) {
+  if (!d || typeof d !== 'object') return null;
+  const person = (p) => p && str(p.id) && /^[UW][A-Z0-9]{2,20}$/.test(p.id);
+  return {
+    from: arr(d.from).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id })),
+    candidates: arr(d.candidates).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id, count: num(p.count) })),
+    open: arr(d.open).filter((x) => x && /^message:/.test(str(x.id)) && str(x.text)).map((x) => ({
+      id: x.id, who: str(x.authorName) || str(x.author), where: x.isDM ? 'DM' : `#${str(x.channelLabel)}`,
+      text: x.text.replace(/\s+/g, ' ').trim(), rel: relativeTime(x.at, now),
+      link: str(x.permalink) && isSafeLink(x.permalink) ? x.permalink : null,
+    })),
+  };
+}
+
 export function shapeDashboard(raw, now = Date.now()) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const all = arr(r.projects).filter((p) => p && typeof p === 'object').map((p) => shapeProject(p, now));
@@ -282,5 +297,6 @@ export function shapeDashboard(raw, now = Date.now()) {
     todayGroups,
     todayDone,
     research: shapeResearch(r.research, now),
+    directives: shapeDirectives(r.directives, now),
   };
 }

@@ -54,3 +54,20 @@ test('shapeGpu: 짧은 이름·사용률·GB, 그 GPU 의 프로세스만, 실�
   assert.deepEqual(g[0].gpus[1].procs, []);
   assert.deepEqual([g[1].ok, g[1].error], [false, '접속하지 못했어요: timeout']);
 });
+
+test('shapeDirectives: Slack 연결 전 null, 사람 id 검사, 지시 줄(DM·채널, 안전한 링크만)', async () => {
+  const { shapeDirectives } = await import('../src/dashboard.js');
+  assert.equal(shapeDirectives(undefined, NOW), null);
+  const d = shapeDirectives({
+    from: [{ id: 'UPROF', name: '김교수' }, { id: 'bad' }],
+    candidates: [{ id: 'UFRIEND', name: '친구', count: 3 }],
+    open: [
+      { id: 'message:D1:1.1', authorName: '김교수', isDM: true, text: '그림 3\n고쳐 주세요', at: ago(1), permalink: 'https://lab.slack.com/archives/D1/p11' },
+      { id: 'message:C1:2.1', authorName: '김교수', isDM: false, channelLabel: 'lab', text: '결과 공유', at: ago(2), permalink: 'javascript:alert(1)' },
+      { id: 'x', text: 'id 이상' },
+    ],
+  }, NOW);
+  assert.deepEqual(d.from, [{ id: 'UPROF', name: '김교수' }]);
+  assert.deepEqual(d.candidates, [{ id: 'UFRIEND', name: '친구', count: 3 }]);
+  assert.deepEqual(d.open.map((x) => [x.where, x.text, x.rel, x.link]), [['DM', '그림 3 고쳐 주세요', '1시간 전', 'https://lab.slack.com/archives/D1/p11'], ['#lab', '결과 공유', '2시간 전', null]]);
+});
