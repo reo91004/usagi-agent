@@ -11,7 +11,7 @@ export function modelLabel(id: string): string {
 }
 
 // 큰 것부터(코딩 → 일반 → 경량). 같은 모델이 두 역할이면 한 번만.
-// 고르는 칸은 Claude 모델로 답하는 뇌(Claude Code·Claude API)일 때만. Gemini·OpenAI·Codex·로컬이면 빈 목록(칸을 숨긴다)
+// 고르는 칸은 Claude 모델로 답하는 뇌(Claude Code·Claude API)일 때만. Gemini·OpenAI·Codex·agy·로컬이면 빈 목록(칸을 숨긴다)
 export function modelChoices(cfg: Config): ModelChoice[] {
   const provider = cfg.brain?.provider ?? "claude-code";
   if (provider !== "claude-code" && provider !== "anthropic") return [];

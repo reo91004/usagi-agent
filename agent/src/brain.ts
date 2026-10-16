@@ -1,5 +1,5 @@
 // 브리핑·대화 두뇌. provider가 claude-code(기본)일 때만 Claude Agent SDK로 도구(커넥터 MCP·gh·맥락 도구)를 쓴다.
-// local·gemini·openai·codex는 브리핑·채팅 JSON만 받고 SDK를 부르지 않는다. 코드 자동 수정은 fixer.ts의 Claude 경로가 그대로 맡는다.
+// local·gemini·openai·codex·agy는 브리핑·채팅 JSON만 받고 SDK를 부르지 않는다. 코드 자동 수정은 fixer.ts의 Claude 경로가 그대로 맡는다.
 // api 모드(Slack 사용자 토큰·ICS)는 실시간 도구 없이 로컬 지식그래프·일정 캐시를 맥락으로 넣는다.
 // 정기 작업(브리핑 등)은 읽기 전용(guard.ts). 대화형(opts.interactive — 채팅·캐릭터 대화·할 일 팝오버·Slack DM 요청)은
 // 모든 도구를 쓰되 쓰기는 사용자 승인(permissions.ts: PreToolUse 훅 + canUseTool, 하드 차단 목록).
@@ -253,7 +253,7 @@ export function mcpIsolation(allowed: readonly string[], registered: readonly st
   return { hidden: hiddenMcpRules(allowed, registered), env: claudeAi ? {} : { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } };
 }
 
-// claude-code 가 아닌 뇌(local·gemini·openai·codex)에 넘기는 사실(할 일 목록 등)
+// claude-code 가 아닌 뇌(local·gemini·openai·codex·agy)에 넘기는 사실(할 일 목록 등)
 export type BrainFacts = { now?: Date; open?: LocalTodo[]; done?: LocalTodo[] };
 
 export function brainFacts(store: Store, now = new Date()): BrainFacts {
@@ -314,10 +314,10 @@ export async function ask<T>(
 
 export const TEXT_SCHEMA = { type: "object", additionalProperties: false, required: ["reply"], properties: { reply: { type: "string", description: "사용자에게 보낼 답(마크다운)" } } } as const;
 
-// local·gemini·openai·genspark·codex: SDK·도구 없이 JSON만. 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
+// local·gemini·openai·genspark·codex·agy: SDK·도구 없이 JSON만. 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
 async function askOther<T>(provider: string, cfg: Config, prompt: string, schema: unknown, onStep: ((s: string) => void) | undefined, opts: AskOpts, spec: AskRun): Promise<T> {
   // genspark: 실제 모델은 GET /models 목록을 받은 뒤 정한다(providers.ts gensparkJson) — 기록엔 고른 이름이나 "genspark"
-  const model = provider === "local" ? "local" : provider === "codex" ? "codex" : provider === "genspark" ? ((opts.model ?? "").trim() || "genspark") : provider === "anthropic" ? resolveAnthropicModel(cfg.models?.general, opts.model) : resolveHttpModel(provider as "gemini" | "openai", cfg.models?.general, opts.model);
+  const model = provider === "local" ? "local" : provider === "codex" || provider === "agy" ? provider : provider === "genspark" ? ((opts.model ?? "").trim() || "genspark") : provider === "anthropic" ? resolveAnthropicModel(cfg.models?.general, opts.model) : resolveHttpModel(provider as "gemini" | "openai", cfg.models?.general, opts.model);
   return withRun({ kind: spec.kind, title: spec.title, model, cwd: join(HOME_DIR, "brain"), ...(spec.ref ? { ref: spec.ref } : {}) }, async (run) => {
     run.log({ type: "user", text: prompt });
     onStep?.(provider);

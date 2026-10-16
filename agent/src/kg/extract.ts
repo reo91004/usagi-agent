@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "../config.ts";
 import { looksLikeInstruction } from "../profile.ts";
-import { codexStructured, usesCodex, type CodexDeps } from "../feature-brain.ts";
+import { cliStructured, usesCli, type CodexDeps } from "../feature-brain.ts";
 import type { Chunk } from "./chunks.ts";
 
 export const ENTITY_TYPES = ["project", "person", "decision", "issue", "doc", "repo", "topic"] as const;
@@ -163,11 +163,11 @@ export function reasoningFor(model: string): { thinking?: { type: "disabled" }; 
   return noDisable ? { effort: "low" } : { thinking: { type: "disabled" }, effort: "low" };
 }
 
-// 도구 없는 구조화 출력 호출 한 번(refine.ts도 쓴다). 뇌가 codex 면 codex exec 한 번(모델 이름은 Codex 기본)
+// 도구 없는 구조화 출력 호출 한 번(refine.ts도 쓴다). 뇌가 codex·agy 면 CLI 한 번
 export async function run<T>(cfg: Config, deps: ExtractDeps, model: string, system: string, prompt: string, schema: unknown): Promise<{ out: T; stat: CallStat }> {
-  if (usesCodex(cfg)) {
+  if (usesCli(cfg)) {
     try {
-      return await codexStructured<T>({ system, prompt, schema, timeoutMs: 240_000 }, deps.codex);
+      return await cliStructured<T>(cfg, { system, prompt, schema, timeoutMs: 240_000 }, deps.codex);
     } catch (e) {
       throw Object.assign(new Error(`kg: ${String((e as Error)?.message ?? e)}`), { stat: { costUsd: 0, inTokens: 0, outTokens: 0, ms: 0 } });
     }

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { permalinkOf } from "./ingest/slack.ts";
 import { trackQuery, withRun } from "./runs.ts";
-import { codexStructured, featureBrain, skipQuietly, usesCodex, type CodexDeps } from "./feature-brain.ts";
+import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
 import type { AutoEvidence, Store, Todo } from "./store.ts";
 
 export type Completion = { id: string; reason: string; evidence: AutoEvidence; confidence: number; rule: "reply" | "model"; target?: string };
@@ -337,9 +337,9 @@ export async function detectCompletions(cfg: Config, store: Store, deps: DetectD
 async function callModel(cfg: Config, q: typeof sdkQuery, prompt: string, codex?: CodexDeps): Promise<{ out: any; costUsd?: number }> {
   const cwd = join(HOME_DIR, "todo-auto"); // HOME_DIR 아래 → 세션 수집에서 빠진다
   mkdirSync(cwd, { recursive: true });
-  if (usesCodex(cfg)) {
-    return withRun({ kind: "todo-auto", title: "끝난 할 일 판정", model: "codex", cwd }, async () => {
-      const { out } = await codexStructured({ system: DETECT_SYSTEM, prompt, schema: DETECT_SCHEMA }, codex);
+  if (usesCli(cfg)) {
+    return withRun({ kind: "todo-auto", title: "끝난 할 일 판정", model: cfg.brain.provider, cwd }, async () => {
+      const { out } = await cliStructured(cfg, { system: DETECT_SYSTEM, prompt, schema: DETECT_SCHEMA }, codex);
       return { out };
     });
   }
