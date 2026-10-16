@@ -132,6 +132,9 @@ for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/
   if (!fs.existsSync(path.join(APP, need))) throw new Error(`앱 번들에 ${need} 가 없어요`);
 }
 
+// packager 가 CFBundleDisplayName 을 실행 파일 이름(usagi)으로 덮어써서 서명 전에 다시 쓴다(Spotlight·Launchpad 이름)
+run('plutil', ['-replace', 'CFBundleDisplayName', '-string', APP_NAME, path.join(APP, 'Contents', 'Info.plist')]);
+
 // 5) ad-hoc 서명: 애플 실리콘은 서명이 아예 없으면 실행을 막는다. 개발자 인증서 없이 「-」(ad-hoc)로
 step('ad-hoc 서명');
 run('codesign', ['--force', '--deep', '--sign', '-', APP]);
