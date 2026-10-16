@@ -27,7 +27,7 @@ export type Features = {
 export type Status = {
   brain: BrainStatus;
   chat: boolean | null;  // 말 걸 수 있나(뇌 준비 + 로컬 아님). null = 모름
-  coder: { claude: boolean | null; codex: boolean };
+  coder: { claude: boolean | null; codex: boolean; agy: boolean };
   features: Features;
   // needs: 이 연결을 읽으려면 뇌가 Claude Code 여야 함(지금 뇌로는 안 읽음 → ready=false)
   connectors: { cap: Capability; label: string; mode: string; ready: boolean; needs?: "claude-code" }[];
@@ -62,21 +62,24 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     : provider === "genspark" ? "Genspark 키가 없어요(gsk login 을 하거나 키를 붙여 넣어 주세요)"
     : provider === "claude-code" ? "Claude Code 로그인이 필요해요"
     : provider === "codex" ? "Codex 를 찾을 수 없어요"
+    : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요"
     : `${KEY_LABEL[provider] ?? label} API 키가 없어요`;
   const local = provider === "local";
   const conns = cfg.connectors ?? CONNECTORS;
   const st = connectorStatus(conns, deps.hasServer);
   const codex = commandOnPath("codex", env);
-  const by = featureBrain(cfg, () => codex);
+  const agy = commandOnPath("agy", env);
+  const by = featureBrain(cfg, (n) => (n === "agy" ? agy : codex));
   const background: Features["background"] = by === "claude-code"
     ? { by, ready: claude === undefined ? null : claude, detail: claude === false ? "Claude Code 로그인이 필요해요" : "Claude Code 로 돌아요" }
     : by === "codex" ? { by, ready: true, detail: "Codex 로 돌아요" }
-    : { by: null, ready: false, detail: cfg.onboarded === false ? WAIT_SETUP : provider === "codex" ? "Codex 를 찾을 수 없어요" : NEEDS_CODER };
+    : by === "agy" ? { by, ready: true, detail: "Antigravity(agy)로 돌아요" }
+    : { by: null, ready: false, detail: cfg.onboarded === false ? WAIT_SETUP : provider === "codex" ? "Codex 를 찾을 수 없어요" : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요" : NEEDS_CODER };
   const mcp = provider === "claude-code";
   return {
     brain: { provider, label, ready, local, detail },
     chat: local ? false : ready,
-    coder: { claude: claude ?? null, codex },
+    coder: { claude: claude ?? null, codex, agy },
     features: { background, mcp, code: claude ?? null },
     connectors: CAPABILITIES.map((cap) => {
       const x = st.find((s) => s.cap === cap)!;

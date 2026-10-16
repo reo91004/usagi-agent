@@ -1,17 +1,18 @@
-// 브리핑·채팅용 JSON만 받는 뇌. Gemini·OpenAI·Genspark는 공식 HTTP, Codex는 CLI 한 번.
+// 브리핑·채팅용 JSON만 받는 뇌. Gemini·OpenAI·Genspark는 공식 HTTP, Codex·Antigravity(agy)는 CLI 한 번.
 // 도구·MCP·코드 수정 요청은 붙이지 않는다. 키는 로그와 오류 문장에 넣지 않는다.
 // 키가 없거나 codex가 없으면 한국어로 실패한다. local로 조용히 넘어가지 않는다.
 //
 // Codex 는 codex exec 한 번으로 브리핑·채팅 JSON, 그리고 뒤에서 도는 정리(feature-brain.ts: 끝난 할 일 판정·진행 확인·지식그래프·프로필 학습).
 // 도구·사용자 MCP 는 붙이지 않는다(CODEX_ARGS). 코드 고치기(fixer.ts)·MCP 읽기는 provider 와 상관없이 Claude Code 경로다.
+// agy 도 같다: agy -p … --output-format json --sandbox --json-schema 한 번(agyExec). 같은 뒤쪽 기능을 돌린다.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, readFileSync } from "node:fs";
+import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { findOnPath, spawnSpec } from "./plat.ts";
 import type { ContentBlock } from "./attachments.ts";
-import { DEFAULT_GENERAL_MODEL, type BrainProvider, type Config } from "./config.ts";
+import { DEFAULT_GENERAL_MODEL, HOME_DIR, type BrainProvider, type Config } from "./config.ts";
 
 // redirect: 키를 싣는 요청은 "error"(리다이렉트를 따라가 다른 곳에 키를 보내지 않는다)
 export type FetchLike = (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string; redirect?: "error" | "follow" | "manual" }) => Promise<Response>;
@@ -47,6 +48,7 @@ export const MISSING_OPENAI_KEY = "OpenAI API 키가 없어요. CY_AGENT_OPENAI_
 export const MISSING_GENSPARK_KEY = "Genspark 키가 없어요. 터미널에서 gsk login 을 하거나, 설정에서 키를 붙여 넣어 주세요(CY_AGENT_GENSPARK_API_KEY 도 돼요).";
 export const MISSING_ANTHROPIC_KEY = "Claude API 키가 없어요. CY_AGENT_ANTHROPIC_API_KEY, 또는 설정의 brain.anthropicApiKey를 넣어 주세요.";
 export const MISSING_CODEX = "codex 명령을 찾을 수 없어요. Codex CLI를 설치한 뒤 다시 시도해 주세요.";
+export const MISSING_AGY = "agy 명령을 찾을 수 없어요. Antigravity CLI(agy)를 설치하고 터미널에서 로그인한 뒤 다시 시도해 주세요.";
 export const LOCAL_ONLY = "로컬 뇌는 브리핑·채팅만 답해요.";
 
 // 출처: https://ai.google.dev/api/generate-content — POST /v1beta/{model}:generateContent, 헤더 x-goog-api-key
@@ -110,6 +112,7 @@ export function brainKeyReady(cfg: Pick<Config, "brain">, env: NodeJS.ProcessEnv
   if (p === "anthropic") return !!anthropicKey(cfg, env);
   if (p === "genspark") return !!gensparkKey(cfg, env);
   if (p === "codex") return commandOnPath("codex", env);
+  if (p === "agy") return commandOnPath("agy", env); // 로그인은 호출할 때 안다(데스크톱은 agy models 로 미리 본다)
   if (p === "local") return true;
   return undefined;
 }
@@ -718,13 +721,14 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
     const child = spawn(sp.file, sp.args, { cwd: opts.cwd, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    const timer = setTimeout(() => { killTree(child.pid); child.kill(); reject(new Error("codex 실행 시간이 초과됐어요.")); }, opts.timeout ?? 120_000);
+    const timer = setTimeout(() => { killTree(child.pid); child.kill(); reject(new Error(`${file} 실행 시간이 초과됐어요.`)); }, opts.timeout ?? 120_000);
     child.stdout.on("data", (d) => out.push(d));
     child.stderr.on("data", (d) => err.push(d));
-    child.on("error", () => { clearTimeout(timer); reject(new Error("codex 실행이 실패했어요.")); });
+    child.on("error", () => { clearTimeout(timer); reject(new Error(`${file} 실행이 실패했어요.`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) reject(new Error("codex 실행이 실패했어요."));
+      // stderr·종료 코드는 호출한 쪽이 쓴다(agy 의 AGY_ERROR). 메시지 자체에는 넣지 않는다
+      if (code !== 0) reject(Object.assign(new Error(`${file} 실행이 실패했어요.`), { code, stderr: Buffer.concat(err).toString("utf8") }));
       else resolve({ stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
     });
     child.stdin.end(opts.input ?? "");
@@ -752,6 +756,12 @@ export function parseCodexUsage(stdout: string): CodexUsage {
   return { inTokens, outTokens };
 }
 
+// CLI 뇌(codex·agy)에 넘기는 글: 글 첨부는 그대로, 그림·PDF 는 못 본다고 적는다(본 척하지 않게)
+function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: string }, who: string, schemaBelow: boolean): string[] {
+  const att = (opts.blocks ?? []).map((b) => (b.type === "text" ? b.text : `[첨부 ${b.type === "document" ? b.title ?? "PDF" : "그림"} — 이 AI 연결(${who})로는 그림·PDF 내용을 받지 못했다. 내용을 봤다고 하지 말고 그렇다고 말하라]`));
+  return [opts.system ?? "", prompt, ...att, `도구를 부르지 말고 코드도 고치지 마라. ${schemaBelow ? "아래 " : ""}JSON 스키마에 맞는 객체 하나만 답하라.`];
+}
+
 export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number };
 
 // codex exec 한 번 → 마지막 답의 JSON + 토큰 수. 실패는 짧은 한국어(출력 본문은 넣지 않는다)
@@ -759,9 +769,7 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
   if (!exists("codex")) throw new Error(MISSING_CODEX);
   const exec = opts.execFile ?? defaultExecFile;
-  // codex exec 는 stdin 글만 받는다: 글 첨부는 그대로, 그림·PDF 는 못 본다고 적는다(본 척하지 않게)
-  const att = (opts.blocks ?? []).map((b) => (b.type === "text" ? b.text : `[첨부 ${b.type === "document" ? b.title ?? "PDF" : "그림"} — 이 AI 연결(Codex)로는 그림·PDF 내용을 받지 못했다. 내용을 봤다고 하지 말고 그렇다고 말하라]`));
-  const input = [opts.system ?? "", prompt, ...att, "도구를 부르지 말고 코드도 고치지 마라. 아래 JSON 스키마에 맞는 객체 하나만 답하라.", JSON.stringify(schema)].filter(Boolean).join("\n\n");
+  const input = [...cliParts(prompt, opts, "Codex", true), JSON.stringify(schema)].filter(Boolean).join("\n\n");
   let stdout = "";
   try {
     const result = await exec("codex", CODEX_ARGS, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir() });
@@ -776,8 +784,64 @@ export async function codexJson(prompt: string, schema: unknown, opts: CodexOpts
   return (await codexExec(prompt, schema, opts)).out;
 }
 
+// ---- Antigravity CLI (agy) ----
+// agy -p "<글>" --output-format json --sandbox [--json-schema '<스키마>'] [--model <id>]. 프롬프트는 argv 로만 받는다(`-p -` 는 stdin 이 아니다).
+// --mode plan 은 요청을 무시하고 계획을 제안하니 쓰지 않는다. agy 는 cwd 를 작업공간으로 색인하므로 레포가 아닌 데몬 brain 폴더에서 돈다.
+export const AGY_TIMEOUT_MS = 120_000;
+export const AGY_PROMPT_MAX_BYTES = 400_000; // macOS ARG_MAX 1MiB(환경변수 포함) 아래로 넉넉히
+export const AGY_FAILED = "agy 실행이 실패했어요. 터미널에서 agy models 로 로그인돼 있는지 확인해 주세요.";
+
+export function agyArgs(prompt: string, schema: unknown, model?: string): string[] {
+  return ["-p", prompt, "--output-format", "json", "--sandbox", "--json-schema", JSON.stringify(schema), ...(model ? ["--model", model] : [])];
+}
+
+// stdout 은 JSON 객체 하나. --json-schema 면 structured_output 이 답이고 response 는 군더더기 글
+export function parseAgyStdout(stdout: string): { out: unknown; usage: CodexUsage } {
+  const whole = asRecord(tryParse(stdout.trim()));
+  if (!whole) throw new Error("agy 출력에서 JSON을 읽지 못했어요.");
+  if (whole.status !== undefined && whole.status !== "SUCCESS") throw new Error(`agy 가 답하지 못했어요(${String(whole.status).slice(0, 40)}).`);
+  const u = asRecord(whole.usage);
+  const usage = { inTokens: Number(u?.input_tokens ?? 0) || 0, outTokens: (Number(u?.output_tokens ?? 0) || 0) + (Number(u?.thinking_tokens ?? 0) || 0) };
+  if (whole.structured_output !== undefined && whole.structured_output !== null) return { out: whole.structured_output, usage };
+  if (typeof whole.response !== "string") throw new Error("agy 출력에서 JSON을 읽지 못했어요.");
+  return { out: parseModelJson(whole.response, "agy 출력에서 JSON을 읽지 못했어요."), usage };
+}
+
+// 모델 실패는 종료 코드 3 + stderr 의 AGY_ERROR 줄
+function agyFailure(e: unknown): Error {
+  const err = e as { message?: string; code?: number; stderr?: string };
+  if (/초과/.test(String(err?.message ?? ""))) return new Error("agy 실행 시간이 초과됐어요.");
+  const line = String(err?.stderr ?? "").split("\n").find((l) => l.includes("AGY_ERROR"));
+  return new Error(line ? `agy 모델 호출이 실패했어요(${line.replace(/^.*AGY_ERROR:?\s*/, "").trim().slice(0, 200)}).` : AGY_FAILED);
+}
+
+// agy 에 --model 로 넘길 이름: 고르지 않은 기본값(Claude 기본 모델 이름)이면 agy 의 기본 모델에 맡긴다
+export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: string): string | undefined {
+  const m = (override ?? "").trim() || (cfg?.models?.general ?? "").trim();
+  return m && m !== DEFAULT_GENERAL_MODEL ? m : undefined;
+}
+
+export type AgyOpts = CodexOpts & { model?: string };
+
+// agy 한 번 → 답 JSON + 토큰 수. 실패는 짧은 한국어
+export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
+  const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
+  if (!exists("agy")) throw new Error(MISSING_AGY);
+  const input = cliParts(prompt, opts, "Antigravity", false).filter(Boolean).join("\n\n");
+  if (Buffer.byteLength(input) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요. 대화나 맥락을 줄여서 다시 시도해 주세요.");
+  const dir = join(HOME_DIR, "brain");
+  if (!opts.execFile) mkdirSync(dir, { recursive: true });
+  let stdout = "";
+  try {
+    stdout = (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, schema, opts.model), { timeout: opts.timeoutMs ?? AGY_TIMEOUT_MS, cwd: dir })).stdout;
+  } catch (e) {
+    throw agyFailure(e);
+  }
+  return parseAgyStdout(stdout);
+}
+
 export async function remoteJson(
-  provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex">,
+  provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
   opts: { system?: string; model?: string; blocks?: ContentBlock[] } & ProviderDeps = {},
 ): Promise<unknown> {
@@ -785,5 +849,6 @@ export async function remoteJson(
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);
   if (provider === "anthropic") return anthropicJson(cfg, prompt, schema, opts);
   if (provider === "genspark") return gensparkJson(cfg, prompt, schema, opts);
+  if (provider === "agy") return (await agyExec(prompt, schema, { ...opts, model: agyModel(cfg, opts.model) })).out;
   return codexJson(prompt, schema, opts);
 }

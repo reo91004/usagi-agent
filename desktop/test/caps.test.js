@@ -5,16 +5,16 @@ import { readFileSync } from 'node:fs';
 import { normCaps, hasCoder, sameCaps, coderHint, createCapsProbe, UNKNOWN_CAPS } from '../src/caps.js';
 
 test('normCaps: 로그인까지 돼 있어야 있음', () => {
-  assert.deepEqual(normCaps({ installed: true, loggedIn: true }, { installed: true, loggedIn: false }), { claude: true, codex: false });
-  assert.deepEqual(normCaps(null, undefined), { claude: false, codex: false });
+  assert.deepEqual(normCaps({ installed: true, loggedIn: true }, { installed: true, loggedIn: false }), { claude: true, codex: false, agy: false });
+  assert.deepEqual(normCaps(null, undefined), { claude: false, codex: false, agy: false });
 });
 
 test('hasCoder: 모르면(확인 전) 있다고 본다, 확인해서 없으면 없다', () => {
   assert.equal(hasCoder(UNKNOWN_CAPS), true);
   assert.equal(hasCoder({ claude: true }), true);
   assert.equal(hasCoder({ claude: false, codex: true }), false); // 코드 고치기는 Claude Code 로만
-  assert.equal(sameCaps({ claude: true, codex: false }, { claude: true, codex: false }), true);
-  assert.equal(sameCaps(UNKNOWN_CAPS, { claude: true, codex: false }), false);
+  assert.equal(sameCaps({ claude: true, codex: false, agy: false }, { claude: true, codex: false, agy: false }), true);
+  assert.equal(sameCaps(UNKNOWN_CAPS, { claude: true, codex: false, agy: false }), false);
 });
 
 test('안내 문구는 쉬운 말(개발 용어 없이), 모르는 기능은 코드 안내', () => {
@@ -29,16 +29,16 @@ test('createCapsProbe: 잠깐 기억하고(force 면 새로), 동시에 물으�
   assert.deepEqual(probe.get(), UNKNOWN_CAPS);
   const [a, b] = await Promise.all([probe.refresh(), probe.refresh()]);
   assert.equal(calls, 1);
-  assert.deepEqual(a, { claude: true, codex: false });
+  assert.deepEqual(a, { claude: true, codex: false, agy: false });
   assert.equal(a, b);
   t = 500;
   await probe.refresh();
   assert.equal(calls, 1, '기억 안');
-  assert.deepEqual(await probe.refresh(true), { claude: false, codex: false });
+  assert.deepEqual(await probe.refresh(true), { claude: false, codex: false, agy: false });
   assert.equal(calls, 2);
   fail = true;
   t = 5000;
-  assert.deepEqual(await probe.refresh(), { claude: false, codex: false }, '깨지면 예전 값');
+  assert.deepEqual(await probe.refresh(), { claude: false, codex: false, agy: false }, '깨지면 예전 값');
 });
 
 test('Claude Code 가 없으면: 메뉴에서 작업 세션을 빼고, 패널은 버튼을 숨기고, 단축키는 안내', () => {
@@ -50,4 +50,8 @@ test('Claude Code 가 없으면: 메뉴에서 작업 세션을 빼고, 패널은
   assert.match(p, /for \(const id of \['open-session'\]\) \{ const b = \$\(id\); if \(b\) b\.hidden = !hasCoder\(\); \}/);
   const s = readFileSync(new URL('../renderer/session.js', import.meta.url), 'utf8');
   assert.match(s, /\$\('btn-new'\)\.hidden = true;/);
+});
+
+test('normCaps: agy 로그인도 따로 본다', () => {
+  assert.deepEqual(normCaps(null, null, { installed: true, loggedIn: true }), { claude: false, codex: false, agy: true });
 });

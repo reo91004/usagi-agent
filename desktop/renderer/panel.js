@@ -115,7 +115,7 @@ let vm = shapeDashboard(null);
 let error = null;
 let connected = false;
 // 이 컴퓨터의 Claude Code·Codex(모르면 있다고 본다)
-let caps = { claude: null, codex: null };
+let caps = { claude: null, codex: null, agy: null };
 const hasCoder = () => caps.claude !== false;
 let section = 'overview';
 try { section = normalizeSection(localStorage.getItem('section')) ?? 'overview'; } catch { /* 저장소 없음 */ }
@@ -123,7 +123,7 @@ let setupPhase = 'name'; // name·brain·ai-key·extras·connect·done (setup-pl
 let setupName = ''; // 데몬 설정 user.name
 let setupRepos = []; // 데몬 설정 repoRoots
 let setupReadSessions = false; // 데몬 설정 readSessions(이 맥의 Claude Code·Codex 작업 기록 읽기: 새 설치는 꺼짐)
-let detected = { claude: null, codex: null }; // 이 맥에서 찾은 Claude Code·Codex(로그인까지)
+let detected = { claude: null, codex: null, agy: null }; // 이 맥에서 찾은 Claude Code·Codex(로그인까지)
 // 뇌(말 거는 AI) 연결 상태 — main 이 GET /status 로 알려 준다(brain-state.js brainView). 모르면 막지 않는다
 let brain = { ready: true, known: false, connected: [] };
 let connectCardHidden = false; // AI 연결 안내 카드를 숨겼나(state.json connectCardHidden)
@@ -181,9 +181,9 @@ function connectAgentNow() {
 // 뇌 고르기 화면에 들어갈 때: 이 맥의 Claude Code·Codex 로그인 확인 + 데몬 설정(이름·레포 폴더)
 async function detectAgents() {
   const one = async (who) => { try { return !!(await cy.agentLogin(who))?.loggedIn; } catch { return null; } };
-  const [c, x] = await Promise.all([one('claude'), one('codex')]);
-  if (c === detected.claude && x === detected.codex) return;
-  detected = { claude: c, codex: x };
+  const [c, x, g] = await Promise.all([one('claude'), one('codex'), one('agy')]);
+  if (c === detected.claude && x === detected.codex && g === detected.agy) return;
+  detected = { claude: c, codex: x, agy: g };
   setupKey = '';
   if (section === 'setup') renderSetupView(false);
 }
@@ -211,7 +211,7 @@ async function saveSetupSettings(patch) {
 function stepsNow() {
   if (setupPhase === 'agentWalk') return agentSteps(setupAgent);
   if (setupPhase === 'connect') {
-    return (setupLink === 'claude' || setupLink === 'codex') ? agentSteps(setupLink) : connectSteps(setupLink, connectAgentNow());
+    return (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy') ? agentSteps(setupLink) : connectSteps(setupLink, connectAgentNow());
   }
   if (setupPhase === 'walk') return buildWalk(setupPicked, setupChoices, setupAgent || 'none');
   return [];
@@ -507,7 +507,7 @@ let loginTimer = null;
 
 function codingAgent() {
   if (setupPhase === 'agentWalk' && (setupAgent === 'claude' || setupAgent === 'codex')) return setupAgent;
-  if (setupPhase === 'connect' && (setupLink === 'claude' || setupLink === 'codex')) return setupLink;
+  if (setupPhase === 'connect' && (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy')) return setupLink;
   return '';
 }
 
@@ -606,8 +606,8 @@ function renderSetupView(resetScroll) {
         redraw(true);
         return;
       }
-      if (id === 'claudecode' || id === 'codexcli') {
-        const who = id === 'codexcli' ? 'codex' : 'claude';
+      if (id === 'claudecode' || id === 'codexcli' || id === 'agycli') {
+        const who = id === 'codexcli' ? 'codex' : id === 'agycli' ? 'agy' : 'claude';
         let r = { loggedIn: false };
         try { r = (await cy.agentLogin(who)) || r; } catch { /* 로그인 전으로 본다 */ }
         if (r.loggedIn) {
@@ -837,7 +837,7 @@ function renderSetupView(resetScroll) {
           return;
         }
         setupSlotError = null;
-        if ((afterConnect === 'claudecode' && setupLink === 'claude') || (afterConnect === 'codexcli' && setupLink === 'codex')) {
+        if ((afterConnect === 'claudecode' && setupLink === 'claude') || (afterConnect === 'codexcli' && setupLink === 'codex') || (afterConnect === 'agycli' && setupLink === 'agy')) {
           afterConnect = '';
           try { await cy.sisaUseCli(setupLink); } catch { /* 목록에서 다시 고르면 된다 */ }
           await loadSisa();
@@ -3105,7 +3105,7 @@ $('refresh').addEventListener('click', () => { cy.refreshSources?.(); load(); lo
 $('open-session')?.addEventListener('click', () => cy.openSession?.());
 // 이 컴퓨터에 Claude Code 가 없으면(Gemini·GPT 키·로컬) 코드 관련 버튼(작업 세션)은 숨긴다
 function applyCaps(c) {
-  if (c && typeof c === 'object' && 'claude' in c) caps = { claude: c.claude, codex: c.codex };
+  if (c && typeof c === 'object' && 'claude' in c) caps = { claude: c.claude, codex: c.codex, agy: c.agy };
   for (const id of ['open-session']) { const b = $(id); if (b) b.hidden = !hasCoder(); }
   if (section === 'chat') renderChat();
 }

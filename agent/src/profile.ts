@@ -9,7 +9,7 @@
 // - forgetFact로 지운 사실은 다시 배워도 되살리지 않는다
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { trackQuery, withRun } from "./runs.ts";
-import { codexStructured, featureBrain, skipQuietly, usesCodex, type CodexDeps } from "./feature-brain.ts";
+import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -463,10 +463,10 @@ export type LearnResult = {
 async function callModel(cfg: Config, q: typeof sdkQuery, prompt: string, codex?: CodexDeps): Promise<LearnOutput> {
   const cwd = join(HOME_DIR, "profile"); // HOME_DIR 아래 → 세션 수집에서 빠진다
   mkdirSync(cwd, { recursive: true });
-  if (usesCodex(cfg)) {
-    return withRun({ kind: "profile", title: "프로필 학습", model: "codex", cwd }, async (run) => {
+  if (usesCli(cfg)) {
+    return withRun({ kind: "profile", title: "프로필 학습", model: cfg.brain.provider, cwd }, async (run) => {
       run.log({ type: "user", text: prompt });
-      const { out } = await codexStructured<LearnOutput>({ system: LEARN_SYSTEM, prompt, schema: LEARN_SCHEMA, timeoutMs: 180_000 }, codex);
+      const { out } = await cliStructured<LearnOutput>(cfg, { system: LEARN_SYSTEM, prompt, schema: LEARN_SCHEMA, timeoutMs: 180_000 }, codex);
       return out;
     });
   }

@@ -13,6 +13,7 @@ export const PROVIDER_TITLE = {
   genspark: 'Genspark',
   claudecode: 'Claude Code',
   codexcli: 'Codex',
+  agycli: 'Antigravity',
 };
 
 // 목록 오류: 본문이 JSON(OpenAI 등 {error:{message}})이면 message 만. 아니면 그대로
@@ -163,7 +164,7 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
         ? h('label.model-row', null, h('span', { text: '모델' }),
           select(codeOptions(lists, sisa.connected, current), current, (m) => save({ code: m }), busy))
         : h('p.muted', { text: 'Claude를 연결하면 고를 수 있습니다' }),
-      sisa.connected.includes('codexcli') ? h('p.muted.small', { text: '코딩은 Claude만 씁니다' }) : null);
+      (sisa.connected.includes('codexcli') || sisa.connected.includes('agycli')) ? h('p.muted.small', { text: '코딩은 Claude만 씁니다' }) : null);
   }
 
   function disconnectFor(p) {

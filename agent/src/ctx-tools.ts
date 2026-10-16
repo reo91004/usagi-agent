@@ -22,7 +22,7 @@ import { sessionsAllowed } from "./onboarding.ts";
 export { CTX_SERVER, CTX_TOOL_NAMES };
 export type ContextMode = "tools" | "inline";
 // 큰 맥락 블록을 프롬프트에 그대로 붙이는 예전 방식인가(config contextMode: "inline").
-// Claude Code 가 아닌 뇌(Gemini·OpenAI·Claude API·Codex)는 맥락 도구를 못 부르니 늘 inline — 아니면 할 일·일정 없이 답했다
+// Claude Code 가 아닌 뇌(Gemini·OpenAI·Claude API·Codex·agy)는 맥락 도구를 못 부르니 늘 inline — 아니면 할 일·일정 없이 답했다
 export const inlineContext = (cfg: Pick<Config, "contextMode"> & { brain?: Pick<Config["brain"], "provider"> }) =>
   cfg.contextMode === "inline" || (cfg.brain?.provider ?? "claude-code") !== "claude-code";
 export const CTX_MAX_OUT = 6000; // 도구 결과 하나의 글자 수 상한

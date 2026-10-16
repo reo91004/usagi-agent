@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SISA_BASE, PROVIDER_STYLE, personaFor, systemFor, isStockPersona } from '../src/persona.js';
 
-const PROVIDERS = ['gemini', 'claude', 'openai', 'claudecode', 'codexcli'];
+const PROVIDERS = ['gemini', 'claude', 'openai', 'claudecode', 'codexcli', 'agycli'];
 
-test('PROVIDER_STYLE 은 다섯 AI 모두 갖고 있다', () => {
+test('PROVIDER_STYLE 은 여섯 AI 모두 갖고 있다', () => {
   assert.deepEqual(Object.keys(PROVIDER_STYLE).sort(), [...PROVIDERS].sort());
 });
 
@@ -34,7 +34,7 @@ test('공통 규칙: 시사·해요체·한두 문장·스이시 양념', () => 
 
 test('AI별 문구는 서로 다르고, 코딩 에이전트형은 코딩 에이전트가 아니라고 강조한다', () => {
   assert.equal(new Set(PROVIDERS.map((p) => PROVIDER_STYLE[p])).size, PROVIDERS.length);
-  for (const p of ['claudecode', 'codexcli']) assert.match(PROVIDER_STYLE[p], /코딩 에이전트가 아니다/);
+  for (const p of ['claudecode', 'codexcli', 'agycli']) assert.match(PROVIDER_STYLE[p], /코딩 에이전트가 아니다/);
   assert.match(PROVIDER_STYLE.gemini, /이모지/);
   assert.match(PROVIDER_STYLE.openai, /목록/);
   assert.match(PROVIDER_STYLE.claude, /목록/);

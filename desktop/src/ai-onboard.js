@@ -98,13 +98,20 @@ export const CODEX_PROVIDER = {
   blurb: '키를 만들 필요가 없습니다. 이 맥에 로그인된 Codex를 씁니다. ChatGPT 유료 계정이 필요합니다.',
 };
 
-export const CLI_PROVIDERS = [CLI_PROVIDER, CODEX_PROVIDER];
+export const AGY_PROVIDER = {
+  id: 'agycli',
+  title: 'Antigravity로 말하기 (키 없음)',
+  blurb: '키를 만들 필요가 없습니다. 이 맥에 로그인된 Antigravity CLI(agy)를 씁니다. Google 계정으로 로그인합니다.',
+};
 
-// 설치 마법사 「뇌 고르기」: 이 맥에서 찾은 Claude Code·Codex 는 "찾았어요 ✓" 로 바로, 키는 붙여 넣고 바로 확인.
+export const CLI_PROVIDERS = [CLI_PROVIDER, CODEX_PROVIDER, AGY_PROVIDER];
+
+// 설치 마법사 「뇌 고르기」: 이 맥에서 찾은 Claude Code·Codex·Antigravity 는 "찾았어요 ✓" 로 바로, 키는 붙여 넣고 바로 확인.
 // AI 는 선택이다: 「AI 없이 쓰기」(none)를 고르면 로컬 뇌로 정하고 다음 단계로 간다
 export const BRAIN_CHOICES = [
   { id: 'claudecode', agent: 'claude', title: 'Claude Code', blurb: '이 맥에 로그인된 Claude Code 로 이야기해요. 키가 필요 없고, 코드 고치기·작업 세션도 돼요.' },
   { id: 'codexcli', agent: 'codex', title: 'Codex', blurb: '이 맥에 로그인된 Codex 로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 Codex 로 돌아요. 코드 고치기·슬랙·지라(MCP)는 Claude Code 가 있어야 해요.' },
+  { id: 'agycli', agent: 'agy', title: 'Antigravity (agy)', blurb: '이 맥에 로그인된 Antigravity CLI(agy)로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 agy 로 돌아요. 모델은 `agy models` 에서 고를 수 있어요. 코드 고치기·슬랙·지라(MCP)는 Claude Code 가 있어야 해요.' },
   { id: 'gemini', title: 'Gemini 키', blurb: '구글 AI 키를 붙여 넣어요. 카드 없이 무료로 만들 수 있어요.' },
   { id: 'openai', title: 'OpenAI(GPT) 키', blurb: 'OpenAI 플랫폼 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'claude', title: 'Claude API 키', blurb: 'Anthropic 콘솔 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },

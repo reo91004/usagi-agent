@@ -4,7 +4,7 @@ import { sanitizeCanned } from './canned.js';
 import { isStockPersona } from './persona.js';
 
 export const KEY_PROVIDERS = ['gemini', 'claude', 'openai', 'genspark'];
-export const CLI_PROVIDERS = ['claudecode', 'codexcli'];
+export const CLI_PROVIDERS = ['claudecode', 'codexcli', 'agycli'];
 export const ALL_PROVIDERS = [...KEY_PROVIDERS, ...CLI_PROVIDERS];
 
 const MODEL_RE = /^[A-Za-z0-9._:/-]{1,100}$/;
@@ -100,7 +100,7 @@ export function withCli(data, provider) {
   return { ...d, clis: { ...d.clis, [provider]: true }, provider };
 }
 
-// 연결 해제: 키면 지우고, Claude Code·Codex 면 「연결됨」 표시만 뗀다(그 CLI 로그인은 그대로). 지금 쓰던 AI 였으면 'none'(AI 없이 쓰기)
+// 연결 해제: 키면 지우고, Claude Code·Codex·Antigravity 면 「연결됨」 표시만 뗀다(그 CLI 로그인은 그대로). 지금 쓰던 AI 였으면 'none'(AI 없이 쓰기)
 export function withoutProvider(data, provider) {
   const d = normalizeSisa(data);
   if (!ALL_PROVIDERS.includes(provider)) return d;
@@ -153,7 +153,7 @@ export function withVoice(data, { persona, canned } = {}) {
 
 // 고른 AI → 시사 데몬 설정(~/.cy-agent/config.json)의 brain·models.general 로 옮길 값.
 // 패널 채팅·캐릭터 대화·브리핑은 전부 데몬이 답한다(Claude API 키도 데몬의 anthropic 뇌로) — 'none' 은 로컬 뇌(정해진 말·간단한 답)
-export const DAEMON_BRAIN = { claudecode: 'claude-code', codexcli: 'codex', gemini: 'gemini', openai: 'openai', claude: 'anthropic', genspark: 'genspark', none: 'local' };
+export const DAEMON_BRAIN = { claudecode: 'claude-code', codexcli: 'codex', agycli: 'agy', gemini: 'gemini', openai: 'openai', claude: 'anthropic', genspark: 'genspark', none: 'local' };
 const KEY_FIELD = { gemini: 'geminiApiKey', openai: 'openaiApiKey', claude: 'anthropicApiKey', genspark: 'gensparkApiKey' };
 export function daemonBrainPatch(data) {
   const d = normalizeSisa(data);
@@ -164,7 +164,7 @@ export function daemonBrainPatch(data) {
   // Genspark 를 gsk login 키로 쓰면 데몬 설정의 키를 지운다(null) — 데몬이 gsk login 파일을 읽는다
   if (KEY_FIELD[chosen]) brain[KEY_FIELD[chosen]] = d.keys[chosen] ?? (chosen === 'genspark' ? null : undefined);
   const m = d.chatModels[chosen];
-  // models.general: 고른 모델(기본값이면 비운다). codex·local 은 데몬 쪽 기본을 그대로
+  // models.general: 고른 모델(기본값이면 비운다; agy 는 `agy models` 의 id). codex·local 은 데몬 쪽 기본을 그대로
   const general = chosen === 'codexcli' || chosen === 'none' ? undefined : m && m !== 'default' ? m : null;
   return { brain, general };
 }

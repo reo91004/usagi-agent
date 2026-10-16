@@ -549,7 +549,7 @@ export function renderSetup(root, state) {
   const steps = phase === 'agentWalk'
     ? agentSteps(agent)
     : phase === 'connect'
-      ? ((link === 'claude' || link === 'codex') ? agentSteps(link) : connectSteps(link, connectAgent))
+      ? ((link === 'claude' || link === 'codex' || link === 'agy') ? agentSteps(link) : connectSteps(link, connectAgent))
       : buildWalk(picked, choices, agent);
   const step = steps[cursor];
   if (!step) {

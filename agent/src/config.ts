@@ -81,7 +81,7 @@ export type Config = {
   configNotes?: string[];
 };
 
-export const BRAIN_PROVIDERS = ["claude-code", "codex", "anthropic", "gemini", "openai", "genspark", "local"] as const;
+export const BRAIN_PROVIDERS = ["claude-code", "codex", "agy", "anthropic", "gemini", "openai", "genspark", "local"] as const;
 export type BrainProvider = (typeof BRAIN_PROVIDERS)[number];
 export type BrainConfig = {
   provider: BrainProvider;

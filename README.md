@@ -66,17 +66,17 @@ macOS와 윈도우에서 쓸 수 있습니다.
 
 AI는 선택입니다. AI 없이도 할 일, 오늘 할 일 표, 집중하기, 일정 알림, 인사와 응원 같은 기본 기능은 그대로 쓸 수 있습니다. 시사와 자유롭게 대화하거나 브리핑 요약을 받고 싶을 때만 AI를 하나 연결하면 됩니다. 여기서는 이 AI를 "뇌"라고 부릅니다.
 
-| 기능 | 뇌 없음 | Gemini·OpenAI·Claude API·Genspark 키 | Codex | Claude Code |
-|---|:-:|:-:|:-:|:-:|
-| 캐릭터·패널, 할 일 보기·고치기, 오늘 할 일 표, 집중하기 | ✓ | ✓ | ✓ | ✓ |
-| 더블클릭 질문 칩, 채팅에서 고르는 말 | ✓ | ✓ | ✓ | ✓ |
-| 정해진 말(인사·할 일 일깨우기·칭찬) | ✓ | ✓ | ✓ | ✓ |
-| 일정 알림(기본 10분 전, 캘린더 ICS 주소) | ✓ | ✓ | ✓ | ✓ |
-| 더블클릭으로 말 걸기, 패널 채팅 | | ✓ | ✓ | ✓ |
-| 브리핑 요약, 브리핑이 할 일 새로 정리 | | ✓ | ✓ | ✓ |
-| 끝난 할 일 자동 완료·(진행중) 자동 표시, 지식그래프·나에 대해 배우기 | | | ✓ | ✓ |
-| mcp 모드 연결(메일·이슈 등 MCP 서버 읽기) | | | | ✓ |
-| 코드 고치기·워크트리·백그라운드 에이전트, 작업 세션 「새 작업」·「이어서 하기」, 자동 머지, 레포 폴더 | | | | ✓ |
+| 기능 | 뇌 없음 | Gemini·OpenAI·Claude API·Genspark 키 | Codex | Antigravity(agy) | Claude Code |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 캐릭터·패널, 할 일 보기·고치기, 오늘 할 일 표, 집중하기 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 더블클릭 질문 칩, 채팅에서 고르는 말 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 정해진 말(인사·할 일 일깨우기·칭찬) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 일정 알림(기본 10분 전, 캘린더 ICS 주소) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 더블클릭으로 말 걸기, 패널 채팅 | | ✓ | ✓ | ✓ | ✓ |
+| 브리핑 요약, 브리핑이 할 일 새로 정리 | | ✓ | ✓ | ✓ | ✓ |
+| 끝난 할 일 자동 완료·(진행중) 자동 표시, 지식그래프·나에 대해 배우기 | | | ✓ | ✓ | ✓ |
+| mcp 모드 연결(메일·이슈 등 MCP 서버 읽기) | | | |  | ✓ |
+| 코드 고치기·워크트리·백그라운드 에이전트, 작업 세션 「새 작업」·「이어서 하기」, 자동 머지, 레포 폴더 | | | |  | ✓ |
 
 AI 없이 쓰는 중에 캐릭터를 두 번 누르면 「오늘 할 일 얼마나 했어요?」, 「다음 일정은요?」 같은 질문 칩이 뜹니다. 하나를 누르면 AI 없이 바로 답하고, 2초 뒤에 칩이 다시 뜹니다. 「응원해 줘」를 누르면 춤도 춥니다.
 뇌는 패널 [모델] 탭이나 설치 마법사에서 언제든 바꿀 수 있고, 앱을 다시 켜지 않아도 바로 적용됩니다. 뇌별 차이는 [docs/connect/brain.md](docs/connect/brain.md)에 정리해 두었습니다.
@@ -139,6 +139,7 @@ brew install --cask reo91004/tap/usagi-agent
 
 - Claude Code: 모든 기능을 쓸 수 있어서 추천합니다. 터미널에서 `curl -fsSL https://claude.ai/install.sh | bash`를 실행하고, `claude`를 쳐서 브라우저로 로그인한 뒤 `/exit`로 나오면 끝입니다.
 - Codex: [Codex CLI 설치 안내](https://developers.openai.com/codex)대로 설치하고 로그인하세요.
+- Antigravity(agy): Google Antigravity CLI를 설치하고 터미널에서 `agy`로 로그인하세요. `agy models`에 모델 목록이 나오면 준비된 것입니다.
 - API 키: Gemini·OpenAI·Claude API 키가 있다면 설치 마법사에 붙여 넣기만 하면 됩니다. 따로 설치할 건 없습니다.
 - Genspark: 유료 플랜이 있다면 `gsk login` 한 키를 고르거나 키를 붙여 넣으면 됩니다. 자세한 건 [brain.md](docs/connect/brain.md#genspark)에 있습니다.
 
@@ -246,6 +247,7 @@ cd ~/shisa-agent && ./ops/install.sh
 
 - Claude Code: 모든 기능을 쓸 수 있어서 추천합니다. 터미널에서 `curl -fsSL https://claude.ai/install.sh | bash`를 실행하고, `claude`를 쳐서 브라우저로 로그인한 뒤 `/exit`로 나오면 끝입니다.
 - Codex: [Codex CLI 설치 안내](https://developers.openai.com/codex)대로 설치하고 로그인하세요.
+- Antigravity(agy): Google Antigravity CLI를 설치하고 터미널에서 `agy`로 로그인하세요. `agy models`에 모델 목록이 나오면 준비된 것입니다.
 - API 키: Gemini·OpenAI·Claude API 키가 있다면 설치 마법사에 붙여 넣기만 하면 됩니다. 따로 설치할 건 없습니다.
 - Genspark: 유료 플랜이 있다면 `gsk login` 한 키를 고르거나 키를 붙여 넣으면 됩니다. 자세한 건 [brain.md](docs/connect/brain.md#genspark)에 있습니다.
 

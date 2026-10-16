@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { finalOutput, runs as globalRuns, trackQuery, withRun, type Run, type RunKind, type RunRegistry } from "./runs.ts";
 import type { AutoEvidence, Node, Store, Todo } from "./store.ts";
-import { codexStructured, featureBrain, skipQuietly, usesCodex, type CodexDeps } from "./feature-brain.ts";
+import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
 
 export const PROGRESS = {
   intervalMin: 5,        // 기본 간격(cfg.progressCheckMin, 0 이면 끔)
@@ -211,9 +211,9 @@ export async function checkProgress(cfg: Config, store: Store, applier: Progress
 async function callModel(cfg: Config, q: typeof sdkQuery, prompt: string, codex?: CodexDeps): Promise<{ out: any; costUsd?: number }> {
   const cwd = join(HOME_DIR, "todo-progress"); // HOME_DIR 아래 → 세션 수집에서 빠진다
   mkdirSync(cwd, { recursive: true });
-  if (usesCodex(cfg)) {
-    return withRun({ kind: "todo-auto", title: "할 일 진행 확인", model: "codex", cwd }, async () => {
-      const { out } = await codexStructured({ system: PROGRESS_SYSTEM, prompt, schema: PROGRESS_SCHEMA }, codex);
+  if (usesCli(cfg)) {
+    return withRun({ kind: "todo-auto", title: "할 일 진행 확인", model: cfg.brain.provider, cwd }, async () => {
+      const { out } = await cliStructured(cfg, { system: PROGRESS_SYSTEM, prompt, schema: PROGRESS_SCHEMA }, codex);
       return { out };
     });
   }

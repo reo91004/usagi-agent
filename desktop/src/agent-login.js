@@ -1,4 +1,4 @@
-// Claude Code / Codex 가 이 맥에 로그인돼 있는지. 토큰 값은 밖으로 내지 않는다.
+// Claude Code / Codex / Antigravity(agy) 가 이 맥에 로그인돼 있는지. 토큰 값은 밖으로 내지 않는다.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -78,12 +78,24 @@ export function readCodexLoggedIn(home = os.homedir(), readFile = fs.readFileSyn
   }
 }
 
-function runStatus(bin, args, read) {
+// `agy models` 출력: "Fetching available models..." 다음에 줄마다 `<id>\t<label>`. 탭 없는 줄은 모델이 아니다
+export function parseAgyModels(stdout) {
+  return String(stdout ?? '').split('\n').map((l) => l.replace(/\r$/, '').split('\t'))
+    .filter((c) => c.length >= 2 && /^[A-Za-z0-9._:/-]{1,100}$/.test(c[0].trim()))
+    .map((c) => ({ id: c[0].trim(), label: c[1].trim() }));
+}
+
+function runStatus(bin, args, read, timeout = 8000) {
   return new Promise((resolve) => {
-    execBin(execFile, bin, args, { timeout: 8000, maxBuffer: 64 * 1024 }, (err, stdout) => {
+    execBin(execFile, bin, args, { timeout, maxBuffer: 64 * 1024 }, (err, stdout) => {
       resolve(read(err, stdout));
     });
   });
+}
+
+// agy 는 로그인 확인 명령이 따로 없다: `agy models` 가 종료 코드 0 이고 모델이 한 줄이라도 나오면 로그인됨(로그아웃 때 동작은 미확인 → 아니면 로그인 전으로 본다)
+export function agyModelsOf(err, stdout) {
+  return err ? [] : parseAgyModels(stdout);
 }
 
 export async function agentLogin(agent, deps = {}) {
@@ -102,6 +114,12 @@ export async function agentLogin(agent, deps = {}) {
       const text = String(stdout ?? '');
       return /logged in/i.test(text) && !/not logged in/i.test(text);
     });
+    return { installed: true, loggedIn };
+  }
+  if (agent === 'agy') {
+    const bin = locate('agy');
+    if (!bin) return { installed: false, loggedIn: false };
+    const loggedIn = await runStatus(bin, ['models'], (err, stdout) => agyModelsOf(err, stdout).length > 0, 20000);
     return { installed: true, loggedIn };
   }
   return { installed: false, loggedIn: false };
