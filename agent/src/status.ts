@@ -22,7 +22,7 @@ export type Features = {
   // 끝난 할 일 판정·할 일 진행 확인·지식그래프·프로필 학습. by = 돌리는 뇌(null = 안 돎)
   background: { by: FeatureBrain | null; ready: boolean | null; detail: string };
   mcp: boolean;          // MCP 커넥터를 읽나(Claude Code 뇌만)
-  code: boolean | null;  // 코드 고치기·워크트리·백그라운드 에이전트(Claude Code 로그인)
+  code: boolean | null;  // 코드 고치기: 뇌가 Codex·agy 면 그 명령, 아니면 Claude Code 로그인(워크트리·백그라운드 에이전트는 Claude 만)
 };
 export type Status = {
   brain: BrainStatus;
@@ -80,7 +80,7 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     brain: { provider, label, ready, local, detail },
     chat: local ? false : ready,
     coder: { claude: claude ?? null, codex, agy },
-    features: { background, mcp, code: claude ?? null },
+    features: { background, mcp, code: provider === "codex" ? codex : provider === "agy" ? agy : claude ?? null },
     connectors: CAPABILITIES.map((cap) => {
       const x = st.find((s) => s.cap === cap)!;
       const needs = x.mode === "mcp" && !mcp;
