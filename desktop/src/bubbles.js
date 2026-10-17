@@ -8,7 +8,7 @@ export const MAX_VISIBLE = 3;
 export const IMAGES = ['merge', 'merge_complete', 'lots', 'daily', 'daily_all_complete', 'daily_half_complete', 'to_do_new'];
 export const SEQUENCE_GAP = 600; // 그림 → 글 사이
 export const STICKER_TTL = 15000; // 글이 오래 남아도 그림은 이만큼만
-const OPEN_SECTIONS = ['overview', 'projects', 'todos', 'today', 'chat', 'setup', 'models', 'settings'];
+const OPEN_SECTIONS = ['overview', 'projects', 'todos', 'chat', 'research', 'setup', 'models', 'settings'];
 const DETAIL_MAX = 1200;
 
 // 데몬에서 온 payload 정리. 잘못된 건 null.
@@ -69,7 +69,7 @@ export function tourButtons(b) {
 // 누르면 열 패널 위치 { section, id? } — 모르는 섹션·이상한 id 는 버린다
 export function normalizeOpen(o) {
   if (!o || typeof o !== 'object') return null;
-  const section = o.section === 'scrum' ? 'today' : o.section;
+  const section = o.section === 'scrum' || o.section === 'today' ? 'todos' : o.section;
   if (!OPEN_SECTIONS.includes(section)) return null;
   const r = { section };
   if (typeof o.id === 'string' && o.id && o.id.length <= 500) r.id = o.id;

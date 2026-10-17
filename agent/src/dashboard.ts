@@ -1,4 +1,5 @@
 // 데스크톱 패널용 스냅샷(GET /dashboard). 지식그래프 프로젝트 + git 커밋 + 할 일·제안·브리핑·오늘 할 일 표.
+import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { sep } from "node:path";
 import { HOME_DIR } from "./config.ts";
@@ -14,6 +15,7 @@ export type DashProject = {
   name: string; path: string; lastActive: string; sessions24h: number;
   lastTitle: string | null; lastPrompt: string | null; branch: string | null;
   commitsToday: number; recentCommits: Commit[];
+  onMac?: boolean; // 접두 없는 경로가 이 Mac 에 있나(VS Code 원격 세션 기록은 서버 경로가 접두 없이 온다). 접두 경로는 생략
   hidden: boolean; // 패널에서 숨김 — 목록 끝에 모아 보여주고 집계·프롬프트에선 뺀다
 };
 export type Dashboard = {
@@ -37,6 +39,7 @@ export type DashTodo = {
   description?: string; // 있으면(브리핑이 썼거나 한 번 만들어 둔 것) — 원본은 GET /todos/:id/detail
   appliedRule?: { id: string; text: string }; // 이 할 일에 적용된 할 일 규칙
   progress?: string; progressAt?: string; // 어디까지 됐는지(할 일 진행 확인 — todo-progress.ts)
+  due?: string; // 마감(ISO) — 미리알림에서 옴
   doing?: boolean; today?: string; // doing: 사용자가 누른 (진행중) 토글(▶/⏸)
 };
 export type DashboardDeps = {
@@ -89,6 +92,7 @@ function dashTodo(t: Todo): DashTodo {
     ...(t.doneBy === "auto" && t.autoReason ? { autoReason: t.autoReason } : {}),
     ...(t.doneBy === "auto" && t.autoEvidence?.permalink ? { autoEvidence: t.autoEvidence.permalink } : {}),
     ...(t.doing !== undefined ? { doing: t.doing } : {}),
+    ...(t.due ? { due: t.due } : {}),
     ...(t.today ? { today: t.today } : {}), // 오늘 할 일로 고른 날(KST). 그날이면 '오늘 할 일' 탭에도 보인다
   };
 }
@@ -134,6 +138,7 @@ function projects(store: Store, repos: RepoActivity[], now: Date, withSessions =
       commitsToday: g.repo?.commitsToday.length ?? 0,
       recentCommits: g.repo?.recentCommits ?? [],
       hidden: false,
+      ...(/^[^\s:/\\]{2,}:\//.test(path) ? {} : { onMac: existsSync(path) }),
     });
   }
   const hidden = store.hiddenProjects();

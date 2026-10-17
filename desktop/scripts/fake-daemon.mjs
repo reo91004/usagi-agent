@@ -118,6 +118,9 @@ let todos = D.todos ?? [
   { id: 'jira:CY-12', title: 'CY-12 패널 접근성 점검', source: 'jira', link: 'https://example.atlassian.net/browse/CY-12', priority: 1, today: today() },
   { id: 'slack:3', title: '#cy-agent 어제 질문에 답장', source: 'slack', link: 'slack://channel?team=T1&id=C1', priority: 2 },
   { id: 'cal:4', title: '내일 1:1 안건 적기', source: 'calendar', link: null, priority: 3 },
+  { id: 'reminder:r1', title: '쿠팡와우 해지', source: 'reminders', priority: 3, note: '미리알림 「할 일」', due: new Date(Date.now() + 4 * 864e5).toISOString() },
+  { id: 'reminder:r2', title: '세금 서류 제출', source: 'reminders', priority: 1, note: '미리알림 「할 일」', due: new Date(Date.now() - 864e5).toISOString() },
+  { id: 'user:u1', title: '직접 적은 할 일', source: 'user', priority: 2 },
   { id: 'local:5', title: '노트 레포 정리', source: 'local', priority: 4 },
   { id: 'mail:news', title: '팀 뉴스레터 10월호 훑어보기', source: 'mail', priority: 4, appliedRule: { id: 'rule:seed0', text: '앞으로 뉴스레터는 백로그로' } },
   { id: 'slack:weekly134', title: '제134회 주간회의(10/15 목 10:00) 참석 여부 정하기', source: 'slack', priority: 2 },
@@ -192,6 +195,29 @@ function dashboard() {
     trashCount: trash.length,
     meetings: fakeMeetings(),
     connectors: fakeConnectors(),
+    research: {
+      hosts: ['pacl-208', 'pacl-reo'],
+      jobs: [
+        { id: 'job:pacl-208:1', name: '우사기 확인(공용 208)', host: 'pacl-208', state: 'done', seconds: 1, code: 0, cmd: 'sleep 1', at: ago(300) },
+        { id: 'job:pacl-reo:2', name: 'r117 head', host: 'pacl-reo', state: 'failed', seconds: 5400, code: 1, at: ago(120) },
+      ],
+      tmux: {
+        'pacl-208': { at: ago(1), sessions: [
+          { name: 'r117', running: 'python', path: '/home/user/reo/experiments', created: Date.now() / 1000 - 7200, activity: Date.now() / 1000 - 30 },
+          { name: 'scratch', running: null, path: '/home/user/reo', created: Date.now() / 1000 - 90000, activity: Date.now() / 1000 - 80000 },
+        ] },
+        'pacl-reo': { at: ago(1), sessions: [] },
+      },
+      note: { day: '2026-10-17', exists: true },
+    },
+    directives: {
+      from: [{ id: 'UPROF', name: '김교수' }],
+      candidates: [{ id: 'UPHD', name: '박선배', count: 3, channel: 12 }],
+      open: [
+        { id: 'message:D1:1.1', authorName: '김교수', isDM: true, text: '논문 그림 3 축 라벨 고쳐 주세요', at: ago(60) },
+        { id: 'message:C1:2.1', authorName: '김교수', isDM: false, channelLabel: '#일반', text: '이번 주 금요일까지 실험 결과 공유 부탁드립니다', at: ago(120) },
+      ],
+    },
   };
 }
 
@@ -283,7 +309,7 @@ function fakeChat(text, focus, ports) {
       return;
     }
     // "오늘 할 일" 이 들어가면 답과 함께 SSE open_panel 로 패널을 연다
-    if (/오늘.?할.?일/.test(text)) emit('open_panel', { section: 'today' });
+    if (/오늘.?할.?일/.test(text)) emit('open_panel', { section: 'todos' });
     if (focus) {
       let reply;
       const still = todos.find((x) => x.id === focus.id);

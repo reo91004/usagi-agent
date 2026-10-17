@@ -102,6 +102,17 @@ export function keyMove(todos, id, key) {
   return null;
 }
 
+// 마감 칩: 지남(빨강) · 오늘 마감 · 「10/21 마감」. 날짜는 이 맥의 시간대 기준, 마감이 없으면 null
+export function dueChip(due, now = Date.now()) {
+  const t = Date.parse(due);
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t), n = new Date(now);
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  if (day(d) < day(n)) return { text: '지남', kind: 'late' };
+  if (day(d) === day(n)) return { text: '오늘 마감', kind: 'today' };
+  return { text: `${d.getMonth() + 1}/${d.getDate()} 마감`, kind: 'soon' };
+}
+
 // ---- 상세(펼침) ----
 const str = (v) => (typeof v === 'string' ? v : '');
 // 할 일 출처(source) → 화면 이름. 할 일 줄 칩과 펼침이 같이 쓴다

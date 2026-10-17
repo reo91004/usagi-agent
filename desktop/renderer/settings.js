@@ -243,7 +243,7 @@ function renderLocal() {
   const cb = el('input');
   cb.type = 'checkbox';
   cb.checked = v.sessions;
-  cb.title = 'Claude Code·Codex 대화 기록(~/.claude/projects, ~/.codex/sessions)을 읽어서 최근 프로젝트와 할 일 진행을 정리해요. config.json 의 sessionHosts 에 적은 ssh 서버의 기록도 받아 와요';
+  cb.title = 'Claude Code·Codex 대화 기록(~/.claude/projects, ~/.codex/sessions)을 읽어서 최근 작업 폴더와 할 일 진행을 정리해요. config.json 의 sessionHosts 에 적은 ssh 서버의 기록도 받아 와요';
   cb.addEventListener('change', async () => {
     cb.disabled = true;
     const ok = await save({ readSessions: cb.checked });

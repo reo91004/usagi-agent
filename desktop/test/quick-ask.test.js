@@ -7,11 +7,12 @@ import { brainView, connectCard, chatLock } from '../src/brain-state.js';
 
 const noAi = brainView({ status: { brain: { provider: 'local', label: '로컬', ready: true, local: true }, chat: false, coder: {}, connectors: [] } });
 
-test('칩 목록: 질문 다섯 개(응원·춤 포함) + 마지막 AI 연결하기', () => {
-  assert.deepEqual(QUICK_CHIPS.map((c) => c.label), ['오늘 할 일 얼마나 했어요?', '지금 할 일 뭐 있어요?', '다음 일정은요?', '응원해 줘', '춤춰 줘', 'AI 연결하기']);
+test('칩 목록: 질문 다섯 개(응원·춤 포함) + 집중하기 + 마지막 AI 연결하기', () => {
+  assert.deepEqual(QUICK_CHIPS.map((c) => c.label), ['오늘 할 일 얼마나 했어요?', '지금 할 일 뭐 있어요?', '다음 일정은요?', '응원해 줘', '춤춰 줘', '집중하기', 'AI 연결하기']);
   assert.deepEqual(ASK_IDS, ['today', 'next_todo', 'next_event', 'cheer', 'dance']);
   assert.ok(isAskId('cheer'));
   assert.ok(!isAskId('connect'));
+  assert.ok(!isAskId('focus'));
   for (const c of QUICK_CHIPS) assert.ok(!c.label.includes('\u2014'));
 });
 
@@ -20,9 +21,9 @@ test('quickBubble: 칩 말풍선이 normalizeBubble 을 거쳐도 칩이 남는�
   const raw = quickBubble(noAi);
   assert.equal(raw.id, QUICK_ID);
   const b = normalizeBubble(raw);
-  assert.deepEqual(b.quick, ['today', 'next_todo', 'next_event', 'cheer', 'dance', 'connect']);
+  assert.deepEqual(b.quick, ['today', 'next_todo', 'next_event', 'cheer', 'dance', 'focus', 'connect']);
   // AI가 있으면(입력창 ＋) 「AI 연결하기」는 빼고 같은 칩
-  assert.deepEqual(quickBubble({ ready: true }).quick, ['today', 'next_todo', 'next_event', 'cheer', 'dance']);
+  assert.deepEqual(quickBubble({ ready: true }).quick, ['today', 'next_todo', 'next_event', 'cheer', 'dance', 'focus']);
   assert.ok(b.ttlMs > 0);
   assert.deepEqual(clickTarget(b).type === 'open', false); // 말풍선 자체는 어디로도 안 연다(칩만)
   assert.match(quickBubble({ ready: false, provider: 'claude-code', known: true }).text, /Claude Code 로그인 전/);
@@ -42,14 +43,15 @@ test('normQuick: 아는 id 만, 정해진 순서로', () => {
 test('chipAction: AI 연결하기는 마법사 뇌 단계, 나머지는 데몬에 묻기', () => {
   assert.deepEqual(chipAction('connect'), { type: 'open', section: 'setup', id: 'brain' });
   assert.deepEqual(chipAction('next_event'), { type: 'ask', id: 'next_event' });
+  assert.deepEqual(chipAction('focus'), { type: 'focus' }); // 데몬에 묻지 않고 집중 타이머 시작
   assert.equal(chipAction('rm -rf'), null);
 });
 
 test('answerBubble: 데몬 답 → 말풍선, 실패면 다시 눌러 달라고', () => {
-  const ok = answerBubble('today', { ok: true, status: 200, data: { ok: true, answer: { id: 'today', text: '오늘 할 일 5개 중 3개 끝냈어요.', kind: 'info', open: { section: 'today' } } } });
-  assert.deepEqual(ok, { id: 'local-ask-today', kind: 'info', ttlMs: 12000, text: '오늘 할 일 5개 중 3개 끝냈어요.', open: { section: 'today' }, openLabel: '오늘 할 일 보기' });
+  const ok = answerBubble('today', { ok: true, status: 200, data: { ok: true, answer: { id: 'today', text: '오늘 할 일 5개 중 3개 끝냈어요.', kind: 'info', open: { section: 'todos' } } } });
+  assert.deepEqual(ok, { id: 'local-ask-today', kind: 'info', ttlMs: 12000, text: '오늘 할 일 5개 중 3개 끝냈어요.', open: { section: 'todos' }, openLabel: '할 일 보기' });
   const b = normalizeBubble(ok);
-  assert.deepEqual(b.open, { section: 'today' });
+  assert.deepEqual(b.open, { section: 'todos' });
   const todo = answerBubble('next_todo', { ok: true, data: { answer: { text: '지금은', kind: 'info', detail: '- P1 a', open: { section: 'todos' } } } });
   assert.equal(todo.detail, '- P1 a');
   assert.equal(todo.openLabel, '할 일 보기');

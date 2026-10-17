@@ -13,9 +13,10 @@ import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
 import { defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
 import { showOnCurrentSpace } from './src/spaces.js';
-import { normalizeSection } from './src/dashboard.js';
+import { normalizeSection, splitHost } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
 import { okRuleId, sanitizeRulePatch } from './src/todo-rules.js';
+import { sshConfigHosts, remoteUrl } from './src/folders.js';
 import { clickTarget, pickRun, okRunId, okModelId, cleanMessage } from './src/session.js';
 import { okClientId, okMsgId } from './src/session-inbox.js';
 import { okToolUseId, normAgents, runningCount } from './src/agents.js';
@@ -40,6 +41,7 @@ import { normStatus, brainView, sameView } from './src/brain-state.js';
 import { menuTemplate as buildMenuTemplate } from './src/menu.js';
 import { isAskId } from './src/quick-ask.js';
 import { isFocusCmd, DAY_RE, doingTodos } from './src/focus.js';
+import { dockWanted, panelClickAction } from './src/dock.js';
 import { tourSteps, tourBubble, TOUR_VERSION } from './src/tour.js';
 import { NEW_DAEMON_CONFIG, cleanSetupPatch, openSetupAtLaunch, setupView } from './src/setup-plan.js';
 import { attachConsole, assembleBundle, collectLogFiles, createRing, formatLogLine, redact, shapeConnectorsSafe } from './src/debug-share.js';
@@ -600,6 +602,8 @@ function createPanel() {
     state.panel = panel.getBounds();
     saveState();
   };
+  panel.on('show', applyDock);
+  panel.on('hide', applyDock);
   panel.on('resize', remember);
   panel.on('move', remember);
   // 닫기는 숨기기 — 편집 중인 내용 유지. 종료 때만 진짜 닫힘
@@ -640,7 +644,7 @@ function showOrigin(origin) {
 
 // 캐릭터 클릭: 안 보이면 열고, 뒤에 있으면 앞으로, 앞에 있으면 숨김
 function togglePanel() {
-  if (panel && panel.isVisible() && panel.isFocused()) panel.hide();
+  if (panelClickAction({ visible: !!panel?.isVisible(), focused: !!panel?.isFocused() }) === 'hide') panel.hide();
   else showPanel(null);
 }
 
@@ -1075,11 +1079,28 @@ function loadCharacters() {
   return charactersLoading;
 }
 
-// Dock 아이콘은 기본으로 숨긴다(번들 LSUIElement). 숨겨도 메뉴 막대 아이콘·캐릭터·패널은 그대로 — 설정 「이 앱」에서 켠다
+// Dock 아이콘은 기본으로 숨긴다(번들 LSUIElement). 숨겨도 메뉴 막대 아이콘·캐릭터·패널은 그대로.
+// 패널이 열려 있는 동안만 보여 Cmd+Tab 으로 돌아올 수 있게 하고(#121), 설정 「이 앱」에서 켜면 늘 보인다
+let dockOn = null;
 function applyDock() {
   if (process.platform !== 'darwin' || !app.dock) return;
-  if (state.showInDock === true) app.dock.show().catch(() => {});
-  else app.dock.hide();
+  const want = dockWanted({ panelVisible: !!panel && !panel.isDestroyed() && panel.isVisible(), showInDock: state.showInDock });
+  if (want === dockOn) return;
+  dockOn = want;
+  quietActivation(1500); // 앱 종류가 바뀌며 생기는 활성화로 패널·입력창이 흔들리지 않게
+  if (want) {
+    app.dock.show().catch(() => {}).then(() => { if (!dockOn) app.dock.hide(); keepOverlayAbove(); }); // 그 사이 닫혔으면 되돌린다
+  } else {
+    app.dock.hide();
+    keepOverlayAbove();
+  }
+}
+
+// Dock 표시가 바뀌면 오버레이의 항상 위·모든 데스크탑 설정이 풀릴 수 있어 다시 건다
+function keepOverlayAbove() {
+  if (!win || win.isDestroyed()) return;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 }
 
 function setupAppActivation() {
@@ -1628,6 +1649,7 @@ function setupIPC() {
     if (!fromOurs(e) || !['calendar', 'reminders'].includes(kind)) return denied();
     return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${kind === 'calendar' ? 'Calendars' : 'Reminders'}`).then(() => ({ ok: true }), () => ({ ok: false }));
   });
+  ipcMain.handle('research-job-forget', (e, id) => (fromOurs(e) && typeof id === 'string' && /^job:[\w.:-]{1,200}$/.test(id) ? post('/research/jobs/forget', { id }) : denied()));
   ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
   ipcMain.handle('research-note-open', async (e, day) => {
     if (!fromOurs(e) || typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return denied();
@@ -1691,6 +1713,32 @@ function setupIPC() {
   ipcMain.handle('project-hide', (e, id, hide) => {
     if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || typeof hide !== 'boolean') return denied();
     return post(`/projects/${hide ? 'hide' : 'unhide'}`, { id });
+  });
+  // 작업 폴더: ssh 서버 목록(~/.ssh/config 별칭) · VS Code/Finder 로 열기. 경로는 대시보드 목록에 있는 것만 받는다
+  const sshHosts = () => { try { return sshConfigHosts(fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8')); } catch { return []; } };
+  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  const codeApp = () => ['/Applications', path.join(os.homedir(), 'Applications')].map((d) => path.join(d, 'Visual Studio Code.app')).find((a) => fs.existsSync(a));
+  ipcMain.handle('folder-hosts', (e) => (fromOurs(e) ? { ok: true, hosts: sshHosts() } : denied()));
+  ipcMain.handle('folder-open', async (e, id, how, pick) => {
+    if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || !['code', 'finder'].includes(how) || (pick != null && typeof pick !== 'string')) return denied();
+    const r = await request('GET', '/dashboard');
+    if (!r.ok || !r.data?.projects?.some((p) => p?.path === id)) return { ok: false, error: '목록에 없는 폴더예요' };
+    const { host, dir } = splitHost(id);
+    const local = !host && isDir(dir);
+    if (how === 'finder') {
+      if (!local) return { ok: false, error: '이 Mac 에 있는 폴더만 Finder 로 열 수 있어요' };
+      const err = await shell.openPath(dir);
+      return err ? { ok: false, error: err } : { ok: true };
+    }
+    const app = process.platform === 'darwin' ? codeApp() : 'code';
+    if (!app) return { ok: false, error: 'VS Code 를 찾지 못했어요. 설치하면 바로 열 수 있어요' };
+    if (local) {
+      const args = process.platform === 'darwin' ? ['-a', app, dir] : [dir];
+      return new Promise((done) => execFile(process.platform === 'darwin' ? 'open' : 'code', args, (err) => done(err ? { ok: false, error: 'VS Code 를 열지 못했어요' } : { ok: true })));
+    }
+    const url = remoteUrl(host || pick, dir, sshHosts());
+    if (!url) return { ok: false, error: host || pick ? `~/.ssh/config 에서 서버 ${host || pick} 를 찾지 못했어요` : '어느 서버의 폴더인지 몰라요' };
+    return shell.openExternal(url).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
   });
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기 · 지우기
   ipcMain.handle('todo-rules', (e) => (fromOurs(e) ? request('GET', '/todo-rules') : denied()));

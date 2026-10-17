@@ -44,7 +44,7 @@ test("dashboard: 계약 모양, 세션·커밋 병합, 7일 밖 제외, 최신�
   const app = d.projects[0];
   assert.deepEqual(app, {
     name: "app", path: "/code/app", lastActive: ago(0.5), sessions24h: 1, lastTitle: "세션 s2", lastPrompt: "요청 s2",
-    branch: "main", commitsToday: 1, recentCommits: [{ sha: "a1", subject: "feat", time: ago(0.5) }], hidden: false,
+    branch: "main", commitsToday: 1, recentCommits: [{ sha: "a1", subject: "feat", time: ago(0.5) }], hidden: false, onMac: false,
   });
   assert.equal(d.projects[1].commitsToday, 0);
   assert.deepEqual(d.projects[1].recentCommits, []);

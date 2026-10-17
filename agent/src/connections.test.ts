@@ -212,7 +212,7 @@ test("Connections: 이 Mac 캘린더·미리알림·실험 서버·연구 노트
   writeFileSync(join(g, "logseq", "config.edn"), "{}");
   const on = (await make({}, { connectors: { calendar: { mode: "api", local: true } }, appleReminders: true, sshHosts: ["gpu1"], jobHosts: ["gpu2"], tineGraph: g }).c.list()).rows;
   assert.deepEqual([byId(on, "apple").state, byId(on, "apple").detail], ["ok", "캘린더·미리알림(할 일로)을 읽어요"]);
-  assert.match(byId(on, "ssh").detail!, /^gpu1·gpu2 · 끝난 실험 알림·물어보면 폴더·결과·GPU$/);
+  assert.match(byId(on, "ssh").detail!, /^gpu1·gpu2 · usagi-run 끝 알림·tmux 세션 보기·물어보면 폴더·결과·GPU 확인$/);
   assert.equal(byId(on, "research-note").state, "ok");
 });
 

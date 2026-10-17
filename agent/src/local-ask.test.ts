@@ -23,7 +23,7 @@ test("오늘 할 일: 일부 끝냄 → 개수와 남은 것", () => {
   const a = quickAnswer("today", f, SEED);
   assert.equal(a.kind, "info");
   assert.equal(plain(a.text), "오늘 할 일 5개 중 3개 끝냈어요. 남은 건 '코드 리뷰', '장 보기'예요.");
-  assert.deepEqual(a.open, { section: "today" });
+  assert.deepEqual(a.open, { section: "todos" });
   const many = quickAnswer("today", { now, today: [{ title: "a", done: true }, ...["b", "c", "d"].map((t) => ({ title: t, done: false }))] }, SEED);
   assert.match(plain(many.text), /남은 건 'b', 'c' 외 1개예요/);
 });

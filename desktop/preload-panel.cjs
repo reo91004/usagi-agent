@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('cy', {
   openPrivacy: (kind) => ipcRenderer.invoke('open-privacy', String(kind)), // 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림
   directiveDecide: (id, decision) => ipcRenderer.invoke('directive-decide', String(id), String(decision)), // 지시사항 [할 일로]·[괜찮아요]
   directiveFrom: (ids) => ipcRenderer.invoke('directive-from', Array.isArray(ids) ? ids.map(String) : []), // 지시자 목록 저장
+  researchJobForget: (id) => ipcRenderer.invoke('research-job-forget', String(id)), // usagi-run 기록 하나 지우기
   researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
   refreshSources: () => ipcRenderer.invoke('refresh-sources'), // ↻: 슬랙·메일 지금 다시 읽고 할 일 반영
   todoDone: (id) => ipcRenderer.invoke('todo-done', String(id)),
@@ -42,6 +43,8 @@ contextBridge.exposeInMainWorld('cy', {
   todoReorder: (id, priority, beforeId) => ipcRenderer.invoke('todo-reorder', String(id), Number(priority), beforeId == null ? null : String(beforeId)),
   // 프로젝트 숨기기(hide=true) / 다시 보이기(false). id = 프로젝트 경로
   projectHide: (path, hide) => ipcRenderer.invoke('project-hide', String(path), !!hide),
+  folderHosts: () => ipcRenderer.invoke('folder-hosts'), // ~/.ssh/config 서버 별칭 [{ host, user }]
+  folderOpen: (path, how, host) => ipcRenderer.invoke('folder-open', String(path), String(how), host ? String(host) : null), // how: code | finder
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기({ enabled?, text? }) · 지우기
   todoRules: () => ipcRenderer.invoke('todo-rules'),
   todoRuleEdit: (id, patch) => ipcRenderer.invoke('todo-rule-edit', String(id), patch),

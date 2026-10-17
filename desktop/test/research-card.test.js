@@ -60,14 +60,29 @@ test('shapeDirectives: Slack 연결 전 null, 사람 id 검사, 지시 줄(DM·�
   assert.equal(shapeDirectives(undefined, NOW), null);
   const d = shapeDirectives({
     from: [{ id: 'UPROF', name: '김교수' }, { id: 'bad' }],
-    candidates: [{ id: 'UFRIEND', name: '친구', count: 3 }],
+    candidates: [{ id: 'UFRIEND', name: '친구', count: 3, channel: 12 }],
     open: [
       { id: 'message:D1:1.1', authorName: '김교수', isDM: true, text: '그림 3\n고쳐 주세요', at: ago(1), permalink: 'https://lab.slack.com/archives/D1/p11' },
-      { id: 'message:C1:2.1', authorName: '김교수', isDM: false, channelLabel: 'lab', text: '결과 공유', at: ago(2), permalink: 'javascript:alert(1)' },
+      { id: 'message:C1:2.1', authorName: '김교수', isDM: false, channelLabel: '#lab', text: '결과 공유', at: ago(2), permalink: 'javascript:alert(1)' },
       { id: 'x', text: 'id 이상' },
     ],
   }, NOW);
   assert.deepEqual(d.from, [{ id: 'UPROF', name: '김교수' }]);
-  assert.deepEqual(d.candidates, [{ id: 'UFRIEND', name: '친구', count: 3 }]);
+  assert.deepEqual(d.candidates, [{ id: 'UFRIEND', name: '친구', count: 3, channel: 12 }]);
   assert.deepEqual(d.open.map((x) => [x.where, x.text, x.rel, x.link]), [['DM', '그림 3 고쳐 주세요', '1시간 전', 'https://lab.slack.com/archives/D1/p11'], ['#lab', '결과 공유', '2시간 전', null]]);
+});
+
+test('shapeResearch: tmux 세션(도는 중·쉬는 중), 지울 수 있는 기록', async () => {
+  const { shapeResearch } = await import('../src/dashboard.js');
+  const r = shapeResearch({
+    hosts: ['pacl-208', 'pacl-ugrp'],
+    jobs: [{ id: 'job:a', name: '우사기 확인', host: 'pacl-208', state: 'done', seconds: 1, at: ago(1) }, { id: 'job:b', name: '학습', state: 'running', start: NOW / 1000 - 60, at: ago(1) }],
+    tmux: { 'pacl-208': { at: ago(0.01), sessions: [
+      { name: 'claude', running: 'claude', path: '/home/user/reo/dp', created: NOW / 1000 - 7200, activity: NOW / 1000 - 600 },
+      { name: 'sh', running: null, path: '/home/user/reo', created: NOW / 1000 - 90000, activity: NOW / 1000 - 90000 },
+    ] } },
+  }, NOW);
+  assert.deepEqual(Object.fromEntries(r.jobs.map((j) => [j.id, j.forgettable])), { 'job:a': true, 'job:b': false });
+  assert.deepEqual(r.tmux.map((t) => t.host), ['pacl-208']); // 아직 못 읽은 서버는 없음
+  assert.deepEqual(r.tmux[0].sessions.map((x) => [x.name, x.label, x.time]), [['claude', '도는 중 (claude)', '2시간 전 만듦 · 마지막 활동 10분 전'], ['sh', '쉬는 중', '어제 만듦 · 마지막 활동 어제']]);
 });
