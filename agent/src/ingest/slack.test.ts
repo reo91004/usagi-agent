@@ -349,3 +349,56 @@ test("무시 채널: history 를 요청하지 않고, 이미 모은 글도 atten
   new SlackIngester({ ...cfg, slackMuted: [] }, store, deps(null as any));
   assert.ok(attentionSince(store, since).some((i) => i.channel === "C1"));
 });
+
+test("attentionSince: 닫은 할 일에 이어진 범위는 닫은 시각까지 온 메시지를 빼고, 새 메시지·다시 열기는 되살린다", () => {
+  const store = new Store(":memory:");
+  const iso = (n: number) => new Date(1.8e12 + n * 1000).toISOString();
+  const tsOf = (n: number) => `${1.8e9 + n}.000100`;
+  const chan = (id: string, label: string, isDM: boolean) => store.upsertNode(`channel:${id}`, "channel", label, { isDM, type: isDM ? "im" : "public" });
+  const msg = (ch: string, n: number, extra: Record<string, any> = {}, isDM = false) =>
+    store.upsertNode(`message:${ch}:${tsOf(n)}`, "message", "m", { channel: ch, ts: tsOf(n), author: "UA", authorName: "A", text: "x", isDM, mentionsMe: !isDM, fromMe: false, ...extra }, iso(n));
+  chan("D1", "DM with 김호은", true); chan("D3", "DM with 박서준", true); chan("C1", "#dev", false);
+  msg("D1", 10, {}, true); msg("D3", 10, {}, true);
+  msg("C1", 10, { thread_ts: tsOf(5) }); msg("C1", 20, { thread_ts: tsOf(15) });
+  const chans = () => attentionSince(store, iso(0)).map((i) => `${i.channel}${i.threadTs ? "@" + i.threadTs : ""}`).sort();
+  const todoId = () => (store.db.prepare("SELECT id FROM todos").get() as any).id as string;
+  const close = (at: number) => store.db.prepare("UPDATE todos SET status = 'done', updated = ?").run(iso(at));
+  assert.deepEqual(chans(), ["C1@" + tsOf(5), "C1@" + tsOf(15), "D1", "D3"]);
+
+  // sourceRef 로 이은 DM 은 대화 전체가 빠진다
+  store.addTodo({ title: "답장", source: "slack", sourceRef: `slack:D1:p${tsOf(10).replace(".", "")}` });
+  close(30);
+  assert.deepEqual(chans(), ["C1@" + tsOf(5), "C1@" + tsOf(15), "D3"]);
+  msg("D1", 40, {}, true); // 닫은 뒤 새 메시지
+  assert.ok(chans().includes("D1"));
+  close(50);
+  assert.ok(!chans().includes("D1"));
+  store.db.prepare("UPDATE todos SET status = 'open'").run(); // 다시 열기
+  assert.ok(chans().includes("D1"));
+  store.db.prepare("DELETE FROM todos").run();
+
+  // 스레드 범위는 다른 스레드에 번지지 않는다(permalink 의 thread_ts)
+  store.addTodo({ title: "리뷰", source: "slack", link: `https://x.slack.com/archives/C1/p${tsOf(10).replace(".", "")}?thread_ts=${tsOf(5)}` });
+  close(30);
+  assert.deepEqual(chans(), ["C1@" + tsOf(15), "D1", "D3"]);
+  store.db.prepare("DELETE FROM todos").run();
+
+  // 제목의 DM 상대 이름: 그런 DM 이 하나일 때만 잇는다. 휴지통도 닫은 것
+  store.addTodo({ title: "박서준 DM 답장" });
+  store.trashTodo(todoId(), iso(30));
+  assert.ok(!chans().includes("D3"));
+  store.db.prepare("DELETE FROM todos").run();
+  store.addTodo({ title: "박서준 님 견적 메시지 정리" }); // 이름만 같은 다른 일(DM·Slack 이란 말 없음, admin 같은 낱말 속 dm 도 아님)은 잇지 않는다
+  close(30);
+  assert.ok(chans().includes("D3"));
+  store.db.prepare("DELETE FROM todos").run();
+  msg("D3", 12, { thread_ts: tsOf(10) }, true); // DM 안 스레드 답글은 스레드 범위(attentionSince 와 같은 키)
+  store.addTodo({ title: "답장", source: "slack", link: `https://x.slack.com/archives/D3/p${tsOf(12).replace(".", "")}?thread_ts=${tsOf(10)}` });
+  close(30);
+  assert.ok(chans().includes("D3") && !chans().includes("D3@" + tsOf(10)));
+  store.db.prepare("DELETE FROM todos").run();
+  chan("D4", "DM with 박서준", true); // 같은 이름 DM 이 둘
+  store.addTodo({ title: "박서준 DM 답장" });
+  close(30);
+  assert.ok(chans().includes("D3"));
+});
