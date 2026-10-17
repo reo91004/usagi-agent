@@ -1010,9 +1010,12 @@ function createAppMenu() {
 // 오버레이 상호작용(호버 입력창 포커스, 우클릭 메뉴)이나 로그인 직후 자동 실행으로 활성화된 건 제외.
 let activationQuietUntil = 0;
 const quietActivation = (ms) => { activationQuietUntil = Math.max(activationQuietUntil, Date.now() + ms); };
+// 커서가 캐릭터·말풍선 위에 있거나 끄는 중이면 그 활성화는 캐릭터를 누른 것이다 — 패널은 렌더러의 클릭 판정이 연다(끌고 놓을 때 패널이 뜨던 것)
+let overlayHot = false;
+const touchingOverlay = () => overlayHot || !!drag;
 
 function onAppActivated() {
-  if (quitting || Date.now() < activationQuietUntil) return;
+  if (quitting || Date.now() < activationQuietUntil || touchingOverlay()) return;
   const focused = BrowserWindow.getFocusedWindow();
   if (focused && focused === win) return; // 오버레이 입력창 쓰는 중
   if (focused && focused === sessionWin) return; // 작업 세션 창을 보는 중
@@ -1088,7 +1091,7 @@ function setupAppActivation() {
   quietActivation(2000); // 시작 직후(로그인 자동 실행) 패널을 띄우지 않음
   app.on('did-become-active', () => setTimeout(onAppActivated, 50));
   // Dock 클릭 / 실행 중 다시 열기 — 명시적이라 이미 앞에 있어도 연다(시작 직후만 제외)
-  app.on('activate', () => { if (!quitting && Date.now() >= activationQuietUntil) showPanel(null); });
+  app.on('activate', () => { if (!quitting && Date.now() >= activationQuietUntil && !touchingOverlay()) showPanel(null); });
   app.on('second-instance', () => showPanel(null));
 }
 
@@ -1223,6 +1226,7 @@ function endDrag() {
   state.pos = { x, y: p.y };
   state.flip = p.flip;
   saveState();
+  quietActivation(800); // 놓은 뒤 늦게 오는 활성화도 패널을 띄우지 않음
 }
 
 // 우리 창에서 온 IPC 만 받는다
@@ -1248,6 +1252,7 @@ function setupIPC() {
   });
   ipcMain.on('set-interactive', (_e, on) => {
     if (!win) return;
+    overlayHot = !!on;
     if (on) win.setIgnoreMouseEvents(false);
     else if (!drag) win.setIgnoreMouseEvents(true, { forward: true });
   });
