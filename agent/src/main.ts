@@ -23,7 +23,6 @@ import { Reactions, realMergeAsk } from "./reactions.ts";
 import { HOME_DIR } from "./config.ts";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { WAIT_SETUP, markFreshInstall, modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 import { execFile } from "node:child_process";
 import { openSpec } from "./plat.ts";
@@ -294,12 +293,8 @@ await bus.listen(cfg.port, {
   todoReorder: (id, priority, beforeId) => agent.reorderTodo(id, priority, beforeId),
   projectHide: (id) => agent.hideProject(id),
   projectUnhide: (id) => agent.unhideProject(id),
-  todoAsk: (id, text) => agent.askTodo(id, text),
-  todoApply: (id, ops, rev, rule) => agent.applyAsk(id, ops, rev, rule),
-  todoReject: (id, text, ops, rule) => agent.rejectAsk(id, text, ops, rule),
   todoRules: () => agent.todoRules(),
   doingTodos: () => store.openTodos().filter((t) => t.doing === true).map((t) => ({ id: t.id, title: t.title })),
-  todoLedger: (day) => agent.todoLedger(day),
   todoRuleEdit: (id, patch) => agent.editRule(id, patch),
   todoRuleDelete: (id) => agent.deleteRule(id),
   chat: (text, opts) => agent.chat(text, opts ?? {}),
@@ -322,9 +317,6 @@ await bus.listen(cfg.port, {
     open: (p) => { const o = openSpec(p); execFile(o.file, o.args, { windowsVerbatimArguments: o.verbatim, windowsHide: true }, () => {}); }, // 기본 앱으로(경로는 bus 가 첨부 폴더 안인지 확인한 것)
     claimRun: (runId, ids) => (runs.getRun(runId, Number.MAX_SAFE_INTEGER) ? agent.claimRunAttachments(runId, ids) : { error: "no such run" }),
   },
-  profileFacts: () => agent.memories(),
-  profileRemember: (text, category) => agent.remember(text, category),
-  profileForget: (idOrText) => agent.forgetMemory(idOrText),
   mergeDecide: (id, decision) => agent.mergeDecide(id, decision),
   mergeAsk: (id, text) => agent.mergeAsk(id, text),
   runs,

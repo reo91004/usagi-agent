@@ -1,6 +1,6 @@
-// 할 일 일지(store.ts todo_ledger) 읽기 도우미: "사용자가 지우거나 끝낸 일" 기억 → 브리핑 맥락·cy todos_list·GET /todos/ledger.
+// 할 일 일지(store.ts todo_ledger) 읽기 도우미: "사용자가 지우거나 끝낸 일" 기억 → 브리핑 맥락·cy todos_list.
 // 기록은 store 의 할 일 변경 경로가 남긴다(added·edited·done·skipped·reopened·trashed·restored·purged·progress·blocked·merged, by user|briefing|rule|auto).
-import { kstDay, type LedgerAction, type LedgerEntry, type Store, type TodoActor } from "./store.ts";
+import { type LedgerAction, type LedgerEntry, type Store, type TodoActor } from "./store.ts";
 import { clip } from "./text.ts";
 
 export const MEMORY_DAYS = 14;
@@ -32,10 +32,4 @@ export function ledgerContext(store: Store, now = new Date()): string {
   const gone = xs.filter((e) => e.action !== "done" && e.action !== "skipped"), done = xs.filter((e) => e.action === "done" || e.action === "skipped");
   return [`## 최근 ${MEMORY_DAYS}일 지우거나 끝낸 할 일 (할 일 일지 — 같은 일이면 다른 key·다른 제목으로도 다시 올리지 마라)`,
     ...gone.slice(0, 30).map(memoryLine), ...done.slice(0, 15).map(memoryLine)].join("\n");
-}
-
-// 하루치 일지(GET /todos/ledger) — day 없으면 오늘(KST)
-export function ledgerDay(store: Store, day?: string, now = new Date()): { day: string; entries: LedgerEntry[]; days: { day: string; count: number }[] } {
-  const d = day ?? kstDay(now);
-  return { day: d, entries: store.ledger({ day: d, limit: 500 }), days: store.ledgerDays(30) };
 }

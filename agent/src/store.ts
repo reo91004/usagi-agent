@@ -348,10 +348,6 @@ export class Store {
     return (this.db.prepare(`SELECT * FROM todo_ledger ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, n DESC LIMIT ?`).all(...args) as any[])
       .map((r) => ({ n: Number(r.n), day: r.day, at: r.at, todoId: r.todo_id, title: r.title, action: r.action, by: r.by, ...(r.detail ? { detail: r.detail } : {}) }));
   }
-  // 기록이 있는 날(최신 먼저)과 건수
-  ledgerDays(limit = 30): { day: string; count: number }[] {
-    return (this.db.prepare("SELECT day, COUNT(*) AS c FROM todo_ledger GROUP BY day ORDER BY day DESC LIMIT ?").all(limit) as any[]).map((r) => ({ day: r.day, count: Number(r.c) }));
-  }
   pruneLedger(before: string): number {
     return Number(this.db.prepare("DELETE FROM todo_ledger WHERE at < ?").run(before).changes);
   }
@@ -599,10 +595,6 @@ export class Store {
       ...(r.base ? { base: r.base } : {}),
     };
   }
-  proposalsByStatus(status: ProposalStatus): Proposal[] {
-    return (this.db.prepare("SELECT id FROM proposals WHERE status = ? ORDER BY created").all(status) as any[])
-      .map((r) => this.proposal(r.id)!);
-  }
   // 상태 전이는 기대 상태일 때만 — 버튼 두 번 눌림/동시 승인 방지
   transition(id: string, from: ProposalStatus[], to: ProposalStatus, result?: string): boolean {
     const marks = from.map(() => "?").join(",");
@@ -734,11 +726,6 @@ export class Store {
   // 숨긴 줄 수
   hideChatFrom(id: string, n: number, at = now()): number {
     return Number(this.db.prepare("UPDATE chat SET hidden_at = ? WHERE thread_id = ? AND n >= ? AND hidden_at IS NULL").run(at, id, n).changes);
-  }
-  // 고친 말의 고치기 전 글(감사용 — 화면·API 에는 안 나간다)
-  chatOriginal(n: number): { text: string; original?: string; edited?: string; hidden?: string } | undefined {
-    const r = this.db.prepare("SELECT text, original_text, edited_at, hidden_at FROM chat WHERE n = ?").get(n) as any;
-    return r ? { text: r.text, ...(r.original_text ? { original: r.original_text } : {}), ...(r.edited_at ? { edited: r.edited_at } : {}), ...(r.hidden_at ? { hidden: r.hidden_at } : {}) } : undefined;
   }
 }
 

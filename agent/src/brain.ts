@@ -41,7 +41,7 @@ import { SHISA_INTRO, withCharacter } from "./characters.ts";
 import { localThought, type LocalTodo } from "./local-mode.ts";
 import { API_TOOL_PROVIDERS, LOCAL_ONLY, remoteJson, resolveAnthropicModel, resolveHttpModel, type ProviderDeps } from "./providers.ts";
 import { GH_HINT, GH_SERVER, ghEnabled, ghMcpServer } from "./gh.ts";
-import { SUBAGENT_SDK_OPTIONS, SUBAGENT_TOOLS, subagentEnv } from "./subagents.ts";
+import { SUBAGENT_SDK_OPTIONS, subagentEnv } from "./subagents.ts";
 import { contextHeader, ctxApiTools, ctxMcpServer, CTX_GUIDE, CTX_SERVER, fmtTime, todoLine, type CtxDeps } from "./ctx-tools.ts";
 import { WorktreeIsolation } from "./agent-worktrees.ts";
 import { DENIED_STEP, LOCK_WAIT_MS, getBroker, waitStep, withRunOrigin, type PermissionBroker, type PermOrigin, type PermWait } from "./permissions.ts";

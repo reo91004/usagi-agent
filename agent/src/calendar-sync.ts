@@ -372,9 +372,6 @@ export class CalendarSync {
     return rows.map((r) => ({ id: r.id, subject: r.subject, start: r.start, end: r.end, ...(r.link ? { link: r.link } : {}), ...(r.web_link ? { webLink: r.web_link } : {}), ...(r.response ? { response: r.response } : {}), ...(r.location ? { location: r.location } : {}) }));
   }
 
-  alerted(key: string): boolean {
-    return !!this.store.db.prepare("SELECT 1 FROM meeting_alerts WHERE key = ?").get(key);
-  }
   // 이 일정에 이미 알린 가장 작은 분(예전 키 "id@start" 는 10분). 없으면 undefined
   firedMins(m: Pick<Meeting, "id" | "start">): number | undefined {
     const base = alertKey(m);

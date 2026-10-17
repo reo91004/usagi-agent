@@ -11,7 +11,7 @@ import { closeSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realp
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { compactInput, redact, toolDiff, LIMITS, type Run, type RunEventInput, type RunRegistry } from "./runs.ts";
+import { compactInput, redact, toolDiff, type Run, type RunEventInput, type RunRegistry } from "./runs.ts";
 import type { Store } from "./store.ts";
 import { isAbsPath } from "./plat.ts";
 
