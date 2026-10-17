@@ -145,7 +145,8 @@ export const sharedGit = (cfg: Config, firstDay: string, fetch: typeof gitActivi
 };
 
 // 요약은 재료가 아니다(재료가 없으면 페이지도 없다)
-export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.skipped.length && !n.added.length && !n.commits.length;
+const MIN_FOCUS_SECONDS = 60; // 이보다 짧은 집중(잠깐 켰다 끈 것)은 일지에 넣지 않는다
+export const isEmpty = (n: DayNote) => n.focus.seconds < MIN_FOCUS_SECONDS && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.skipped.length && !n.added.length && !n.commits.length;
 
 // 우리 블록 표시: Logseq 가 화면에 안 보이는 id 속성. 앞 「75736167-6900」(usag i)으로 알아보고 뒤는 그날마다 다르게(블록 id 는 겹치면 안 된다)
 const ID_PREFIX = "75736167-6900-5";
@@ -208,7 +209,7 @@ export function autoBlock(n: DayNote): string {
   const added = [...new Set(n.added)].filter((t) => !done.includes(t) && !skipped.includes(t));
   const sessions = n.sessions.reduce((k, p) => k + p.items.length, 0);
   const glance = [
-    n.focus.seconds ? `집중 **${focusDuration(n.focus.seconds)}**${n.focus.longest ? `(가장 길게 ${focusDuration(n.focus.longest)})` : ""}` : "",
+    n.focus.seconds >= MIN_FOCUS_SECONDS ? `집중 **${focusDuration(n.focus.seconds)}**${n.focus.longest ? `(가장 길게 ${focusDuration(n.focus.longest)})` : ""}` : "",
     sessions ? `작업 세션 **${sessions}**` : "", jobs.length ? `실험 **${jobs.length}**` : "",
     n.commits.length ? `커밋 **${n.commits.length}**` : "", done.length ? `끝낸 일 **${done.length}**` : "",
   ].filter(Boolean).join(" · ");

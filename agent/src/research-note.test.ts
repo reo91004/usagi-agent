@@ -124,6 +124,8 @@ test("writeNote: 저널이 없으면 폴더째 우사기 블록만 담아 만들
   const graph = graphDir();
   const store = new Store(":memory:");
   assert.equal(writeNote(store, graph, empty), "empty");
+  assert.equal(writeNote(store, graph, { ...empty, focus: { seconds: 1, longest: 1 } }), "empty"); // 1분 안 되는 집중만 있는 날은 만들지 않는다
+  assert.ok(!autoBlock({ ...one, focus: { seconds: 59, longest: 59 } }).includes("집중"));
   assert.equal(existsSync(join(graph, "journals")), false);
   const path = notePath(graph, "2026-10-17");
   assert.equal(writeNote(store, graph, one), "written");
