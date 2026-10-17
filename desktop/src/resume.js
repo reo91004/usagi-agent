@@ -115,6 +115,25 @@ export function planResume(run, { home, claudeDir, worktreesDir, exists, findSes
   return { ok: true, cwd, sid, mkdir, args: terminalArgs(resumeCommand(cwd, sid)) };
 }
 
+// Codex run(sdkSessionId "codex:<id>", fixer.ts CODEX_SESSION)을 터미널 `codex resume <id>` 로 이어 가기. macOS Terminal 만.
+// 세션 기록은 Codex 가 id 로 찾는다(~/.codex/sessions). cwd 규칙·없어진 워크트리 복구는 planResume 과 같다
+export const codexId = (run) => { const m = /^codex:([\w-]{8,100})$/.exec(String(run?.sdkSessionId ?? '')); return m ? m[1] : null; };
+export const canResumeCodex = (run) => !!codexId(run) && isAbsPath(run?.cwd);
+export function planCodexResume(run, { home, worktreesDir, exists, platform }) {
+  const id = codexId(run), cwd = run?.cwd;
+  if (!id) return { ok: false, error: '이 세션에는 Codex 세션 id 가 없어요.' };
+  if (platform === 'win32') return { ok: false, error: 'Codex 이어 하기는 macOS 터미널에서만 돼요.' };
+  if (!okCwd(cwd, home)) return { ok: false, error: '작업 폴더 경로가 이상해서 못 열어요.' };
+  let mkdir = false;
+  if (!exists(cwd)) {
+    const wtd = typeof worktreesDir === 'string' ? worktreesDir.replace(/\/+$/, '') : '';
+    if (!wtd || !cwd.startsWith(`${wtd}/`)) return { ok: false, error: '작업 폴더가 없어져서 못 열어요.' };
+    mkdir = true;
+  }
+  return { ok: true, cwd, id, mkdir, args: terminalArgs(`cd ${shQuote(cwd)} && codex resume ${shQuote(id)}`) };
+}
+export const codexResumeTip = (run) => `터미널에서 Codex(codex resume)로 이 세션을 이어 가요${run?.status === 'running' ? ' — 지금 도는 중이라 두 곳에서 동시에 이어가면 기록이 갈라질 수 있어요' : ''}`;
+
 // 세션 창 버튼·메뉴: sdkSessionId 가 있을 때만. 도는 중이면 툴팁에 경고
 export const canResume = (run) => okSessionId(run?.sdkSessionId) && isAbsPath(run?.cwd);
 export function resumeTip(run) {
@@ -135,9 +154,9 @@ export function importNote(d) {
 }
 
 // ↻ 새로고침(터미널에서 이어 간 대화 불러오기): Claude Code 세션 id 가 있을 때만
-export const canSync = (run) => okSessionId(run?.sdkSessionId);
+export const canSync = (run) => okSessionId(run?.sdkSessionId) || !!codexId(run);
 export function syncTip(run) {
-  const base = '터미널 Claude Code 에서 이어 간 대화(서브에이전트 포함)를 불러와요';
+  const base = codexId(run) ? '터미널 Codex 에서 이어 간 대화를 불러와요' : '터미널 Claude Code 에서 이어 간 대화(서브에이전트 포함)를 불러와요';
   return run?.watching ? `${base} — 지금 터미널 기록을 지켜보며 자동으로 불러오는 중이에요` : base;
 }
 // 불러온 결과 한 줄

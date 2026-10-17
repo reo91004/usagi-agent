@@ -21,7 +21,7 @@ import { clickTarget, pickRun, okRunId, okModelId, cleanMessage } from './src/se
 import { okClientId, okMsgId } from './src/session-inbox.js';
 import { okToolUseId, normAgents, runningCount } from './src/agents.js';
 import { cleanOrigin } from './src/origin.js';
-import { planResume, sessionCwd, okSessionId } from './src/resume.js';
+import { planResume, planCodexResume, sessionCwd, okSessionId } from './src/resume.js';
 import { okThreadId } from './src/threads.js';
 import { CHAT_ID } from './src/chat.js';
 import { okActionId } from './src/actions.js';
@@ -1629,6 +1629,26 @@ function setupIPC() {
     return new Promise((resolve) => {
       execFile('osascript', plan.args, { timeout: 15000 }, (err) => {
         // 열었으면 데몬이 그 세션 기록을 한동안 지켜보며 터미널에서 이어 간 대화를 불러온다(실패해도 열기는 성공)
+        if (!err) post(`/runs/${id}/sync`, { watch: true }).catch(() => {});
+        resolve(err ? { ok: false, error: '터미널을 열지 못했어요.' } : { ok: true });
+      });
+    });
+  });
+  // 터미널 Codex 에서 이어 하기: Claude Code에서 열기와 같은 길(run 을 데몬에서 다시 받고 → osascript 로 Terminal → 데몬이 기록을 지켜봄)
+  ipcMain.handle('session-codex', async (e, id) => {
+    if (!fromOurs(e) || !okRunId(id)) return denied();
+    const r = await request('GET', `/runs/${id}?since=999999999`);
+    if (!r.ok || !r.data?.run) return { ok: false, error: r.status === 404 ? '이 세션을 찾을 수 없어요.' : `${who()}에 연결되지 않았어요.` };
+    const home = os.homedir();
+    const plan = planCodexResume(r.data.run, { home, worktreesDir: path.join(process.env.CY_AGENT_HOME ?? path.join(home, '.cy-agent'), 'worktrees'), exists: (p) => fs.existsSync(p), platform: process.platform });
+    if (!plan.ok) return plan;
+    try {
+      if (plan.mkdir) fs.mkdirSync(plan.cwd, { recursive: true });
+    } catch {
+      return { ok: false, error: '작업 폴더를 다시 만들지 못했어요.' };
+    }
+    return new Promise((resolve) => {
+      execFile('osascript', plan.args, { timeout: 15000 }, (err) => {
         if (!err) post(`/runs/${id}/sync`, { watch: true }).catch(() => {});
         resolve(err ? { ok: false, error: '터미널을 열지 못했어요.' } : { ok: true });
       });

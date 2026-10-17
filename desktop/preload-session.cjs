@@ -42,7 +42,9 @@ contextBridge.exposeInMainWorld('cy', {
   openInClaude: (id) => ipcRenderer.invoke('session-claude', String(id)),
   // Claude Code 세션 id(UUID)로 불러오기 → { ok, data: { runId, imported, existing? } }
   importSession: (sid) => ipcRenderer.invoke('session-import', String(sid)),
-  // ↻ 새로고침 — 터미널 Claude Code 에서 이어 간 대화를 불러온다 → { ok, data: { imported } }
+  // 터미널 Codex 에서 이어 하기 — 메인이 run 을 다시 받아 터미널에서 codex resume → { ok, error? }
+  openInCodex: (id) => ipcRenderer.invoke('session-codex', String(id)),
+  // ↻ 새로고침 — 터미널 Claude Code·Codex 에서 이어 간 대화를 불러온다 → { ok, data: { imported } }
   syncRun: (id) => ipcRenderer.invoke('session-sync', String(id)),
   // 원래 화면(run.origin) — 패널을 열어 그 대화·할 일 팝오버·제안으로
   openOrigin: (origin) => ipcRenderer.send('open-origin', origin && typeof origin === 'object' ? { ...origin } : null),

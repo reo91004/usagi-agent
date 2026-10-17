@@ -33,7 +33,7 @@ test("HTTP MCP: 토큰이 맞으면 진짜 MCP 클라이언트가 도구 목록�
     const client = new Client({ name: "test", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL(mcpUrl(port, token))));
     const list = await client.listTools();
-    assert.deepEqual(list.tools.map((t) => [t.name, t.annotations?.readOnlyHint]), [["echo_twice", true]]);
+    assert.deepEqual(list.tools.map((t) => [t.name, t.annotations?.readOnlyHint]), [["echo_twice", true], ["agent_start", undefined]]);
     const r = await client.callTool({ name: "echo_twice", arguments: { text: "야하" } });
     assert.deepEqual(r.content, [{ type: "text", text: "야하 야하" }]);
     assert.equal(calls, 1);
