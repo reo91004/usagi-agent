@@ -25,12 +25,12 @@
     <div id="ask" class="hit" hidden>
       <div id="ask-tray" class="att-tray" aria-label="붙인 파일" hidden></div>
       <div id="ask-row">
-        <button id="ask-attach" type="button" class="att-pick" title="파일 붙이기 — 이미지·PDF·문서(끌어다 놓거나 ⌘V 도 돼요)" aria-label="파일 붙이기">📎</button>
-        <button id="ask-more" type="button" class="att-pick" title="정해진 답 고르기 — 오늘 할 일·응원·춤(AI 없이 바로)" aria-label="정해진 답 고르기">＋</button>
-        <input id="ask-input" type="text" autocomplete="off" placeholder="물어보세요 · Enter" aria-label="시사에게 물어보기">
-        <button id="ask-focus" type="button" class="att-pick" title="집중하기 — 타이머 시작" aria-label="집중하기">⏱</button>
-        <button id="ask-todos" type="button" class="att-pick" title="할 일 열기" aria-label="할 일 열기">☑</button>
-        <button id="ask-panel" type="button" class="att-pick" title="패널 열기" aria-label="패널 열기">▤</button>
+        <button id="ask-attach" type="button" class="att-pick" data-tip="파일 붙이기" aria-label="파일 붙이기 — 이미지·PDF·문서(끌어다 놓거나 ⌘V 도 돼요)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
+        <button id="ask-more" type="button" class="att-pick" data-tip="정해진 답" aria-label="정해진 답 고르기 — 오늘 할 일·응원·춤(AI 없이 바로)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+        <input id="ask-input" type="text" autocomplete="off" placeholder="물어보세요 · Enter" aria-label="말 걸기">
+        <button id="ask-focus" type="button" class="att-pick" data-tip="집중하기" aria-label="집중하기 — 타이머 시작"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9.5 2h5"/></svg></button>
+        <button id="ask-todos" type="button" class="att-pick" data-tip="할 일 열기" aria-label="할 일 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>
+        <button id="ask-panel" type="button" class="att-pick" data-tip="패널 열기" aria-label="패널 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg></button>
       </div>
     </div>
     <div id="caption" hidden><span id="caption-text" aria-live="polite"></span><button id="caption-stop" class="hit" type="button" title="답하던 걸 멈춰요" aria-label="멈추기">■</button></div>
