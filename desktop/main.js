@@ -32,7 +32,7 @@ import { agentLogin } from './src/agent-login.js';
 import { createCapsProbe, hasCoder, sameCaps, coderHint } from './src/caps.js';
 import { slotOk } from './src/ai-onboard.js';
 import { checkLlm, listModels, gskLoginKey, KEY_REQ } from './src/llm-check.js';
-import { KEY_PROVIDERS, normalizeSisa, publicView, withKey, withCli, withGsk, withSkip, withoutProvider, activeProvider, withModels, withOrder, withVoice, connectedProviders, daemonBrainPatch, withDaemonBrain, settingsBrainBody } from './src/sisa-store.js';
+import { KEY_PROVIDERS, normalizeSisa, publicView, withKey, withCli, withCliAdded, withGsk, withSkip, withoutProvider, activeProvider, withModels, withOrder, withVoice, connectedProviders, daemonBrainPatch, withDaemonBrain, settingsBrainBody } from './src/sisa-store.js';
 import { personaFor } from './src/persona.js';
 import { okCharacter, characterName, appName, START_CHARACTER } from './src/character.js';
 import { applyCharacters } from './src/character-registry.js';
@@ -1331,6 +1331,16 @@ function setupIPC() {
     const login = await agentLogin(agent);
     if (!login?.loggedIn) return { ok: false, error: `${agent === 'codex' ? 'Codex' : agent === 'agy' ? 'Antigravity' : 'Claude Code'} 에 로그인되어 있지 않습니다.` };
     const next = withCli(readSisa(), agent === 'codex' ? 'codexcli' : agent === 'agy' ? 'agycli' : 'claudecode');
+    writeSisa(next);
+    refreshCaps(true);
+    return { ok: true, brainSaved: await writeBrain(next) };
+  });
+  // 「AI 더 연결하기」: use-cli 와 같되 지금 쓰는 AI 는 그대로, 우선순위 맨 뒤에 붙인다
+  ipcMain.handle('sisa-add-cli', async (e, agent) => {
+    if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex' && agent !== 'agy')) return denied();
+    const login = await agentLogin(agent);
+    if (!login?.loggedIn) return { ok: false, error: `${agent === 'codex' ? 'Codex' : agent === 'agy' ? 'Antigravity' : 'Claude Code'} 에 로그인되어 있지 않습니다.` };
+    const next = withCliAdded(readSisa(), agent === 'codex' ? 'codexcli' : agent === 'agy' ? 'agycli' : 'claudecode');
     writeSisa(next);
     refreshCaps(true);
     return { ok: true, brainSaved: await writeBrain(next) };

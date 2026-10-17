@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('cy', {
   gskFound: () => ipcRenderer.invoke('gsk-found'), // gsk login 한 Genspark 키가 이 맥에 있나(키는 안 온다)
   sisaUseGsk: () => ipcRenderer.invoke('sisa-use-gsk'),
   sisaUseCli: (agent) => ipcRenderer.invoke('sisa-use-cli', agent === 'codex' || agent === 'agy' ? agent : 'claude'),
+  sisaAddCli: (agent) => ipcRenderer.invoke('sisa-add-cli', agent === 'codex' || agent === 'agy' ? agent : 'claude'),
   sisaMark: (id, url) => ipcRenderer.invoke('sisa-mark', String(id || ''), url == null ? '' : String(url)),
   // [연결 해제]: AI(gemini|claude|openai|genspark|claudecode|codexcli|agycli) · 커넥터(slack|calendar|mail|issues)
   sisaDisconnect: (provider) => ipcRenderer.invoke('sisa-disconnect', String(provider || '')),

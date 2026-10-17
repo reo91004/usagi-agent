@@ -38,6 +38,16 @@ export function listErrorText(error) {
   return s;
 }
 
+// 「AI 더 연결하기」에 올릴 CLI: 아직 연결 안 된 것. logins 는 agentLogin 결과(모르면 undefined)
+const CLI_AGENT = [['claudecode', 'claude'], ['codexcli', 'codex'], ['agycli', 'agy']];
+export function addableClis(connected, logins) {
+  return CLI_AGENT.filter(([p]) => !connected.includes(p)).map(([provider, agent]) => {
+    const l = logins?.[agent];
+    const state = !l ? '' : l.loggedIn ? '이 Mac 에서 찾았어요' : l.installed ? '로그인이 필요해요' : '설치되어 있지 않아요';
+    return { provider, agent, state };
+  });
+}
+
 const DEFAULT_OPTION ={ id: 'default', label: '기본값' };
 
 export function optionsFor(provider, list, current) {
@@ -83,6 +93,8 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
   let busy = false;
   let personaDraft = null;
   let cannedDraft = null;
+  let logins = {}; // 연결 안 된 CLI 의 설치·로그인 상태(탭을 열 때마다 확인)
+  let addError = '';
   let confirming = ''; // [연결 해제] 확인을 열어 둔 AI(다시 그려도 그대로)
 
   function linesOf(key) {
@@ -184,6 +196,44 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
       status ? h('p.muted.small', { role: 'status', text: status }) : null);
   }
 
+  async function detectLogins() {
+    const got = {};
+    await Promise.all(CLI_AGENT.map(async ([, agent]) => { try { got[agent] = await cy.agentLogin(agent); } catch { /* 상태 모름 */ } }));
+    logins = got;
+    render();
+  }
+
+  async function addCli(agent) {
+    if (busy) return;
+    busy = true;
+    addError = '';
+    let r;
+    try { r = await cy.sisaAddCli(agent); } catch { r = { ok: false }; }
+    busy = false;
+    if (r?.ok) {
+      try { onSisa(await cy.sisaGet()); } catch { /* 다음에 탭을 열 때 맞춰져요 */ }
+      note = r.brainSaved ? `연결했어요. ${who()}를 다시 켜면 대화·브리핑에도 적용돼요` : '연결했어요';
+    } else {
+      addError = r?.error || '연결하지 못했어요.';
+    }
+    render();
+  }
+
+  // 처음 설정 뒤에 CLI AI 를 하나 더 붙인다 — 키로 쓰는 AI 는 설치 탭
+  function addCard(sisa) {
+    const rows = addableClis(sisa.connected || [], logins);
+    if (!rows.length) return null;
+    return h('div.card.models-card', null,
+      h('h2', { text: 'AI 더 연결하기' }),
+      h('p.muted.small', { text: '연결하면 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙어요. 키로 쓰는 AI 는 설치 탭에서 붙여요.' }),
+      h('ul.priority-list', null, rows.map((r) => h('li.row', null,
+        h('span.t', { text: PROVIDER_TITLE[r.provider] }),
+        r.state ? h('span.muted.small', { text: r.state }) : null,
+        h('span.spacer'),
+        h('button.ghost.small', { type: 'button', text: '연결', 'aria-label': `${PROVIDER_TITLE[r.provider]} 연결`, disabled: busy, onclick: () => addCli(r.agent) })))),
+      addError ? h('p.muted.small', { role: 'alert', text: addError }) : null);
+  }
+
   // 코드 고치기·이어 하기: 뇌가 Codex·Antigravity 면 그 CLI 로(데몬 fixer), 그 밖에는 Claude Code 로 — 여기 모델은 Claude 쪽만
   function codeCard(sisa) {
     const canCode = sisa.connected.some((p) => p === 'claudecode' || p === 'claude');
@@ -278,7 +328,7 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
         h('p', { text: '연결된 AI 없음' }),
         h('button.primary', { type: 'button', text: '설치 열기', onclick: gotoSetup })));
     } else {
-      kids.push(chatCard(sisa), priorityCard(sisa), codeCard(sisa));
+      kids.push(chatCard(sisa), priorityCard(sisa), addCard(sisa), codeCard(sisa));
     }
     kids.push(voiceCard(), cannedCard());
     if (note) kids.push(h('p.muted.small.models-note', { role: 'status', text: note }));
@@ -294,6 +344,8 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
       confirming = '';
       personaDraft = null;
       cannedDraft = null;
+      addError = '';
+      detectLogins();
       for (const p of getSisa().connected || []) loadList(p, false);
       render();
     },
