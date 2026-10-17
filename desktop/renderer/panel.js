@@ -1016,7 +1016,7 @@ function toggleHiddenGroup() {
 function renderProjects() {
   const el = $('sec-projects');
   const hidden = vm.hiddenProjects;
-  const kids = [];
+  const kids = [h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 작업 기록이 있었던 폴더와 커밋이 있는 레포예요. 서버는 ssh 로 작업 기록만 받아 와요.' })];
   if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
   if (!vm.projects.length) kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : hidden.length ? '숨긴 프로젝트만 있음' : '최근 프로젝트 없음' }));
   else kids.push(projectCards());
@@ -1027,7 +1027,7 @@ function renderProjects() {
       hiddenOpen
         ? h('div.card.hidden-list', null, hidden.map((p) => h('div.hidden-row', null,
           h('span.name', { text: p.name }),
-          p.path ? h('span.path.mono', { text: p.path, title: p.path }) : null,
+          p.dir ? h('span.path.mono', { text: p.host ? `${p.host} · ${p.dir}` : p.dir, title: p.path }) : null,
           h('span.spacer'),
           h('button.ghost', { type: 'button', text: '다시 보이기', 'aria-label': `다시 보이기: ${p.name}`, onclick: () => setHidden(p, false) }))))
         : null));
@@ -1040,11 +1040,14 @@ function projectCards() {
     h('div.head', null, h('span.name', { text: p.name }), p.branch ? h('span.chip.mono', { text: p.branch }) : null,
       h('span.spacer'),
       h('button.ghost.hide-btn', { type: 'button', text: '숨기기', title: '이 프로젝트 숨기기 — 집계와 에이전트 맥락에서도 빠져요', 'aria-label': `숨기기: ${p.name}`, onclick: () => setHidden(p, true) })),
-    p.path ? h('div.path.mono', { text: p.path, title: p.path }) : null,
+    h('div.where', null,
+      h(`span.chip.src${p.host ? '.accent' : ''}`, { text: p.host || '이 Mac', title: p.host ? `서버 ${p.host} 의 작업 기록` : '이 Mac 의 작업 기록·git' }),
+      p.dir ? h('div.path.mono', { title: p.path }, h('bdi', { text: p.dir })) : null),
     h('div.meta', null,
       h('span', null, '마지막 활동 ', h('b', { text: p.lastActiveRel || '—', title: p.lastActive })),
-      h('span', null, '24h 세션 ', h('b', { text: String(p.sessions24h) })),
-      h('span', null, '오늘 커밋 ', h(`b${p.commitsToday ? '.today' : ''}`, { text: String(p.commitsToday) }))),
+      h('span', { title: '24시간 안에 갱신된 작업 기록 수' }, '24h 세션 ', h('b', { text: String(p.sessions24h) })),
+      // 서버는 git 을 ssh 로 돌리지 않아 0 이 거짓이 되므로 보이지 않는다
+      p.host ? null : h('span', { title: '오늘 이 Mac 의 레포에서 한 커밋 수' }, '오늘 커밋 ', h(`b${p.commitsToday ? '.today' : ''}`, { text: String(p.commitsToday) }))),
     p.lastTitle || p.lastPrompt
       ? h('div.session', null,
         p.lastTitle ? h('div.title', { text: p.lastTitle, title: p.lastTitle }) : null,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, visibleSections, SECTIONS } from '../src/dashboard.js';
+import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, visibleSections, SECTIONS, splitHost } from '../src/dashboard.js';
 
 const NOW = Date.parse('2026-10-09T05:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -181,4 +181,13 @@ test('shapeDashboard: 오늘 할 일은 할 일 중 오늘로 고른 것: 할 �
   // 할 일 탭에는 그대로 다 있다(같은 모델)
   assert.equal(vm.todoGroups.flatMap((g) => g.items).length, 4);
   assert.deepEqual(shapeDashboard({ todos: [{ id: 'a', title: '가', priority: 2, today: '2026-10-09' }] }, NOW).todayGroups, [], '날짜를 모르면 비움');
+});
+
+test('splitHost: 「host:/경로」 만 서버로 보고, 이 Mac 경로·윈도우 드라이브는 그대로', () => {
+  assert.deepEqual(splitHost('gpu1:/home/me/proj'), { host: 'gpu1', dir: '/home/me/proj' });
+  assert.deepEqual(splitHost('/Users/me/app'), { host: '', dir: '/Users/me/app' });
+  assert.deepEqual(splitHost('C:\\work\\app'), { host: '', dir: 'C:\\work\\app' });
+  assert.deepEqual(splitHost(''), { host: '', dir: '' });
+  const vm = shapeDashboard({ projects: [{ name: 'proj', path: 'gpu1:/home/me/proj', lastActive: ago(MIN) }] }, NOW);
+  assert.deepEqual([vm.projects[0].path, vm.projects[0].host, vm.projects[0].dir], ['gpu1:/home/me/proj', 'gpu1', '/home/me/proj']);
 });

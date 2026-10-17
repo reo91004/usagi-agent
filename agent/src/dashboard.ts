@@ -52,6 +52,7 @@ const within = (path: string, root: string) => (IS_WIN ? pathWithin(path, root) 
 const NOISE_ROOTS = IS_WIN ? [tmpdir(), realish(tmpdir()), HOME_DIR] : ["/tmp", "/private/tmp", "/private/var/folders", "/var/folders", tmpdir(), HOME_DIR];
 export function isNoisePath(path: string): boolean {
   if (IS_WIN ? isFsRoot(path) || samePath(path, homedir()) : path === "/" || path === homedir()) return true;
+  if (path.includes("/.e2e/repos/")) return true; // 이 저장소 e2e 테스트가 만든 임시 레포
   if (path.includes(`${sep}scratch-workspaces${sep}`) || (IS_WIN && winNorm(path).includes("/scratch-workspaces/"))) return true;
   return NOISE_ROOTS.some((r) => within(path, r));
 }
@@ -92,12 +93,14 @@ function dashTodo(t: Todo): DashTodo {
   };
 }
 
-// 세션 cwd가 레포 하위 폴더·워크트리여도 그 레포 하나로 묶는다(가장 긴 경로 우선)
+// 세션 cwd가 레포 하위 폴더·워크트리(레포 목록 밖이어도 .claude/worktrees)여도 그 레포 하나로 묶는다(가장 긴 경로 우선)
 function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true): DashProject[] {
   const since = now.getTime() - 7 * DAY;
   const byLen = [...repos].sort((a, b) => b.path.length - a.path.length);
   const groups = new Map<string, { repo?: RepoActivity; sessions: Node[] }>();
-  const group = (path: string) => {
+  const group = (cwd: string) => {
+    // Claude Code 워크트리(<repo>/.claude/worktrees/<이름>[/…])는 본 레포 경로로 되돌린다. 원격은 「host:」 접두가 그대로 붙는다
+    const path = cwd.replace(/[\\/]\.claude[\\/]worktrees[\\/].*$/, "") || cwd;
     const repo = byLen.find((r) => within(path, r.path));
     const key = repo?.path ?? path;
     if (!groups.has(key)) groups.set(key, { repo, sessions: [] });
