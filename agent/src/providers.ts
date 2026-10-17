@@ -164,6 +164,13 @@ const noCredit = new Map<KeyProvider, string>(); // 키는 맞는데 크레딧�
 let onAuthChange: (() => void) | undefined;
 const fingerprint = (key: string) => createHash("sha256").update(key).digest("hex").slice(0, 16);
 export class BrainAuthError extends Error {}
+// 사용량·크레딧·한도를 다 써서 이 AI 가 지금 못 답함. exhausted = 한참(구독 한도·크레딧·하루 한도), rate = 잠깐(분당 한도).
+// resetsAt: 풀리는 시각(ms, 알 때만). brain-fallback.ts 가 다음 AI 로 넘길지 정한다
+export type LimitKind = "exhausted" | "rate";
+export class BrainLimitError extends Error {
+  provider: string; kind: LimitKind; resetsAt?: number;
+  constructor(message: string, provider: string, kind: LimitKind, resetsAt?: number) { super(message); this.provider = provider; this.kind = kind; this.resetsAt = resetsAt; }
+}
 export const authFailText = (p: KeyProvider) => p === "genspark" ? "Genspark 키가 맞지 않아요(gsk login 을 다시 해 주세요)" : `${KEY_LABEL[p]} API 키가 맞지 않아요. 키를 확인해 주세요`;
 // 키는 맞지만 쓸 크레딧이 없음(Genspark 는 무료 플랜이면 API·LLM 프록시를 못 쓴다)
 export class BrainCreditError extends Error {}
@@ -205,8 +212,14 @@ export function brainCreditNeeded(cfg: Pick<Config, "brain">, env: NodeJS.Proces
 }
 export function resetBrainAuth() { badKeys.clear(); noCredit.clear(); }
 
+// Retry-After(초) → 풀리는 시각(ms)
+function retryAfterAt(res: Response): number | undefined {
+  const s = Number(res.headers.get("retry-after"));
+  return s > 0 ? Date.now() + s * 1000 : undefined;
+}
+
 // reason: 본문에서 이유 한 줄을 뽑는 함수(있으면 400 같은 실패에 덧붙인다 — 키는 넣지 않는다)
-async function readError(res: Response, fail: string, auth?: { provider: KeyProvider; key: string }, reason?: (body: string) => string | undefined): Promise<never> {
+async function readError(res: Response, fail: string, auth?: { provider: KeyProvider; key: string }, reason?: (body: string) => string | undefined, limit?: (status: number, body: string) => LimitKind | undefined): Promise<never> {
   const body = await res.text().catch(() => "");
   if (auth && (res.status === 401 || res.status === 403)) {
     markAuth(auth.provider, auth.key, true);
@@ -214,7 +227,10 @@ async function readError(res: Response, fail: string, auth?: { provider: KeyProv
   }
   const why = reason && res.status === 400 ? reason(body) : undefined;
   const clean = why && auth ? why.split(auth.key).join("…") : why;
-  throw new Error(`${fail} (HTTP ${res.status}${clean ? `: ${clean}` : ""}).`);
+  const text = `${fail} (HTTP ${res.status}${clean ? `: ${clean}` : ""}).`;
+  const kind = limit?.(res.status, body);
+  if (kind && auth) throw new BrainLimitError(text, auth.provider, kind, retryAfterAt(res));
+  throw new Error(text);
 }
 
 const geminiPicked = new Map<string, string>(); // 키 → 기본 대신 쓰는 모델(이 실행 동안만)
@@ -284,7 +300,7 @@ export function geminiQuota(body: string): { day: boolean; waitMs?: number; limi
   return { day, ...(waitMs !== undefined ? { waitMs } : {}), ...(limit !== undefined ? { limit } : {}) };
 }
 
-type GeminiFail = { fail: true; status: number; day?: boolean; limit?: number };
+type GeminiFail = { fail: true; status: number; day?: boolean; limit?: number; until?: number };
 const isFail = (x: Response | GeminiFail): x is GeminiFail => (x as GeminiFail).fail === true;
 
 function geminiFailText(f: { status: number; day?: boolean; limit?: number }): string {
@@ -338,8 +354,9 @@ export async function geminiJson(
       const text = await r.text().catch(() => "");
       const q = r.status === 429 ? geminiQuota(text) : { day: false };
       if (q.day) {
-        geminiSpent.set(spentTag(model), { until: now() + (q.waitMs ?? 3_600_000), ...(q.limit ? { limit: q.limit } : {}) });
-        return { fail: true, status: 429, day: true, ...(q.limit ? { limit: q.limit } : {}) };
+        const until = now() + (q.waitMs ?? 3_600_000);
+        geminiSpent.set(spentTag(model), { until, ...(q.limit ? { limit: q.limit } : {}) });
+        return { fail: true, status: 429, day: true, until, ...(q.limit ? { limit: q.limit } : {}) };
       }
       const after = Number(r.headers.get("retry-after"));
       const wait = q.waitMs ?? (after > 0 ? after * 1000 : GEMINI_RETRY_MS[i]);
@@ -359,11 +376,11 @@ export async function geminiJson(
   let out: Response | GeminiFail;
   const early = spent(first) ? await liteOf() : undefined;
   if (spent(first) && !early) {
-    const limit = geminiSpent.get(spentTag(first))?.limit;
-    out = { fail: true, status: 429, day: true, ...(limit ? { limit } : {}) }; // 다 쓴 모델에 또 보내지 않는다(넘어갈 lite 도 없다)
+    const sp = geminiSpent.get(spentTag(first));
+    out = { fail: true, status: 429, day: true, ...(sp ? { until: sp.until } : {}), ...(sp?.limit ? { limit: sp.limit } : {}) }; // 다 쓴 모델에 또 보내지 않는다(넘어갈 lite 도 없다)
   } else if (early) {
     out = await tryModel(early, true);
-    if (!isFail(out) && !out.ok) { await out.text().catch(() => ""); const limit = geminiSpent.get(spentTag(first))?.limit; out = { fail: true, status: 429, day: true, ...(limit ? { limit } : {}) }; } // lite 도 못 쓰면 원래 이유(하루 한도)
+    if (!isFail(out) && !out.ok) { await out.text().catch(() => ""); const sp = geminiSpent.get(spentTag(first)); out = { fail: true, status: 429, day: true, ...(sp ? { until: sp.until } : {}), ...(sp?.limit ? { limit: sp.limit } : {}) }; } // lite 도 못 쓰면 원래 이유(하루 한도)
   } else {
     let lite: string | undefined;
     out = await tryModel(first, async () => !(lite = await liteOf()));
@@ -386,7 +403,12 @@ export async function geminiJson(
       if (!isFail(out) && out.ok) geminiPicked.set(key, best);
     }
   }
-  if (isFail(out)) throw new Error(`${geminiFailText(out)} (HTTP ${out.status}).`);
+  if (isFail(out)) {
+    const text = `${geminiFailText(out)} (HTTP ${out.status}).`;
+    if (out.day) throw new BrainLimitError(text, "gemini", "exhausted", out.until);
+    if (out.status === 429) throw new BrainLimitError(text, "gemini", "rate");
+    throw new Error(text);
+  }
   const res = out;
   if (!res.ok) return readError(res, geminiFailText({ status: res.status }), { provider: "gemini", key }, geminiReason);
   markAuth("gemini", key, false);
@@ -468,6 +490,7 @@ type ChatSpec = {
   retry?: { sleep?: (ms: number) => Promise<void> }; // 붐비면(429·500·503) GEMINI_RETRY_MS 대로 다시
   // 다시 보내도 소용없는 실패(예: OpenAI 크레딧 없음 insufficient_quota) — 그러면 쉬지 않고 바로 알린다
   noRetry?: (status: number, body: string) => boolean;
+  limit?: (status: number, body: string) => LimitKind | undefined; // 사용량·한도 실패면 BrainLimitError 로
 };
 type ChatOpts = { system?: string; blocks?: ContentBlock[]; fetch?: FetchLike };
 async function chatCompletionsText(spec: ChatSpec, prompt: string, schema: unknown, opts: ChatOpts): Promise<string> {
@@ -509,7 +532,10 @@ async function chatCompletionsText(spec: ChatSpec, prompt: string, schema: unkno
   if (!res.ok) {
     if (spec.failText && res.status !== 401 && res.status !== 403) {
       const text = failBody ?? await res.text().catch(() => "");
-      throw new Error(`${spec.failText(res.status, text) ?? `${spec.label} 요청이 실패했어요`} (HTTP ${res.status}).`);
+      const msg = `${spec.failText(res.status, text) ?? `${spec.label} 요청이 실패했어요`} (HTTP ${res.status}).`;
+      const kind = spec.limit?.(res.status, text);
+      if (kind) throw new BrainLimitError(msg, spec.provider, kind, retryAfterAt(res));
+      throw new Error(msg);
     }
     return readError(res, `${spec.label} 요청이 실패했어요`, { provider: spec.provider, key: spec.key });
   }
@@ -527,6 +553,7 @@ const openaiErrorCode = (body: string): string | undefined => {
 export const OPENAI_BILLING_URL = "https://platform.openai.com/settings/organization/billing";
 // 크레딧 없음(insufficient_quota)은 기다려도 안 풀린다 — 다시 보내지 않는다
 export const openaiNoRetry = (status: number, body: string) => status === 429 && openaiErrorCode(body) === "insufficient_quota";
+const openaiLimit = (status: number, body: string): LimitKind | undefined => status !== 429 ? undefined : openaiErrorCode(body) === "insufficient_quota" ? "exhausted" : "rate";
 // 429 를 이유별로: 크레딧 없음 · 너무 잦음. 400 은 OpenAI 가 준 이유 한 줄(키 모양 글자는 가림)
 export function openaiFailText(status: number, body: string): string | undefined {
   const code = openaiErrorCode(body);
@@ -550,7 +577,7 @@ export async function openaiJson(
   const key = openaiKey(cfg, env);
   if (!key) throw new Error(MISSING_OPENAI_KEY);
   const model = resolveHttpModel("openai", cfg.models?.general, opts.model);
-  const text = await chatCompletionsText({ url: OPENAI_URL, label: "OpenAI", provider: "openai", key, model, failText: openaiFailText, noRetry: openaiNoRetry, retry: { sleep: opts.sleep } }, prompt, schema, opts);
+  const text = await chatCompletionsText({ url: OPENAI_URL, label: "OpenAI", provider: "openai", key, model, failText: openaiFailText, noRetry: openaiNoRetry, limit: openaiLimit, retry: { sleep: opts.sleep } }, prompt, schema, opts);
   markAuth("openai", key, false);
   return openaiUnstrict(parseModelJson(text, "OpenAI 응답에서 JSON을 읽지 못했어요."), schema);
 }
@@ -622,7 +649,7 @@ export async function gensparkJson(
   if (asked && !ids.includes(asked)) throw new Error(`그 모델(${asked.slice(0, 60)})은 Genspark 에서 못 써요. 모델 탭에서 목록에 있는 모델을 골라 주세요.`);
   const model = asked || pickGensparkModel(ids);
   const text = await chatCompletionsText(
-    { url: `${GENSPARK_URL}/chat/completions`, label: "Genspark", provider: "genspark", key, model, failText: gensparkFailText, retry: { sleep: opts.sleep } },
+    { url: `${GENSPARK_URL}/chat/completions`, label: "Genspark", provider: "genspark", key, model, failText: gensparkFailText, limit: (st) => (st === 429 ? "rate" : undefined), retry: { sleep: opts.sleep } },
     prompt, schema, opts,
   );
   // 200 인데 JSON 이 아니고 요금 안내문이면 크레딧이 없는 것(무료 플랜)
@@ -659,7 +686,8 @@ export async function anthropicJson(
   } catch {
     throw new Error("Claude API 요청을 보내지 못했어요.");
   }
-  if (!res.ok) return readError(res, "Claude API 요청이 실패했어요", { provider: "anthropic", key });
+  // 429 = 분당 한도, 400 "credit balance is too low" = 크레딧 소진
+  if (!res.ok) return readError(res, "Claude API 요청이 실패했어요", { provider: "anthropic", key }, undefined, (st, body) => st === 429 ? "rate" : st === 400 && /credit balance is too low/i.test(body) ? "exhausted" : undefined);
   markAuth("anthropic", key, false);
   const data = asRecord(parseModelJson(await res.text(), "Claude API 응답에서 JSON을 읽지 못했어요."));
   if (data?.stop_reason === "refusal") throw new Error("Claude 가 이 요청에는 답하지 않았어요.");
@@ -729,8 +757,8 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
     child.on("error", () => { clearTimeout(timer); reject(new Error(`${file} 실행이 실패했어요.`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
-      // stderr·종료 코드는 호출한 쪽이 쓴다(agy 의 AGY_ERROR). 메시지 자체에는 넣지 않는다
-      if (code !== 0) reject(Object.assign(new Error(`${file} 실행이 실패했어요.`), { code, stderr: Buffer.concat(err).toString("utf8") }));
+      // stdout·stderr·종료 코드는 호출한 쪽이 쓴다(agy 의 AGY_ERROR, codex 의 한도 안내). 메시지 자체에는 넣지 않는다
+      if (code !== 0) reject(Object.assign(new Error(`${file} 실행이 실패했어요.`), { code, stderr: Buffer.concat(err).toString("utf8"), stdout: Buffer.concat(out).toString("utf8") }));
       else resolve({ stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
     });
     child.stdin.end(opts.input ?? "");
@@ -744,6 +772,25 @@ export const CODEX_ARGS = ["exec", "--skip-git-repo-check", "--json", "--sandbox
 export const CODEX_TIMEOUT_MS = 120_000;
 
 export type CodexUsage = { inTokens: number; outTokens: number };
+
+// 사용량·한도 문구. 출처 확인 못 함: Codex 는 "You've hit your usage limit …"(usage_limit_reached)를 낸다고 알려져 있으나 이 저장소엔 실제 출력 표본이 없어
+// 보수적으로 흔한 문구(usage limit·rate limit·quota·insufficient·resource exhausted)만 본다. 분당 한도(rate limit 만 있고 usage limit 아님)는 rate, 나머지는 exhausted
+const LIMIT_TEXT = /usage[ _]limit|rate[ _]limit|quota|insufficient|resource[ _]exhausted|out of (?:usage|credits)|too many requests/i;
+export function limitKindOf(text: string): LimitKind | undefined {
+  if (!LIMIT_TEXT.test(text)) return undefined;
+  return /rate[ _]limit|too many requests/i.test(text) && !/usage[ _]limit|quota|insufficient|exhausted/i.test(text) ? "rate" : "exhausted";
+}
+
+// codex exec --json 의 실패 이벤트(error·turn.failed)의 글 + stderr 에서 한도 문구 찾기(agent_message 는 안 본다 — 답 글에 우연히 들어 있을 수 있다)
+export function codexLimit(stdout: string, stderr: string): LimitKind | undefined {
+  const msgs: string[] = [stderr];
+  for (const line of stdout.split("\n")) {
+    const rec = asRecord(tryParse(line.trim()));
+    if (rec?.type === "error") msgs.push(String(rec.message ?? ""));
+    if (rec?.type === "turn.failed") msgs.push(String(asRecord(rec.error)?.message ?? ""));
+  }
+  return limitKindOf(msgs.join("\n"));
+}
 
 // turn.completed 의 usage(있으면). 없으면 0
 export function parseCodexUsage(stdout: string): CodexUsage {
@@ -791,7 +838,11 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   try {
     stdout = (await exec("codex", args, { input, timeout, cwd: tmpdir() })).stdout;
   } catch (e) {
-    throw new Error(/초과/.test(String((e as Error)?.message ?? "")) ? "codex 실행 시간이 초과됐어요." : "codex 실행이 실패했어요.");
+    const err = e as { message?: string; stdout?: string; stderr?: string };
+    if (/초과/.test(String(err?.message ?? ""))) throw new Error("codex 실행 시간이 초과됐어요.");
+    const kind = codexLimit(String(err?.stdout ?? ""), String(err?.stderr ?? ""));
+    if (kind) throw new BrainLimitError("Codex 사용량 한도에 걸렸어요", "codex", kind);
+    throw new Error("codex 실행이 실패했어요.");
   } finally {
     gate?.close(); // 열쇠를 지우고, 기다리던 카드는 취소, 띄운 서버는 닫는다
   }
@@ -830,7 +881,11 @@ function agyFailure(e: unknown): Error {
   const err = e as { message?: string; code?: number; stderr?: string };
   if (/초과/.test(String(err?.message ?? ""))) return new Error("agy 실행 시간이 초과됐어요.");
   const line = String(err?.stderr ?? "").split("\n").find((l) => l.includes("AGY_ERROR"));
-  return new Error(line ? `agy 모델 호출이 실패했어요(${line.replace(/^.*AGY_ERROR:?\s*/, "").trim().slice(0, 200)}).` : AGY_FAILED);
+  if (!line) return new Error(AGY_FAILED);
+  const why = line.replace(/^.*AGY_ERROR:?\s*/, "").trim().slice(0, 200);
+  const text = `agy 모델 호출이 실패했어요(${why}).`;
+  const kind = limitKindOf(why);
+  return kind ? new BrainLimitError(text, "agy", kind) : new Error(text);
 }
 
 // agy 에 --model 로 넘길 이름: 고르지 않은 기본값(Claude 기본 모델 이름)이면 agy 의 기본 모델에 맡긴다
