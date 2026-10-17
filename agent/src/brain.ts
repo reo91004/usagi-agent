@@ -370,7 +370,8 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
       const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
-    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    // await: finally 의 열쇠 닫기가 Codex 실행이 끝난 뒤에 돌게(그냥 return 하면 실행 전에 닫혀 agent_start 가 늘 거절됐다)
+    return await (remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as Promise<T>); // 첨부 블록도(예전엔 버려져 본 척했다)
     } finally { ticket?.close(); }
   });
 }
