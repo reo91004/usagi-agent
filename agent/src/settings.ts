@@ -153,7 +153,7 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
       a.name = g.name.trim();
     }
     if (g.email !== undefined) {
-      if (typeof g.email !== "string" || !OK_EMAIL.test(g.email.trim()) || g.email.length > 200) throw new SettingsError("gitAuthor.email: 이메일 주소 모양이 아니에요");
+      if (!okEmail(g.email)) throw new SettingsError("gitAuthor.email: 이메일 주소 모양이 아니에요");
       a.email = g.email.trim();
     }
     out.gitAuthor = a;
@@ -227,7 +227,7 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
 }
 
 const okMcpName = (x: unknown) => typeof x === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(x);
-const OK_EMAIL = /^[^\s@<>]+@[^\s@<>]+$/;
+const okEmail = (x: unknown): x is string => typeof x === "string" && x.length <= 200 && /^[^\s@<>]+@[^\s@<>]+$/.test(x.trim());
 
 // 커넥터: 기능마다 { mode: "mcp", server } (등록한 MCP 서버로 연결). calendar 는 { timeZone, email } 도 받는다(ICS 시간대·내 이메일, email null = 지움).
 // 서버 이름이 알려진 프리셋의 서버면 그 프리셋의 도구 이름을 같이 쓴다
@@ -252,7 +252,7 @@ export function validateConnectors(raw: unknown): NonNullable<SettingsPatch["con
       cal.timeZone = c.timeZone;
     }
     if (c.email !== undefined) {
-      if (c.email !== null && (typeof c.email !== "string" || !OK_EMAIL.test(c.email.trim()) || c.email.length > 200)) throw new SettingsError("connectors.calendar.email: 이메일 주소 모양이 아니에요");
+      if (c.email !== null && !okEmail(c.email)) throw new SettingsError("connectors.calendar.email: 이메일 주소 모양이 아니에요");
       cal.email = c.email === null ? null : (c.email as string).trim();
     }
     out[cap] = cal;
