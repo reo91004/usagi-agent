@@ -55,7 +55,7 @@ import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
-import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
+import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
 import { ctxTools } from "./ctx-tools.ts";
 import { briefingHours } from "./calendar.ts";
 import { performance } from "node:perf_hooks";
@@ -164,7 +164,16 @@ characterStore.onChange = ({ removedCurrent }) => {
   bus.charactersChanged();
   bus.characterChanged(); // 이름·대사가 바뀐 지금 캐릭터도 바로
 };
+// 뇌가 agy 가 아니면 agy 전역 설정에서 우사기 항목(MCP 서버·규칙, 비밀값 포함)을 지운다(#56).
+// 격리 실행(CY_AGENT_HOME 지정 — 시험·측정)은 이 맥의 실제 데몬 것이라 건드리지 않는다
+function cleanAgy() {
+  if (cfg.brain?.provider === "agy" || process.env.CY_AGENT_HOME) return;
+  try { const ch = removeAgyUsagi(); if (ch.length) console.log(`[agy] 뇌가 agy 가 아니라서 agy 설정의 우사기 항목을 지웠어요: ${ch.join(", ")}`); }
+  catch (e: any) { console.warn("[agy]", e?.message ?? e); }
+}
+cleanAgy();
 const settings = new Settings(cfg, { onChange: (keys) => {
+  if (keys.includes("brain")) cleanAgy();
   if (keys.some((k) => k === "brain" || k === "user" || k === "onboarded")) pushStatus();
   if (keys.includes("onboarded") && modelWorkAllowed(cfg)) setTimeout(() => onboardedNow(), 0); // 마법사를 막 마침 → 첫 정리
   else if (keys.includes("readSessions") && sessionsAllowed(cfg)) setTimeout(() => ingest(), 0);

@@ -30,8 +30,9 @@ function defOf(s: any): CliMcpDef | undefined {
     return Array.isArray(args) && args.every((a: unknown) => typeof a === "string") && env ? { command: s.command, args, env } : undefined;
   }
   if (type === "http" && typeof s.url === "string" && /^https?:\/\//.test(s.url)) {
+    // 헤더가 없으면 Claude Code 안의 OAuth 로그인으로 쓰는 서버다 — Codex·agy 는 그 로그인을 못 써서 붙여도 못 읽는다(#56)
     const headers = strMap(s.headers);
-    return headers ? { url: s.url, headers } : undefined;
+    return headers && Object.keys(headers).length ? { url: s.url, headers } : undefined;
   }
   return undefined;
 }
