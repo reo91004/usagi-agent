@@ -551,7 +551,7 @@ function researchSection() {
   return out;
 }
 function renderResearch() {
-  const kids = [...(researchSection() ?? []), ...(directivesSection() ?? [])];
+  const kids = [...(researchSection() ?? []), ...(directivesSection() ?? [])].filter((k) => k != null); // null 을 넣으면 'null' 글자가 찍힌다
   $('sec-research').replaceChildren(...(kids.length ? kids : [h('div.card.empty', { text: '연결된 실험 서버(sshHosts·jobHosts)나 Slack 이 아직 없어요. 설정의 연결에서 켜면 여기 보여요.' })]));
 }
 // 개요의 연구 한 줄 요약 → 연구 탭

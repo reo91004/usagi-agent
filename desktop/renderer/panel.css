@@ -248,7 +248,7 @@ h2 .muted, h2 .small { font-weight: 400; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .stat { padding: var(--s3) var(--s4); min-width: 0; }
 #sec-overview > * + .card { margin-top: var(--s3); }
-.stat .num { font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat .num { white-space: nowrap; font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .stat .label { margin-top: 2px; color: var(--muted); font-size: var(--fs-sm); }
 .stat .sub { margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat .sub.hot { color: var(--p1); font-weight: 600; }
@@ -268,6 +268,19 @@ h2 .muted, h2 .small { font-weight: 400; }
 .proposal { display: flex; align-items: center; gap: var(--s2); padding: 6px 0; border-top: 1px solid var(--line); }
 .proposal:first-child { border-top: 0; }
 .proposal .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 좁은 창(≈560px): 머리 단추가 줄바꿈되지 않게 줄이고, 개요 숫자는 두 줄로 */
+#top h1, #top button { white-space: nowrap; }
+@media (max-width: 700px) {
+  #side { width: 150px; }
+  #updated { display: none; }
+  #top { gap: var(--s1); padding-left: var(--s4); }
+  #top .spacer, #focus-slot { margin-left: auto; }
+  #top button { padding: 5px 7px; }
+  #top button.focus-start, #top button.small { padding: 4px 8px; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  #content { padding-left: var(--s4); padding-right: var(--s4); }
+}
 
 /* 설정 > 연결: 기능별 연결(커넥터) 카드 — 기능마다 한 줄, 준비 안 된 건 이유·안내 문서 경로 */
 .connectors { padding: 6px 16px; }
@@ -1630,3 +1643,5 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings > .set-pane > h2:first-child { margin-top: 0; }
 #set-connectors { margin-bottom: var(--s3); }
 #set-connectors h2 { margin-top: var(--s4); }
+#sec-settings button.ghost { border: 1px solid var(--line); }
+#sec-settings .models-card.empty button { align-self: center; }
