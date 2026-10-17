@@ -76,7 +76,7 @@ export class SlackApiTransport implements SlackDirect {
         return { messages: r.messages ?? [], next_cursor: r.has_more ? s(r.response_metadata?.next_cursor) : undefined };
       }
       case "slack_get_thread_replies": {
-        const r = await this.api("conversations.replies", { channel: a.channel_id, ts: a.thread_ts, limit: n(a.limit, 200), ...(cursor ? { cursor } : {}) });
+        const r = await this.api("conversations.replies", { channel: a.channel_id, ts: a.thread_ts, limit: n(a.limit, 200), ...(s(a.oldest) ? { oldest: a.oldest } : {}), ...(cursor ? { cursor } : {}) });
         return { messages: r.messages ?? [], next_cursor: r.has_more ? s(r.response_metadata?.next_cursor) : undefined };
       }
       case "slack_search_messages": {

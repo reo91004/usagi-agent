@@ -24,6 +24,8 @@ type World = {
 // Web API 응답 모양(api.slack.com/methods) 그대로의 가짜
 function fakeWeb(w: World) {
   const methods: string[] = [];
+  const replyArgs: any[] = [];
+  const searchArgs: any[] = [];
   const all = () => Object.entries(w.history).flatMap(([ch, ms]) => ms.map((m) => ({ ...m, channel: ch })));
   const conv = (id: string) => w.convs.find((c) => c.id === id);
   const web: SlackWebLike = {
@@ -40,10 +42,12 @@ function fakeWeb(w: World) {
           return { ok: true, messages: ms.map((m) => ({ type: "message", ...m })), has_more: false };
         }
         case "conversations.replies": {
-          const ms = (w.history[a.channel] ?? []).filter((m) => m.ts === a.ts || m.thread_ts === a.ts).sort((x, y) => Number(x.ts) - Number(y.ts));
+          replyArgs.push(a);
+          const ms = (w.history[a.channel] ?? []).filter((m) => (m.ts === a.ts || m.thread_ts === a.ts) && Number(m.ts) > Number(a.oldest ?? 0)).sort((x, y) => Number(x.ts) - Number(y.ts));
           return { ok: true, messages: ms.map((m) => ({ type: "message", thread_ts: a.ts, ...m })), has_more: false };
         }
         case "search.messages": {
+          searchArgs.push(a);
           const after = /after:(\S+)/.exec(a.query)?.[1];
           const from = after ? (Date.parse(after) + 864e5) / 1000 : 0;
           let ms = all().filter((m) => Number(m.ts) >= from);
@@ -74,7 +78,7 @@ function fakeWeb(w: World) {
       throw new Error("unexpected " + method);
     },
   };
-  return { web, methods };
+  return { web, methods, replyArgs, searchArgs };
 }
 
 const baseWorld = (): World => ({
@@ -108,7 +112,7 @@ const READ_ONLY = new Set(["auth.test", "users.conversations", "conversations.hi
 const mk = (store: Store, w: World) => {
   const f = fakeWeb(w);
   const ing = new SlackIngester(cfg, store, { direct: new SlackApiTransport(f.web), now: () => NOW });
-  return { ing, methods: f.methods };
+  return { ing, methods: f.methods, replyArgs: f.replyArgs, searchArgs: f.searchArgs };
 };
 
 test("api 모드 첫 수집: 모델 없이 Web API 로 DM·멘션·채널·스레드, 읽기 메서드만", async () => {
@@ -209,4 +213,29 @@ test("커넥터로 전송 고르기: api(토큰)·mcp/off(수집 안 함)", asyn
   const r = await off.run();
   assert.equal(r.calls, 0);
   assert.equal(r.messages, 0);
+});
+
+test("api 모드 스레드: 읽은 지점(oldest)부터 받고 새 답글만 가져오며, 멘션 검색은 본 구간에서 멈춘다", async () => {
+  const store = new Store(":memory:");
+  const w = baseWorld();
+  w.pageSize = 1; // 멘션 검색을 여러 페이지로
+  for (const m of [200, 300, 400]) w.history.C2.push({ ts: ts(m), user: "UB", text: "<@UME> 옛 멘션" });
+  const { ing, replyArgs, searchArgs } = mk(store, w);
+  await ing.run();
+  assert.equal(replyArgs[0].oldest, undefined, "첫 폴링은 전체");
+  const read = ts(42); // 스레드 답글 중 마지막
+  w.history.C1.push({ ts: ts(1), user: "UB", text: "스레드 답", thread_ts: ts(50) });
+  replyArgs.length = 0;
+  searchArgs.length = 0;
+  const r = await ing.run();
+  assert.equal(replyArgs.length, 1);
+  assert.equal(replyArgs[0].oldest, read, "oldest = 마지막으로 읽은 답글");
+  assert.equal(r.messages, 1, "경계 메시지는 중복·누락 없이 새 답글 하나");
+  assert.ok(store.node(`message:C1:${ts(1)}`));
+  const mentionPages = searchArgs.filter((a) => a.query.startsWith("<@")).length;
+  const r3 = await ing.run();
+  assert.equal(r3.messages, 0);
+  assert.equal(replyArgs[1].oldest, ts(1), "새 답글까지 읽음");
+
+  assert.equal(mentionPages, 3, "3페이지에서 옛 구간을 만나 멈춤(정렬 안 쓰면 4페이지)");
 });
