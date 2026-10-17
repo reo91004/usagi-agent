@@ -127,7 +127,7 @@ const safe = (name: string, fn: () => unknown) => async () => {
 safe("close-dangling", () => { const k = agent.closeDanglingTurns(); if (k) console.log(`[chat] 끊긴 대화 ${k}개 닫음`); })();
 
 // 오늘 할 일 알림: 설정(todayReminder)대로, 모델 없이 정해진 말로(뇌가 없거나 local 이어도 뜬다)
-// 아침 안내(ask)는 예전처럼 패널 '오늘 할 일'도 연다. 오버레이가 붙을 때(앱 첫 실행)와 1분마다 확인
+// 아침 안내(ask)는 예전처럼 패널 할 일도 연다. 오버레이가 붙을 때(앱 첫 실행)와 1분마다 확인
 function remindToday(opened = false) {
   const r = agent.dailyPlan().remind(cfg.todayReminder ?? DEFAULT_TODAY_REMINDER, { opened });
   if (!r) return;
@@ -136,10 +136,10 @@ function remindToday(opened = false) {
     text: r.text,
     kind: "todo",
     ttlMs: 60e3,
-    open: { section: "today" },
+    open: { section: "todos" },
   });
   bus.dashboardChanged();
-  if (r.kind === "ask") bus.openPanel("today");
+  if (r.kind === "ask") bus.openPanel("todos");
 }
 bus.onOverlay = () => remindToday(true);
 setInterval(() => { try { remindToday(false); } catch (e: any) { console.warn("[today] 알림:", e?.message ?? e); } }, 60e3).unref?.();

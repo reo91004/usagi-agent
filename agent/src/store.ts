@@ -22,6 +22,7 @@ export type Todo = {
   appliedRule?: { id: string; text: string }; // 이 할 일에 적용된 할 일 규칙(todo-rules.ts)
   progress?: string; progressAt?: string; // 어디까지 됐는지(주기 진행 확인 todo-progress.ts 가 씀 — 사용자 필드 아님)
   doing?: boolean; // 사용자가 직접 정한 (진행중): true 켬 · false 끔 · 없음 = 자동(progress 가 있으면 진행중)
+  due?: string; // 마감(ISO, 미리알림·일정에서 옴 — 동기화 때마다 맞춤)
   today?: string; // 오늘 할 일로 고른 날(KST YYYY-MM-DD). 그날 '오늘 할 일' 탭에 같은 줄로 보인다(daily-plan.ts)
 };
 export type TodoSourceKind = "slack" | "commit" | "mail" | "session" | "calendar" | "jira" | "user" | "other";
@@ -125,6 +126,7 @@ function todoRow(r: any): Todo {
     ...(r.progress ? { progress: r.progress, ...(r.progress_at ? { progressAt: r.progress_at } : {}) } : {}),
     ...(r.doing === 1 || r.doing === 0 ? { doing: r.doing === 1 } : {}),
     ...(r.plan_day ? { today: r.plan_day } : {}),
+    ...(r.due ? { due: r.due } : {}),
   };
 }
 
@@ -160,6 +162,7 @@ export class Store {
       ["progress", "TEXT"], ["progress_at", "TEXT"], // 어디까지 됐는지(todo-progress.ts)
       ["doing", "INTEGER"], // 사용자가 누른 (진행중) 토글: 1 켬 · 0 끔 · NULL 자동
       ["plan_day", "TEXT"], // 오늘 할 일로 고른 날(KST), daily-plan.ts
+      ["due", "TEXT"], // 마감(ISO) — 미리알림 동기화가 씀
     ];
     for (const [name, type] of add) if (!cols.has(name)) this.db.exec(`ALTER TABLE todos ADD COLUMN ${name} ${type}`);
     // 할 일 일지: 처음 만들 때 지금 있는 할 일·휴지통·묘비로 한 번 채운다(예전 DB 도 "사용자가 지운 일"을 바로 기억)
@@ -239,7 +242,7 @@ export class Store {
   // description·sourceRef·sourceInfo(원본)는 비어 있을 때만 채운다.
   // 새 id 라도 같은 일(todo-match.ts — 참조 키·제목)이 휴지통·묘비·최근 끝낸 일에 있으면 "blocked"(안 만든다),
   // 열린 할 일에 있으면 그 할 일로 합친다("merged" — 사용자가 고친 필드는 그대로). 둘 다 일지에 하루 한 번 남긴다
-  upsertTodo(t: Omit<Todo, "status" | "created" | "userEdited" | "updated" | "origin"> & { status?: string; origin?: TodoSource }, by: TodoActor = "briefing"): UpsertResult {
+  upsertTodo(t: Omit<Todo, "status" | "created" | "userEdited" | "updated" | "origin" | "due"> & { status?: string; origin?: TodoSource; due?: string | null }, by: TodoActor = "briefing"): UpsertResult {
     if (this.isTombstoned(t.id) || this.trashedTodo(t.id)) return "skipped"; // 지운(휴지통 포함) id는 되살리지 않는다
     const cur = this.getTodo(t.id);
     if (!cur) {
@@ -254,15 +257,16 @@ export class Store {
         return "blocked";
       }
       this.db
-        .prepare("INSERT INTO todos (id, title, source, link, priority, status, created, note, updated, description, source_ref, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .prepare("INSERT INTO todos (id, title, source, link, priority, status, created, note, updated, description, source_ref, origin, due) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .run(t.id, t.title, t.source, t.link ?? null, t.priority, t.status ?? "open", now(), t.note ?? null, now(),
-          t.description ?? null, t.sourceRef ?? null, t.origin ? JSON.stringify(t.origin) : null);
+          t.description ?? null, t.sourceRef ?? null, t.origin ? JSON.stringify(t.origin) : null, t.due ?? null);
       this.log(t.id, t.title, "added", by);
       return "added";
     }
     if (!cur.description && t.description && !cur.userEdited?.includes("description")) this.setTodoDetail(t.id, { description: t.description }); // 사용자가 고친(지운) 설명은 안 덮음
     if (!cur.origin && t.origin) this.setTodoDetail(t.id, { origin: t.origin });
     if (cur.status !== "open") return "skipped";
+    if (t.due !== undefined && (t.due ?? undefined) !== cur.due) this.db.prepare("UPDATE todos SET due = ? WHERE id = ?").run(t.due, t.id); // 마감은 사용자 필드가 아니라 원본 따라 맞춘다
     const mine = new Set(cur.userEdited);
     const priority = mine.has("priority") ? cur.priority : t.priority;
     const link = mine.has("link") ? cur.link : (t.link ?? cur.link);

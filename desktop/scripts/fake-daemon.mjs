@@ -118,6 +118,9 @@ let todos = D.todos ?? [
   { id: 'jira:CY-12', title: 'CY-12 패널 접근성 점검', source: 'jira', link: 'https://example.atlassian.net/browse/CY-12', priority: 1, today: today() },
   { id: 'slack:3', title: '#cy-agent 어제 질문에 답장', source: 'slack', link: 'slack://channel?team=T1&id=C1', priority: 2 },
   { id: 'cal:4', title: '내일 1:1 안건 적기', source: 'calendar', link: null, priority: 3 },
+  { id: 'reminder:r1', title: '쿠팡와우 해지', source: 'reminders', priority: 3, note: '미리알림 「할 일」', due: new Date(Date.now() + 4 * 864e5).toISOString() },
+  { id: 'reminder:r2', title: '세금 서류 제출', source: 'reminders', priority: 1, note: '미리알림 「할 일」', due: new Date(Date.now() - 864e5).toISOString() },
+  { id: 'user:u1', title: '직접 적은 할 일', source: 'user', priority: 2 },
   { id: 'local:5', title: '노트 레포 정리', source: 'local', priority: 4 },
   { id: 'mail:news', title: '팀 뉴스레터 10월호 훑어보기', source: 'mail', priority: 4, appliedRule: { id: 'rule:seed0', text: '앞으로 뉴스레터는 백로그로' } },
   { id: 'slack:weekly134', title: '제134회 주간회의(10/15 목 10:00) 참석 여부 정하기', source: 'slack', priority: 2 },
@@ -283,7 +286,7 @@ function fakeChat(text, focus, ports) {
       return;
     }
     // "오늘 할 일" 이 들어가면 답과 함께 SSE open_panel 로 패널을 연다
-    if (/오늘.?할.?일/.test(text)) emit('open_panel', { section: 'today' });
+    if (/오늘.?할.?일/.test(text)) emit('open_panel', { section: 'todos' });
     if (focus) {
       let reply;
       const still = todos.find((x) => x.id === focus.id);

@@ -195,7 +195,7 @@ export function buildContext(store: Store, now = new Date(), opts: { selfId?: st
 function todayPlan(store: Store): string {
   try {
     const plan = new DailyPlanService(store).state();
-    const lines = ["## 오늘 할 일 (패널 '오늘 할 일' 탭 · 할 일 중 오늘로 고른 것 · 로컬)"];
+    const lines = ["## 오늘 할 일 (패널 할 일 탭 맨 위 「오늘」 · 할 일 중 오늘로 고른 것 · 로컬)"];
     if (!plan.items.length) {
       lines.push("(비어 있음. 오늘 회의·할 일을 보고 plan_ops add 로 적거나, 있는 할 일을 add(id)로 오늘로 고를 수 있다)");
       return lines.join("\n");

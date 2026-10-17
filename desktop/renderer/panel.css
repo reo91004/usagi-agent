@@ -647,13 +647,11 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row .check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--ok); }
 .todo .chip.mine { flex: none; }
 .todo .chip { flex: none; }
-#sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select,
-#sec-today input[type="text"], #sec-today input[type="url"], #sec-today textarea, #sec-today select {
+#sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select {
   padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); outline: none;
 }
-#sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus,
-#sec-today input:focus, #sec-today textarea:focus, #sec-today select:focus { border-color: var(--accent); }
-#sec-todos select.prio, #sec-today select.prio { padding: 3px 4px; font-size: 12px; flex: none; }
+#sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus { border-color: var(--accent); }
+#sec-todos select.prio { padding: 3px 4px; font-size: 12px; flex: none; }
 .todo-add { display: flex; gap: 8px; align-items: center; margin: 4px 0 6px; }
 .todo-add input { flex: 1; min-width: 0; }
 .todo-wrap { border-top: 1px solid var(--line); }
@@ -688,9 +686,28 @@ button.ghost.danger-text { color: var(--err); }
 .todo.is-done .t { color: var(--muted); text-decoration: line-through; }
 .todo.is-done .chip.auto { cursor: help; }
 
-/* 오늘 할 일: 할 일 탭과 같은 줄·묶음. 머리에 날짜와 남은 수 */
-#sec-today .today-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
-#sec-today .today-head h2 { margin: 0; }
+/* 묶음 이름 옆 기준 한 줄 */
+.group h2 .group-hint { font-size: 11.5px; font-weight: 400; color: var(--faint); }
+.group.today h2::before { background: var(--accent); }
+.group.today h2 { color: var(--accent); }
+.group.today .drop-empty .muted { text-align: left; }
+.group.done h2.backlog-head::before { display: none; }
+.group.done .caret { width: 10px; color: var(--faint); font-size: 10px; }
+/* 출처 칩: 출처마다 색(연한 바탕 + 같은 계열 글자). 직접 추가는 강조색, 미리알림은 주황 */
+.chip[class*="src-"] { background: color-mix(in srgb, var(--src) 15%, transparent); color: var(--src); }
+.chip.src-slack { --src: var(--c-purple); }
+.chip.src-commit { --src: var(--c-green); }
+.chip.src-mail { --src: var(--c-pink); }
+.chip.src-session { --src: var(--c-gray); }
+.chip.src-calendar { --src: var(--c-teal); }
+.chip.src-jira, .chip.src-issues { --src: var(--c-blue); }
+.chip.src-reminders { --src: var(--c-orange); }
+.chip.src-user { --src: var(--accent); }
+.chip.src-other { --src: var(--c-gray); }
+/* 마감 칩 */
+.chip.due { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.chip.due.due-today { color: var(--c-orange); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-orange) 45%, transparent); }
+.chip.due.due-late { color: var(--c-red); background: color-mix(in srgb, var(--c-red) 12%, transparent); box-shadow: none; }
 /* 줄의 '오늘' 토글: 오늘 할 일로 고르기·빼기 */
 .todo.row .row-today { flex: none; padding: 1px 7px; font-size: 11.5px; border-radius: 999px; color: var(--faint); opacity: 0; transition: opacity 0.12s ease; }
 .todo.row:hover .row-today, .todo.row:focus-visible .row-today, .todo.row:focus-within .row-today, .todo.row .row-today:focus-visible, .todo.row .row-today.on { opacity: 1; }
@@ -1007,13 +1024,13 @@ button.small { padding: 2px 8px; font-size: 12px; }
 
 /* 마크다운 강조: 글자색(:red[…])·형광펜(==…==)·콜아웃(> [!NOTE]) — 밝은/어두운 테마 모두 4.5:1 이상 */
 :root {
-  --c-red: #c62828; --c-green: #1b7a3a; --c-blue: #1f5fbf; --c-orange: #b35400; --c-purple: #6b3fc4; --c-gray: #6e6e73;
+  --c-red: #c62828; --c-green: #1b7a3a; --c-blue: #1f5fbf; --c-orange: #b35400; --c-purple: #6b3fc4; --c-gray: #6e6e73; --c-teal: #0f766e; --c-pink: #b4236a;
   --mark-bg: rgba(255, 214, 10, 0.38);
   --co-note: #1f5fbf; --co-tip: #1b7a3a; --co-important: #6b3fc4; --co-warning: #b35400; --co-caution: #c62828;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --c-red: #ff8a80; --c-green: #7ee29b; --c-blue: #8ab4ff; --c-orange: #ffb35c; --c-purple: #c3a6ff; --c-gray: #a1a1a6;
+    --c-red: #ff8a80; --c-green: #7ee29b; --c-blue: #8ab4ff; --c-orange: #ffb35c; --c-purple: #c3a6ff; --c-gray: #a1a1a6; --c-teal: #5eead4; --c-pink: #ff9ec7;
     --mark-bg: rgba(255, 214, 10, 0.28);
     --co-note: #8ab4ff; --co-tip: #7ee29b; --co-important: #c3a6ff; --co-warning: #ffb35c; --co-caution: #ff8a80;
   }
@@ -1174,7 +1191,7 @@ button.setup-inline { padding: 6px 14px; font-size: 13px; }
 .undo-toast .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--toast-accent); transform-origin: left; animation: undo-shrink 5s linear forwards; }
 @keyframes undo-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @media (prefers-reduced-motion: reduce) { .undo-toast .bar { animation: none; opacity: 0.4; } .todo.row .row-trash { transition: none; } }
-body.has-undo #sec-todos, body.has-undo #sec-today { padding-bottom: 64px; }
+body.has-undo #sec-todos { padding-bottom: 64px; }
 
 /* 확인 카드(회의 응답 등): 답 아래. [실행]을 눌러야 보낸다 */
 .action-card {
@@ -1315,7 +1332,6 @@ body.has-undo #sec-todos, body.has-undo #sec-today { padding-bottom: 64px; }
 
 /* ---- 집중하기(focus-view.js): [집중하기] 줄 · 「오늘 집중」 · 주·월 기록(잔디) ---- */
 .focus-bar { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
-#sec-today .today-head .focus-bar { align-self: center; }
 button.focus-start { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600;
   background: color-mix(in srgb, var(--grass) 16%, transparent); color: color-mix(in srgb, var(--grass) 80%, var(--fg)); }
 button.focus-start:hover:not(:disabled) { background: color-mix(in srgb, var(--grass) 24%, transparent); filter: none; }

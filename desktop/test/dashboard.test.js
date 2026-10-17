@@ -53,7 +53,7 @@ test('shapeDashboard: 숫자 요약과 프로젝트 정리', () => {
     proposals: [{ id: 'p', title: 'x', status: 'pending' }, { id: 'q', title: 'y', status: 'done' }],
     today: { date: '2026-10-09', items: [{ id: '1', title: '리뷰', done: false, priority: 1 }, { id: 'd', title: '끝', done: true, priority: 2 }] },
   }, NOW);
-  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 2, p1Todos: 1, backlogTodos: 0, activeProjects: 1, pendingProposals: 1, todayOpen: 1, todayTotal: 2 });
+  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 1, p1Todos: 1, backlogTodos: 0, activeProjects: 1, pendingProposals: 1, todayOpen: 1, todayTotal: 2 });
   assert.equal(vm.projects[0].lastActiveRel, '10분 전');
   assert.deepEqual(vm.projects[0].recentCommits, [{ sha: 'abcdef1', subject: 'feat: x', time: ago(HOUR), rel: '1시간 전' }]);
   assert.equal(vm.briefing.rel, '2시간 전');
@@ -71,8 +71,8 @@ test('shapeDashboard: 빈/깨진 응답도 안전', () => {
 
 test('normalizeSection', () => {
   assert.equal(normalizeSection('projects'), 'projects');
-  assert.equal(normalizeSection('today'), 'today');
-  assert.equal(normalizeSection('scrum'), 'today');
+  assert.equal(normalizeSection('today'), 'todos'); // 예전 저장 상태
+  assert.equal(normalizeSection('scrum'), 'todos');
   assert.equal(normalizeSection('settings'), null);
   assert.equal(normalizeSection(null), null);
 });
@@ -140,11 +140,11 @@ test('shapeConnectors: 아는 기능·모드만, 필드 검증, 중복은 앞의
   assert.deepEqual(shapeConnectors({ cap: 'slack' }), []);
 });
 
-test('shapeDashboard: connectors → notReady, 오늘 할 일 탭은 항상 보임', () => {
+test('shapeDashboard: connectors → notReady, 오늘 탭은 따로 없음', () => {
   const old = shapeDashboard({ today: null }, NOW);
   assert.deepEqual(old.connectors, []);
   assert.deepEqual(old.notReady, []);
-  assert.ok(visibleSections(old).includes('today'));
+  assert.ok(!visibleSections(old).includes('today'));
   assert.deepEqual(visibleSections(old), SECTIONS);
 
   const off = shapeDashboard({ connectors: [
@@ -152,35 +152,38 @@ test('shapeDashboard: connectors → notReady, 오늘 할 일 탭은 항상 보�
     { cap: 'mail', label: '메일', mode: 'off', ready: false, detail: '연결 안 됨', doc: 'docs/connect/mail.md' },
   ] }, NOW);
   assert.deepEqual(off.notReady, ['mail']);
-  assert.ok(visibleSections(off).includes('today'));
+  assert.ok(!visibleSections(off).includes('today'));
   assert.equal(shapeConnectors([{ cap: 'scrum', mode: 'mcp', ready: true }]).length, 0);
   assert.equal(shapeConnectors([{ cap: 'slack', mode: 'gateway', ready: true }]).length, 0);
 });
 
-test('shapeDashboard: 오늘 할 일은 할 일 중 오늘로 고른 것: 할 일 탭과 같은 우선순위 묶음 + 오늘 끝냄', () => {
+test('shapeDashboard: 오늘로 고른 일은 맨 위 「오늘」 묶음, 아래 묶음에 겹치지 않고, 열린 수는 오늘+오늘 꼭+이번 주', () => {
   const vm = shapeDashboard({
     todos: [
       { id: 'a', title: '가', priority: 2, today: '2026-10-09' },
       { id: 'b', title: '나', priority: 1, today: '2026-10-09', doing: true },
       { id: 'c', title: '어제 고른 것', priority: 1, today: '2026-10-08' },
       { id: 'e', title: '백로그', priority: 4, today: '2026-10-09' },
+      { id: 'f', title: '이번 주', priority: 2 },
+      { id: 'g', title: '나중', priority: 3, due: '2026-12-01T00:00:00.000Z' },
     ],
     today: { date: '2026-10-09', asked: true, items: [
       { id: 'b', title: '나', done: false, priority: 1 },
       { id: 'x', title: '끝낸 일', done: true, priority: 3, source: 'user' },
-      { id: 'gone', title: '응답 대기로 빠진 줄', done: false, priority: 2 },
     ] },
   }, NOW);
-  assert.deepEqual(vm.todayGroups.map((g) => [g.label, g.items.map((t) => t.id)]), [['오늘 꼭', ['b']], ['이번 주', ['a']], ['언젠가', ['e']]]);
-  assert.equal(vm.todayGroups[0].items[0].doing, true);
-  assert.equal(vm.todayGroups[0].items[0].today, '2026-10-09');
+  assert.deepEqual(vm.todoGroups.map((g) => [g.label, g.items.map((t) => t.id)]), [['오늘', ['a', 'b', 'e']], ['오늘 꼭', ['c']], ['이번 주', ['f']], ['나중에', ['g']]]);
+  assert.equal(vm.todoGroups[0].items[1].doing, true);
+  assert.equal(vm.todoGroups[0].items[2].priority, 4, '오늘 묶음 줄도 본래 우선순위를 가진다');
+  assert.equal(vm.todoGroups[3].items[0].due, '2026-12-01T00:00:00.000Z');
+  assert.match(vm.todoGroups[3].hint, /일주일 넘게/);
+  assert.equal(new Set(vm.todoGroups.flatMap((g) => g.items.map((t) => t.id))).size, 6, '겹치지 않음');
   assert.deepEqual(vm.todayDone.map((t) => [t.id, t.priority, t.auto]), [['x', 3, false]]);
+  assert.equal(vm.stats.openTodos, 3 + 1 + 1); // 오늘 3 + 오늘 꼭 1 + 이번 주 1, 나중에 제외
+  assert.equal(vm.stats.p1Todos, 2); // b(오늘 묶음) + c
   assert.equal(vm.stats.todayOpen, 3);
   assert.equal(vm.stats.todayTotal, 4);
-  assert.deepEqual(vm.today.items.map((x) => [x.id, x.done]), [['b', false], ['a', false], ['e', false], ['x', true]]);
-  // 할 일 탭에는 그대로 다 있다(같은 모델)
-  assert.equal(vm.todoGroups.flatMap((g) => g.items).length, 4);
-  assert.deepEqual(shapeDashboard({ todos: [{ id: 'a', title: '가', priority: 2, today: '2026-10-09' }] }, NOW).todayGroups, [], '날짜를 모르면 비움');
+  assert.equal(shapeDashboard({ todos: [{ id: 'a', title: '가', priority: 2, today: '2026-10-09' }] }, NOW).todoGroups[0].label, '이번 주', '날짜를 모르면 오늘 묶음 없음');
 });
 
 test('splitHost: 「host:/경로」 만 서버로 보고, 이 Mac 경로·윈도우 드라이브는 그대로', () => {
