@@ -47,7 +47,7 @@ export function normRef(ref: string | undefined | null): string | undefined {
   if (!m) return undefined;
   const kind = m[1].toLowerCase();
   if (COARSE.has(kind)) return undefined;
-  const slack = /^([A-Z0-9]+):(\d+)\.?(\d*)$/i.exec(m[2]);
+  const slack = /^([A-Z0-9]+):p?(\d+)\.?(\d*)$/i.exec(m[2]); // slack:C1:p179… 도 같은 키
   if (kind === "slack" && slack) return `slack:${slack[1].toUpperCase()}:${slack[2]}${slack[3]}`;
   return `${kind}:${m[2].trim().toLowerCase()}`;
 }

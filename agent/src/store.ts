@@ -3,7 +3,7 @@ import { localDate } from "./calendar.ts";
 import { chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { DEDUPE, sameItem } from "./todo-match.ts";
+import { DEDUPE, refsOf, sameItem } from "./todo-match.ts";
 import type { Attachment } from "./attachments.ts";
 import { IS_WIN, pathWithin } from "./plat.ts";
 
@@ -295,15 +295,18 @@ export class Store {
     const doneSince = new Date(at.getTime() - DEDUPE.doneDays * 864e5).toISOString();
     const trashSince = new Date(at.getTime() - DEDUPE.trashDays * 864e5).toISOString();
     const rows = [
-      ...(this.db.prepare("SELECT id, title, source_ref, link, 'open' AS state FROM todos WHERE status = 'open' AND trashed_at IS NULL").all() as any[]),
-      ...(this.db.prepare("SELECT id, title, source_ref, link, 'done' AS state FROM todos WHERE status = 'done' AND trashed_at IS NULL AND coalesce(updated, created) >= ?").all(doneSince) as any[]),
-      ...(this.db.prepare("SELECT id, title, source_ref, link, 'trashed' AS state FROM todos WHERE trashed_at IS NOT NULL AND trashed_at >= ?").all(trashSince) as any[]),
-      ...(this.db.prepare("SELECT id, title, NULL AS source_ref, NULL AS link, 'trashed' AS state FROM todo_tombstones WHERE at >= ? AND id NOT IN (SELECT id FROM todos)").all(trashSince) as any[]),
+      ...(this.db.prepare("SELECT id, title, source_ref, link, 'open' AS state, NULL AS at FROM todos WHERE status = 'open' AND trashed_at IS NULL").all() as any[]),
+      ...(this.db.prepare("SELECT id, title, source_ref, link, 'done' AS state, coalesce(updated, created) AS at FROM todos WHERE status = 'done' AND trashed_at IS NULL AND coalesce(updated, created) >= ?").all(doneSince) as any[]),
+      ...(this.db.prepare("SELECT id, title, source_ref, link, 'trashed' AS state, trashed_at AS at FROM todos WHERE trashed_at IS NOT NULL AND trashed_at >= ?").all(trashSince) as any[]),
+      ...(this.db.prepare("SELECT id, title, NULL AS source_ref, NULL AS link, 'trashed' AS state, at FROM todo_tombstones WHERE at >= ? AND id NOT IN (SELECT id FROM todos)").all(trashSince) as any[]),
     ];
     const titles = this.ledgerTitles(rows.map((r) => r.id));
+    // 닫은 뒤에 온 Slack 메시지로 만든 할 일은 제목이 같아도 새 일(닫은 뒤 새 메시지는 다시 알린다 #206)
+    const slackAt = [...refsOf(t)].map((r) => /^slack:[A-Z0-9]+:(\d{10})/.exec(r)?.[1]).filter(Boolean).map((sec) => new Date(Number(sec) * 1e3).toISOString()).sort().at(-1);
     for (const r of rows) {
       if (r.id === t.id) continue;
       const why = sameItem(t, { id: r.id, title: r.title ?? "", titles: titles.get(r.id), sourceRef: r.source_ref ?? undefined, link: r.link ?? undefined });
+      if (why === "title" && r.at && slackAt && slackAt > r.at) continue;
       if (why) return { id: r.id, title: r.title ?? "", state: r.state, why };
     }
     return undefined;
