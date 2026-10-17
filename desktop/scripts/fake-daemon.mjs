@@ -192,6 +192,29 @@ function dashboard() {
     trashCount: trash.length,
     meetings: fakeMeetings(),
     connectors: fakeConnectors(),
+    research: {
+      hosts: ['pacl-208', 'pacl-reo'],
+      jobs: [
+        { id: 'job:pacl-208:1', name: '우사기 확인(공용 208)', host: 'pacl-208', state: 'done', seconds: 1, code: 0, cmd: 'sleep 1', at: ago(300) },
+        { id: 'job:pacl-reo:2', name: 'r117 head', host: 'pacl-reo', state: 'failed', seconds: 5400, code: 1, at: ago(120) },
+      ],
+      tmux: {
+        'pacl-208': { at: ago(1), sessions: [
+          { name: 'r117', running: 'python', path: '/home/user/reo/experiments', created: Date.now() / 1000 - 7200, activity: Date.now() / 1000 - 30 },
+          { name: 'scratch', running: null, path: '/home/user/reo', created: Date.now() / 1000 - 90000, activity: Date.now() / 1000 - 80000 },
+        ] },
+        'pacl-reo': { at: ago(1), sessions: [] },
+      },
+      note: { day: '2026-10-17', exists: true },
+    },
+    directives: {
+      from: [{ id: 'UPROF', name: '김교수' }],
+      candidates: [{ id: 'UPHD', name: '박선배', count: 3, channel: 12 }],
+      open: [
+        { id: 'message:D1:1.1', authorName: '김교수', isDM: true, text: '논문 그림 3 축 라벨 고쳐 주세요', at: ago(60) },
+        { id: 'message:C1:2.1', authorName: '김교수', isDM: false, channelLabel: '#일반', text: '이번 주 금요일까지 실험 결과 공유 부탁드립니다', at: ago(120) },
+      ],
+    },
   };
 }
 
