@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   okSessionId, okCwd, projectDirName, sessionFile, shQuote, resumeCommand, appleString, terminalArgs, planResume, canResume, resumeTip,
-  parseSessionId, importNote, sessionCwd, winResumeLaunches,
+  parseSessionId, importNote, sessionCwd, winResumeLaunches, planCodexResume, canResumeCodex, canSync,
 } from '../src/resume.js';
 
 const HOME = '/Users/a.b';
@@ -157,4 +157,24 @@ test('IPC 배선: 세션 창 openInClaude → 메인 session-claude(run 을 데�
   assert.match(html, /id="btn-claude"[^>]*>Claude Code에서 열기</);
   assert.match(sess, /cy\.openInClaude\(r\.id\)/);
   assert.match(sess, /item\('Claude Code에서 열기', \(\) => openInClaude\(r\)\)/);
+});
+
+test('Codex 이어 하기: codex:<id> 만, cwd 는 홈 아래, 없어진 워크트리만 다시 만든다, 셸 인용', () => {
+  const run = { sdkSessionId: 'codex:019a-b3c4-d5e6f7', cwd: `${HOME}/.cy-agent/worktrees/fix1`, status: 'done' };
+  const o = { home: HOME, worktreesDir: `${HOME}/.cy-agent/worktrees`, exists: () => true, platform: 'darwin' };
+  assert.equal(canResumeCodex(run), true);
+  assert.equal(canResumeCodex({ ...run, sdkSessionId: SID }), false);
+  assert.equal(canSync(run), true);
+  const p = planCodexResume(run, o);
+  assert.equal(p.ok, true);
+  assert.match(p.args[1], /cd '\/Users\/a\.b\/\.cy-agent\/worktrees\/fix1' && codex resume '019a-b3c4-d5e6f7'/);
+  assert.equal(planCodexResume(run, { ...o, exists: () => false }).mkdir, true);
+  assert.equal(planCodexResume({ ...run, cwd: `${HOME}/repo` }, { ...o, exists: () => false }).ok, false);
+  assert.equal(planCodexResume({ ...run, cwd: '/etc' }, o).ok, false);
+  assert.equal(planCodexResume({ ...run, sdkSessionId: "codex:x'; rm -rf" }, o).ok, false);
+  assert.equal(planCodexResume(run, { ...o, platform: 'win32' }).ok, false);
+  const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  assert.match(src('main.js'), /ipcMain\.handle\('session-codex'[\s\S]*planCodexResume\(r\.data\.run,[\s\S]*execFile\('osascript', plan\.args,/);
+  assert.match(src('preload-session.cjs'), /openInCodex: \(id\) => ipcRenderer\.invoke\('session-codex', String\(id\)\)/);
+  assert.match(src('renderer/session.html'), /id="btn-codex"[^>]*>터미널 Codex 에서 이어 하기</);
 });

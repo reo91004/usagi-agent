@@ -15,7 +15,7 @@ import {
 } from '../src/session.js';
 import { cleanOrigin, originLabel, originKey } from '../src/origin.js';
 import { toolHeader, resultPreview, shortPath, subagentSummary, ellipsize } from '../src/tool-view.js';
-import { canResume, resumeTip, canSync, syncTip, syncNote, parseSessionId, importNote } from '../src/resume.js';
+import { canResume, resumeTip, canResumeCodex, codexResumeTip, canSync, syncTip, syncNote, parseSessionId, importNote } from '../src/resume.js';
 import { attachSlashMenu } from './slash-menu.js';
 import { createAttachTray } from './attach-tray.js';
 import { attachSummary } from '../src/attachments.js';
@@ -228,6 +228,8 @@ function renderHead() {
   // Claude Code에서 열기: SDK 세션 id 가 있을 때만(도는 중이면 툴팁에 경고)
   $('btn-claude').hidden = !canResume(r);
   if (canResume(r)) $('btn-claude').title = resumeTip(r);
+  $('btn-codex').hidden = !canResumeCodex(r);
+  if (canResumeCodex(r)) $('btn-codex').title = codexResumeTip(r);
   // ↻ 새로고침: 터미널에서 이어 간 대화(서브에이전트 포함)를 세션 기록에서 불러온다
   $('btn-sync').hidden = !canSync(r);
   if (canSync(r)) $('btn-sync').title = syncTip(r);
@@ -687,6 +689,13 @@ async function openInClaude(r = current()) {
   if (!res?.ok) $('compose-err').textContent = res?.error && res.error !== 'bad args' ? res.error : 'Claude Code에서 못 열었어요.';
 }
 $('btn-claude').addEventListener('click', () => openInClaude());
+async function openInCodex(r = current()) {
+  if (!canResumeCodex(r)) return;
+  $('compose-err').textContent = '';
+  const res = await cy.openInCodex(r.id);
+  if (!res?.ok) $('compose-err').textContent = res?.error && res.error !== 'bad args' ? res.error : 'Codex 를 못 열었어요.';
+}
+$('btn-codex').addEventListener('click', () => openInCodex());
 // 뇌(말 거는 AI) 연결 상태 — 바뀌면 입력창을 다시 그린다
 const applyBrain = (v) => { if (v && typeof v === 'object') { brain = v; renderHead(); } };
 cy.brain?.().then(applyBrain).catch(() => {});
@@ -731,6 +740,7 @@ function rowMenu(r, x, y) {
     item(o ? `↩︎ 원래 화면 열기 (${originLabel(o)})` : '원래 화면 없음', () => openOrigin(r), !o),
     item('이 세션 보기', () => select(r.id)),
     canResume(r) ? item('Claude Code에서 열기', () => openInClaude(r)) : null,
+    canResumeCodex(r) ? item('터미널 Codex 에서 이어 하기', () => openInCodex(r)) : null,
     canSync(r) ? item('↻ 터미널에서 이어 간 대화 불러오기', () => syncRun(r)) : null,
   ].filter(Boolean));
   menu.hidden = false;
