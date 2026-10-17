@@ -258,6 +258,41 @@ test("refineIncremental: 처음엔 워터마크+규칙만, 그다음엔 워터�
   assert.equal(readEntity(store, "issue:a")!.props.status, "open");
 });
 
+test("refineIncremental: 호출 상한에 걸리면 다음 회차가 같은 구간을 이어 하고, 구간이 끝나면 새 근거를 처리한다", async () => {
+  const { store, ent, rel } = world();
+  await refineIncremental(cfg, store, { deps: deps(fakeModel()) }); // 워터마크 찍기
+  const wm0 = NOW;
+  const later = new Date(NOW + 3600e3).toISOString();
+  const touch = (id: string) => store.db.prepare("UPDATE kg_chunks SET updated = ? WHERE id IN (SELECT chunk FROM kg_evidence WHERE target = ?)").run(later, id);
+  ent("issue:b", "issue", "이슈 B", daysAgo(0), "이슈 B", { status: "open" });
+  ent("project:p", "project", "프로젝트 P", daysAgo(0), "프로젝트 P", { status: "active" });
+  ent("project:p", "project", "프로젝트 P", daysAgo(0), "프로젝트 P 또");
+  rel("issue:b", "blocks", "project:p", daysAgo(0));
+  touch("issue:b");
+  const t1 = NOW + 2 * 3600e3;
+  const f1 = fakeModel();
+  const r1 = await refineIncremental(cfg, store, { maxCalls: 1, deps: deps(f1, { now: () => t1 }) });
+  assert.equal(f1.calls.issue, 1);
+  assert.equal(r1.stopped, "budget");
+  const wmOf = () => (store.db.prepare("SELECT value FROM kg_meta WHERE key = 'refineWatermark'").get() as any).value;
+  assert.equal(wmOf(), new Date(wm0).toISOString(), "구간이 안 끝났으면 워터마크 그대로");
+
+  // 구간 뒤에 새 근거가 생겨도 이번 회차 구간에는 안 들어간다. 끝낸 이슈 판정은 다시 안 부른다
+  ent("issue:c", "issue", "이슈 C", daysAgo(0), "이슈 C", { status: "open" });
+  store.db.prepare("UPDATE kg_chunks SET updated = ? WHERE id IN (SELECT chunk FROM kg_evidence WHERE target = 'issue:c')").run(new Date(t1 + 3600e3).toISOString());
+  const t2 = t1 + 2 * 3600e3;
+  const f2 = fakeModel();
+  const r2 = await refineIncremental(cfg, store, { deps: deps(f2, { now: () => t2 }) });
+  assert.equal(f2.calls.issue, 0);
+  assert.ok(f2.calls.summary >= 1);
+  assert.equal(r2.stopped, undefined);
+  assert.equal(wmOf(), new Date(t1).toISOString(), "구간 끝: 워터마크는 그 구간 끝으로");
+
+  const f3 = fakeModel();
+  await refineIncremental(cfg, store, { deps: deps(f3, { now: () => t2 + 3600e3 }) });
+  assert.equal(f3.calls.issue, 1, "새 근거(이슈 C)는 다음 구간에서 처리");
+});
+
 test("applyStaleRule: 모델이 마지막 근거 뒤에 열림이라 했으면 그대로, 막힘은 건드리지 않는다", () => {
   const { store, ent } = world();
   ent("issue:a", "issue", "A", daysAgo(30), "A", { status: "open" });

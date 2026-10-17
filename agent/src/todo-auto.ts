@@ -387,7 +387,10 @@ export async function runAfterSlackIngest(agent: AutoApplier, cfg: Config, store
     const titles = new Map(store.autoCandidates().map((t) => [t.id, t.title]));
     const direct = hits.filter((c) => isReplyTask(titles.get(c.id) ?? ""));
     // 답하기류가 아닌 건 모델에게 힌트로. 이미 같은 답으로 판단받은 건 다시 보내지 않는다
-    const hints = hits.filter((c) => !direct.includes(c) && st.get(`hint:${c.id}`) !== c.evidence.ids.join(","));
+    // 모델이 실패한 힌트는 실패 횟수만큼 늘려 쉰다(같은 근거로 15분마다 영원히 다시 부르지 않게). 근거가 바뀌면 바로 다시
+    const fp = (c: Completion) => c.evidence.ids.join(",");
+    const backoff = (c: Completion) => { const [f, , next] = (st.get(`hintfail:${c.id}`) ?? "").split("|"); return f === fp(c) && now.getTime() < Number(next); };
+    const hints = hits.filter((c) => !direct.includes(c) && st.get(`hint:${c.id}`) !== fp(c) && !backoff(c));
     const appliedDet = direct.length ? await agent.autoCompleteTodos(direct) : [];
     const res: AfterIngestResult = { deterministic: appliedDet.length, hints: hints.length, applied: appliedDet.map((t) => t.id) };
     const last = Number(st.get("last_model_at") ?? 0);
@@ -408,6 +411,10 @@ export async function runAfterSlackIngest(agent: AutoApplier, cfg: Config, store
         st.set("last_model_at", now.getTime());
         st.set("last_error_at", now.getTime());
         res.error = String(e?.message ?? e).slice(0, 200);
+        for (const h of hints) {
+          const [f, n] = (st.get(`hintfail:${h.id}`) ?? "").split("|"), n1 = (f === fp(h) ? Number(n) : 0) + 1;
+          st.set(`hintfail:${h.id}`, `${fp(h)}|${n1}|${now.getTime() + Math.min(interval * 2 ** n1, 24 * 3600e3)}`);
+        }
       }
     }
     // 건수·비용만 로그(메시지 원문·제목은 남기지 않는다)

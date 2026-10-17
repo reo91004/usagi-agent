@@ -206,3 +206,15 @@ test("incremental: 워터마크 이후 청크만, 백필 결과는 다시 안 �
   const r2 = await kg.incremental();
   assert.equal(r2.chunks, 1, "바뀐 마지막 청크만");
 });
+
+test("incremental: 호출 수 상한에서 멈추고 나머지는 다음 회차에서 한다(비용 0 CLI 대비)", async () => {
+  const store = new Store(":memory:");
+  const w = world(8);
+  const f = fakeModel();
+  const kg = mk(store, w, f, { now: () => Date.parse("2026-09-11T00:00:00Z"), parallel: 1 });
+  const r = await kg.incremental({ budgetUsd: 100, maxCalls: 2 });
+  assert.equal(r.complete, false);
+  assert.equal(f.calls.s1 + f.calls.s2, 2);
+  const r2 = await kg.incremental({ budgetUsd: 100, maxCalls: 1000 });
+  assert.equal(r2.complete, true);
+});
