@@ -303,10 +303,10 @@ export class Connections {
     const sh = this.cfg.sessionHosts ?? [];
     rows.push({ id: "sessions", label: "작업 세션(Claude Code·Codex 기록)", group: "local", check: "local", checkedAt: at,
       state: sessionsOn ? "ok" : "off", detail: sessionsOn ? `이 맥${sh.length ? `과 서버 ${sh.join("·")}` : ""}의 기록을 읽어요` : this.cfg.onboarded === false ? "처음 설정을 마치기 전이라 읽지 않아요" : "읽지 않아요(설정에서 켤 수 있어요)", briefing: brief(["sessions"]) });
-    // 이 Mac 의 캘린더·미리알림(eventkit.ts) — 켜고 끄기는 초기 설정 「더 연결하기」
+    // 이 Mac 의 캘린더·미리알림(eventkit.ts) — 켜고 끄기는 연결 도우미 「더 연결하기」
     const calLocal = conns.calendar.mode === "api" && !!conns.calendar.local, rem = !!this.cfg.appleReminders;
     rows.push({ id: "apple", label: "이 Mac 캘린더·미리알림", group: "local", check: "local", checkedAt: at, state: calLocal || rem ? "ok" : "off",
-      detail: calLocal || rem ? `${[calLocal ? "캘린더" : "", rem ? "미리알림(할 일로)" : ""].filter(Boolean).join("·")}을 읽어요` : "연결 안 함(초기 설정 → 더 연결하기)" });
+      detail: calLocal || rem ? `${[calLocal ? "캘린더" : "", rem ? "미리알림(할 일로)" : ""].filter(Boolean).join("·")}을 읽어요` : "연결 안 함(연결 도우미 → 더 연결하기)" });
     // 실험 서버(ssh): 끝난 작업 알림(jobHosts — sshHosts 포함)·물어볼 때 탐색(sshHosts). config.json 에서 고친다
     const jh = this.cfg.jobHosts ?? [], xh = this.cfg.sshHosts ?? [];
     rows.push({ id: "ssh", label: "실험 서버(ssh)", group: "local", check: "local", checkedAt: at, state: jh.length || xh.length ? "ok" : "off",
