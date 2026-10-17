@@ -84,20 +84,50 @@ test("정한 프로젝트는 활동이 없어도 나오고, 순서는 마감 가
 test("PUT 본문을 엄격하게 검사한다", () => {
   const store = new Store(":memory:");
   const bad = [
-    null, [], {}, { key: "a\nb" }, { key: "k", kind: "x" }, { key: "k", name: "" }, { key: "k", name: "x".repeat(81) },
-    { key: "k", url: "ftp://a" }, { key: "k", url: "javascript:alert(1)" }, { key: "k", mergeInto: "k" },
-    { key: "k", subs: Array(21).fill({ venue: "V", stage: "prep" }) }, { key: "k", subs: [{ venue: "V", stage: "nope" }] },
-    { key: "k", subs: [{ venue: "", stage: "prep" }] }, { key: "k", subs: [{ venue: "V", stage: "prep", deadline: "2026-02-30" }] },
-    { key: "k", subs: [{ venue: "V", stage: "prep", at: "x" }] },
+    null, [], {}, { key: "a\nb" }, { key: "/k", kind: "x" }, { key: "/k", name: "" }, { key: "/k", name: "x".repeat(81) },
+    { key: "/k", url: "ftp://a" }, { key: "/k", url: "javascript:alert(1)" }, { key: "/k", mergeInto: "/k" },
+    { key: "/k", subs: Array(21).fill({ venue: "V", stage: "prep" }) }, { key: "/k", subs: [{ venue: "V", stage: "nope" }] },
+    { key: "/k", subs: [{ venue: "", stage: "prep" }] }, { key: "/k", subs: [{ venue: "V", stage: "prep", deadline: "2026-02-30" }] },
+    { key: "/k", subs: [{ venue: "V", stage: "prep", at: "x" }] },
   ];
   for (const b of bad) assert.ok("error" in putResearchProject(store, b as any), JSON.stringify(b));
   assert.equal(store.researchMeta().length, 0);
-  assert.deepEqual(putResearchProject(store, { key: "k", url: "https://overleaf.com/p", name: "n" }), { ok: true });
-  assert.deepEqual(putResearchProject(store, { key: "k", url: null, name: null, kind: "project" }), { ok: true });
+  assert.deepEqual(putResearchProject(store, { key: "/k", url: "https://overleaf.com/p", name: "n" }), { ok: true });
+  assert.deepEqual(putResearchProject(store, { key: "/k", url: null, name: null, kind: "project" }), { ok: true });
   const m = store.researchMeta()[0];
   assert.deepEqual([m.url, m.name, m.kind], [null, null, "project"]);
-  putResearchProject(store, { key: "m", mergeInto: "k" });
-  assert.ok("error" in putResearchProject(store, { key: "z", mergeInto: "m" })); // 이미 합쳐진 폴더에는 못 합친다
-  assert.ok("error" in putResearchProject(store, { key: "k", mergeInto: "z" })); // 합쳐 들어온 폴더가 있는 대표는 못 합친다
-  assert.deepEqual(putResearchProject(store, { key: "m", mergeInto: null }), { ok: true });
+  putResearchProject(store, { key: "/m", mergeInto: "/k" });
+  assert.ok("error" in putResearchProject(store, { key: "/z", mergeInto: "/m" })); // 이미 합쳐진 폴더에는 못 합친다
+  assert.ok("error" in putResearchProject(store, { key: "/k", mergeInto: "/z" })); // 합쳐 들어온 폴더가 있는 대표는 못 합친다
+  assert.deepEqual(putResearchProject(store, { key: "/m", mergeInto: null }), { ok: true });
+});
+
+test("실험 이름: 스크립트 앞 옵션은 보지 않고, -n 은 명령 전체와 같을 때만 기본값으로 본다", () => {
+  const cmd = "bash -c 'python train.py --config configs/exp7.yaml'";
+  assert.equal(expName({ name: cmd, cmd }), "train.py · exp7");
+  assert.equal(expName({ name: "train", cmd: "python train.py --lr 3" }), "train");
+  assert.equal(expName({ name: "bash -c python", cmd: "bash -c 'python train.py -c a.yaml'" }), "bash -c python");
+});
+
+test("멈춘 서버의 tmux 와 14일 넘은 running job 은 돌고 있다고 보지 않는다", async () => {
+  const store = new Store(":memory:");
+  session(store, "a", "srv:/w/p", ago(3));
+  job(store, "old", "x", { host: "srv", cwd: "/w/p", cmd: "x", running: true, start: 1 }, ago(15 * 24));
+  const stale = { srv: { at: ago(1), sessions: [{ name: "sweep", created: 1, activity: 1_791_000_000, running: "python", path: "/w/p" }] } };
+  const c = (await build(store, stale)).researchProjects[0];
+  assert.equal(c.running.length, 0);
+  assert.equal(c.recent.lost, 1);
+});
+
+test("합친 폴더의 대표가 아니에요면 그 폴더는 묶지 않은 폴더에 남는다, 키 모양과 이중 합치기는 거절", async () => {
+  const store = new Store(":memory:");
+  session(store, "a", "/Users/x/a", ago(1));
+  session(store, "b", "/Users/x/b", ago(1));
+  assert.deepEqual(putResearchProject(store, { key: "/Users/x/b", mergeInto: "/Users/x/a" }, now), { ok: true });
+  assert.deepEqual(putResearchProject(store, { key: "/Users/x/a", kind: "none" }, now), { ok: true });
+  const d = await build(store);
+  assert.ok(d.projects.every((p) => !p.hiddenByResearch));
+  for (const key of ["rel/path", "a b:/x", "-oProxyCommand=sh:/x"]) assert.ok("error" in putResearchProject(store, { key }, now), key);
+  assert.ok("error" in putResearchProject(store, { key: "/Users/x/b", mergeInto: "/Users/x/c" }, now));
+  assert.deepEqual(putResearchProject(store, { key: "/Users/x/b", mergeInto: null }, now), { ok: true });
 });

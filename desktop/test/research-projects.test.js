@@ -86,3 +86,27 @@ test('IPC research-project-save: 보낸 창 확인 · 모양 거르기 · PUT /r
   vm.runInNewContext(readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8'), { require: () => electron, process, console });
   assert.deepEqual(api.researchProjectSave({ key: 'k' }), ['research-project-save', { key: 'k' }]);
 });
+
+test('IPC folder-open: 7일 활동이 없어도 연구 프로젝트의 폴더면 열 수 있다', async () => {
+  const src = ipcHandlers().get('folder-open');
+  const dash = { projects: [], researchProjects: [{ folders: [{ path: 'srv:/w/p' }] }] };
+  const fn = buildHandler(src, {
+    fromOurs: () => true, denied: () => 'denied', request: async () => ({ ok: true, data: dash }),
+    splitHost: (p) => ({ host: 'srv', dir: p.slice(4) }), isDir: () => false, sshHosts: () => [], codeApp: () => null, shell: {}, process,
+  });
+  const listMiss = '목록에 없는 폴더예요';
+  assert.equal((await fn({}, 'srv:/w/other', 'finder')).error, listMiss);
+  assert.notEqual((await fn({}, 'srv:/w/p', 'finder')).error, listMiss);
+});
+
+test('연구 상세 save: 낙관적 값이 바로 raw 에 들어가고 실패하면 저장 전 raw 로 되돌린다', async () => {
+  globalThis.document = { createElement: () => ({ setAttribute() {}, addEventListener() {}, append() {}, dataset: {} }) };
+  const { createResearchProjects } = await import('../renderer/research-projects.js');
+  let raw = { researchProjects: [{ key: '/a', kind: 'research', name: 'A', subs: [] }] };
+  const first = raw, seen = [];
+  const ctx = { getRaw: () => raw, setRaw: (r) => { raw = r; seen.push(r); }, render() {}, loadSoon() {}, why: () => 'x', cy: { researchProjectSave: async () => ({ ok: false }) } };
+  const rp = createResearchProjects(ctx);
+  await rp.save('/a', { name: 'B' });
+  assert.equal(seen[0].researchProjects[0].name, 'B');
+  assert.equal(raw, first);
+});

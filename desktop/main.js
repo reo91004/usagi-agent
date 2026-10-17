@@ -1738,7 +1738,7 @@ function setupIPC() {
   ipcMain.handle('folder-open', async (e, id, how, pick) => {
     if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || !['code', 'finder'].includes(how) || (pick != null && typeof pick !== 'string')) return denied();
     const r = await request('GET', '/dashboard');
-    if (!r.ok || !r.data?.projects?.some((p) => p?.path === id)) return { ok: false, error: '목록에 없는 폴더예요' };
+    if (!r.ok || !(r.data?.projects?.some((p) => p?.path === id) || r.data?.researchProjects?.some((p) => p?.folders?.some((f) => f?.path === id)))) return { ok: false, error: '목록에 없는 폴더예요' };
     const { host, dir } = splitHost(id);
     const local = !host && isDir(dir);
     if (how === 'finder') {

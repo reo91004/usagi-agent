@@ -547,7 +547,7 @@ function researchSection() {
 // 연구 프로젝트 목록·상세. 저장은 PUT /research/projects, 낙관적으로 raw 를 고친 뒤 다시 읽는다
 const rp = createResearchProjects({
   cy, why: (r) => why(r), loadSoon: () => loadSoon(), render: (force) => renderResearch(force),
-  getRaw: () => raw, setRaw: (r) => { raw = r; },
+  getRaw: () => raw, setRaw: (r) => { raw = r; renderAll(); }, // 화면은 vm 에서 그리니 raw 를 바꾸면 vm 도 다시 만든다
   openFolder: (p, how, host) => openFolder(p, how, host), pickHost: (p) => pickHost(p),
   pickFor: () => pickFor, msg: () => projMsg?.text,
 });

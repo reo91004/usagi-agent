@@ -29,7 +29,7 @@ export function createResearchProjects(ctx) {
     if (raw && Array.isArray(raw.researchProjects) && !('mergeInto' in patch)) ctx.setRaw({ ...raw, researchProjects: applyLocal(raw.researchProjects, key, patch) });
     ctx.render(true);
     const r = await ctx.cy.researchProjectSave({ key, ...patch }).catch(() => ({ ok: false }));
-    if (!r?.ok) msg = `저장하지 못했어요 — ${ctx.why(r)}`;
+    if (!r?.ok) { msg = `저장하지 못했어요 — ${ctx.why(r)}`; if (raw) ctx.setRaw(raw); }
     ctx.loadSoon(); // 실패해도 다시 읽어 낙관적 값을 되돌린다
     ctx.render(true);
   }
@@ -95,13 +95,13 @@ export function createResearchProjects(ctx) {
   function folders(p, vm) {
     const rows = p.folders.map((f) => {
       const proj = vm.projects.concat(vm.hiddenProjects).find((x) => x.path === f.path)
-        ?? { path: f.path, name: f.path, where: splitHost(f.path).host ? 'server' : f.onMac === false ? 'unknown' : 'mac' };
+        ?? { path: f.path, name: f.path, ...splitHost(f.path), where: splitHost(f.path).host ? 'server' : f.onMac === false ? 'unknown' : 'mac' };
       return h('div.rp-folder', null,
         h('span.mono.small.rp-path', { text: f.path, title: f.path }),
         h('span.spacer'),
-        h('button.ghost.small', { type: 'button', text: 'VS Code', onclick: () => (proj.where === 'unknown' ? ctx.pickHost(proj) : ctx.openFolder(proj, 'code')) }),
-        proj.where === 'mac' ? h('button.ghost.small', { type: 'button', text: 'Finder', onclick: () => ctx.openFolder(proj, 'finder') }) : null,
-        f.path !== p.key ? h('button.ghost.small', { type: 'button', text: '풀기', title: '이 폴더를 이 프로젝트에서 빼요', onclick: () => save(f.path, { mergeInto: null }) }) : null);
+        h('button.ghost.small', { type: 'button', text: 'VS Code', 'aria-label': `VS Code 로 열기: ${f.path}`, onclick: () => (proj.where === 'unknown' ? ctx.pickHost(proj) : ctx.openFolder(proj, 'code')) }),
+        proj.where === 'mac' ? h('button.ghost.small', { type: 'button', text: 'Finder', 'aria-label': `Finder 로 열기: ${f.path}`, onclick: () => ctx.openFolder(proj, 'finder') }) : null,
+        f.path !== p.key ? h('button.ghost.small', { type: 'button', text: '풀기', 'aria-label': `프로젝트에서 빼기: ${f.path}`, title: '이 폴더를 이 프로젝트에서 빼요', onclick: () => save(f.path, { mergeInto: null }) }) : null);
     });
     const pick = ctx.pickFor();
     const host = pick && p.folders.some((f) => f.path === pick.path)
@@ -131,7 +131,8 @@ export function createResearchProjects(ctx) {
       h(`button.${p.kind === kind ? 'primary' : 'ghost'}.small`, { type: 'button', text, 'aria-pressed': String(p.kind === kind), onclick: () => p.kind !== kind && save(p.key, { kind }) })));
     const pm = ctx.msg();
     return [
-      h('div.row.rp-head', null, h('button.ghost.small', { type: 'button', text: '←', 'aria-label': '목록으로', onclick: () => open(null) }), name, kinds),
+      h('div.row.rp-head', null, h('button.ghost.small', { type: 'button', text: '←', 'aria-label': '목록으로', onclick: () => open(null) }), name, kinds,
+        h('button.ghost.small', { type: 'button', text: '아니에요', title: '연구 탭 목록에서 빼고 묶지 않은 폴더로 보내요', onclick: () => { open(null); save(p.key, { kind: 'none' }); } })),
       msg ? h('div.result.err', { role: 'status', text: msg }) : null,
       pm ? h('div.result.err', { role: 'status', text: pm }) : null,
       p.kind === 'research' ? submissions(p, vm) : null,
@@ -159,5 +160,5 @@ export function createResearchProjects(ctx) {
     ];
   }
 
-  return { view, inDetail: () => detailKey != null };
+  return { view, inDetail: () => detailKey != null, save };
 }

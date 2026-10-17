@@ -2,7 +2,7 @@
 // 폴더 키는 작업 폴더 path 와 같은 모양: 이 Mac 은 레포 루트 절대 경로, 서버는 「서버:/경로」
 import { existsSync } from "node:fs";
 import { cutHidden, gitRootOf, insideOf, isNoisePath, splitHost, type DashProject } from "./dashboard.ts";
-import { tmuxSeen } from "./jobs.ts";
+import { okJobHost, tmuxSeen } from "./jobs.ts";
 import type { Node, ResearchMetaRow, Store } from "./store.ts";
 
 export const STAGES = ["prep", "submitted", "review", "rebuttal", "revision", "accepted", "rejected", "withdrawn"] as const;
@@ -20,6 +20,8 @@ export type ResearchProject = {
 };
 
 const WINDOW = 30 * 864e5, MAX_CAND = 8;
+const LOST_AFTER = 14 * 864e5; // main.ts jobsRunning 이 표시 없는 job 을 lost 로 바꾸는 창과 같다
+const TMUX_FRESH = 15 * 60e3; // 이보다 오래 응답이 없던 서버의 tmux 메모리는 믿지 않는다
 const LIVE = new Set<string>(["prep", "submitted", "review", "rebuttal", "revision"]);
 
 // ---- 실험 이름: 보여 줄 때 계산하고 저장하지 않는다 ----
@@ -28,9 +30,10 @@ const baseName = (dir: string) => dir.split(/[\\/]/).filter(Boolean).at(-1) ?? d
 const stem = (v: string) => baseName(v.replace(/^['"]|['"]$/g, "")).replace(/\.[^.]+$/, "");
 function scriptName(cmd: string): string | null {
   const t = cmd.split(/\s+/);
-  const script = t.find((x) => /\.(?:py|sh|jl|r|js|ts|m)$/i.test(x));
-  if (!script) return null;
-  for (let i = 0; i < t.length; i++) {
+  const at = t.findIndex((x) => /\.(?:py|sh|jl|r|js|ts|m)$/i.test(x));
+  if (at < 0) return null;
+  const script = t[at];
+  for (let i = at + 1; i < t.length; i++) { // 스크립트 뒤의 옵션만 (bash -c '…' 같은 앞쪽 옵션은 제외)
     const m = /^(--[\w-]+)=(.+)$/.exec(t[i]);
     const flag = m ? m[1] : t[i], v = m ? m[2] : t[i + 1];
     if (NAME_FLAG.test(flag) && v && !v.startsWith("-") && stem(v)) return `${baseName(script)} · ${stem(v)}`;
@@ -38,8 +41,8 @@ function scriptName(cmd: string): string | null {
   return baseName(script);
 }
 export function expName(e: { name?: string; cmd?: string; cwd?: string; tmuxName?: string }): string {
-  // usagi-run -n: -n 이 없으면 이름이 명령 앞부분 그대로다
-  if (!e.tmuxName && e.name && !(e.cmd ?? "").startsWith(e.name)) return e.name;
+  // usagi-run -n: -n 이 없으면 이름이 명령 앞 120자 그대로다(jobs.ts NAME_MAX)
+  if (!e.tmuxName && e.name && e.name !== (e.cmd ?? "").slice(0, 120)) return e.name;
   const s = e.cmd ? scriptName(e.cmd) : null;
   if (s) return s;
   if (e.tmuxName && !/^(?:\d+|main|sh|bash|zsh|fish)$/.test(e.tmuxName)) return e.tmuxName;
@@ -81,12 +84,12 @@ export function buildResearchProjects(store: Store, dash: DashProject[], session
     a.sessions.push(...(sessionsOf.get(p.path) ?? []));
     a.dashActive.push(p.lastActive);
   }
-  for (const j of store.nodesSince("job", new Date(now.getTime() - WINDOW).toISOString(), 500)) { // 최근 순
+  for (const j of store.nodesSince("job", new Date(now.getTime() - WINDOW).toISOString(), 5000)) { // 최근 순. 집계가 잘리지 않게 넉넉히
     const p = j.props as Record<string, any>;
     if (!p.cwd) continue;
     const host = String(p.host ?? ""), key = resolve(folderKey(host, String(p.cwd)));
     if (noise(key)) continue;
-    const state = p.running ? "running" : p.lost ? "lost" : p.code !== null && p.code !== undefined && p.code !== 0 ? "failed" : "done";
+    const state = p.running && now.getTime() - Date.parse(j.updated) > LOST_AFTER ? "lost" : p.running ? "running" : p.lost ? "lost" : p.code !== null && p.code !== undefined && p.code !== 0 ? "failed" : "done";
     const exp: Experiment = {
       name: expName({ name: j.label, cmd: p.cmd, cwd: p.cwd }), host, kind: "job", cwd: String(p.cwd), ...(p.cmd ? { cmd: String(p.cmd) } : {}),
       ...(Number(p.start) > 0 ? { start: Number(p.start) } : {}),
@@ -96,6 +99,7 @@ export function buildResearchProjects(store: Store, dash: DashProject[], session
     acc(key).items.push({ exp, at: j.updated, state });
   }
   for (const [host, t] of Object.entries(tmux)) {
+    if (now.getTime() - Date.parse(t.at) > TMUX_FRESH) continue;
     for (const s of t.sessions) {
       if (!s.running || !s.path) continue; // 돌고 있는 명령이 있는 세션만 실험으로 본다
       const key = resolve(folderKey(host, s.path));
@@ -141,12 +145,14 @@ export function projectOf(projects: ResearchProject[], host: string | undefined,
 
 // ---- PUT /research/projects: 데몬이 신뢰 경계 ----
 const line = (v: unknown, max: number): v is string => typeof v === "string" && v.length >= 1 && v.length <= max && v === v.trim() && !/[\r\n]/.test(v);
+// 작업 폴더 키 모양: 절대 경로 또는 「서버:/경로」(서버는 ssh 별칭 규칙)
+const okKey = (v: unknown): v is string => line(v, 500) && (v.startsWith("/") || (/^[^:]+:\//.test(v) && okJobHost(v.slice(0, v.indexOf(":")))));
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().startsWith(v);
 
 export function putResearchProject(store: Store, body: any, now = new Date()): { ok: true } | { error: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "body must be an object" };
   const { key, kind, name, subs, url, mergeInto } = body;
-  if (!line(key, 500)) return { error: "key must be a one-line string up to 500 chars" };
+  if (!okKey(key)) return { error: "key must be an absolute path or host:/path, one line up to 500 chars" };
   if (kind !== undefined && kind !== "research" && kind !== "project" && kind !== "none") return { error: "kind must be research|project|none" };
   if (name !== undefined && name !== null && !line(name, 80)) return { error: "name must be a one-line string up to 80 chars or null" };
   if (url !== undefined && url !== null) {
@@ -165,9 +171,11 @@ export function putResearchProject(store: Store, body: any, now = new Date()): {
   }
   const metas = new Map(store.researchMeta().map((m) => [m.path, m]));
   if (mergeInto !== undefined && mergeInto !== null) {
-    if (!line(mergeInto, 500) || mergeInto === key) return { error: "mergeInto must be another key" };
+    if (!okKey(mergeInto) || mergeInto === key) return { error: "mergeInto must be another key" };
     if (metas.get(mergeInto)?.mergedInto) return { error: "mergeInto is itself merged" };
     if ([...metas.values()].some((m) => m.mergedInto === key)) return { error: "key has folders merged into it" };
+    const was = metas.get(key)?.mergedInto;
+    if (was && was !== mergeInto) return { error: "key is already merged into another project; unmerge first" };
   }
   const old = metas.get(key);
   store.putResearchMeta({

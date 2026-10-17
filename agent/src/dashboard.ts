@@ -74,7 +74,6 @@ export async function buildDashboard(cfg: Config, store: Store, deps: DashboardD
   const projs = projects(store, repos, now, sessionsAllowed(cfg), sessionsOf);
   const researchProjects = buildResearchProjects(store, projs, sessionsOf, now, deps.tmux);
   const owned = new Set(researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)));
-  for (const m of store.researchMeta()) if (m.mergedInto) owned.add(m.path);
   for (const p of projs) if (owned.has(p.path)) p.hiddenByResearch = true;
   return {
     generatedAt: now.toISOString(),
