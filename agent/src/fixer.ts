@@ -6,7 +6,8 @@
 import { query, getSessionInfo, type HookCallback, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
@@ -21,7 +22,8 @@ import { repoGit, shAsync } from "./git-mutex.ts";
 import { WorktreeIsolation } from "./agent-worktrees.ts";
 import { IS_WIN, pathWithin, spawnSpec, type Plat, type SpawnSpec } from "./plat.ts";
 import { configSetsAlias, isGitName, shellSegments, shellWordsNorm, shellWrapper, substsOf } from "./permissions.ts";
-import { commandOnPath, killTree, MISSING_CODEX } from "./providers.ts";
+import { AGY_PROMPT_MAX_BYTES, agyModel, commandOnPath, killTree, MISSING_AGY, MISSING_CODEX } from "./providers.ts";
+import { ensureAgyAllow } from "./mcp-http.ts";
 import { shapeError } from "./feature-brain.ts";
 
 export type FixResult = {
@@ -171,6 +173,8 @@ export type FixDeps = {
   beforeCommit?: (wt: string) => { block?: string; warn?: string } | undefined; // 커밋 직전 검사 — block 이면 커밋 안 하고 실패
   hooks?: (wt: string) => HookCallback[];                 // PreToolUse 훅 더하기(noShip·서브에이전트 가드 뒤)
   codexRun?: CodexRun;                                    // 뇌가 codex 일 때 codex 한 번 실행(기본 spawn). 테스트는 가짜 JSONL
+  agyRun?: AgyRun;                                        // 뇌가 agy 일 때 agy 한 번 실행(기본 spawn). 테스트는 가짜 stream-json
+  agyAllow?: (rules: string[]) => void;                   // agy 샌드박스 규칙 넣기(기본 ~/.gemini 설정). 테스트는 기록만
   trailer?: string;                                       // 커밋 메시지 끝에 더 붙일 줄(Co-Authored-By 등)
   prNote?: string;                                        // PR 본문 끝 줄(기본 "머지는 사용자 승인 뒤")
   onRun?: (runId: string) => void;                        // run 을 만들자마자(세션 창·카드 연결)
@@ -486,6 +490,150 @@ async function driveCodex(s: Session, cfg: Config, wt: string, deps: FixDeps, st
 }
 
 const usesCodex = (cfg: Pick<Config, "brain">) => cfg.brain?.provider === "codex";
+const usesAgy = (cfg: Pick<Config, "brain">) => cfg.brain?.provider === "agy";
+
+// ── agy 로 돌리기(brain.provider agy, #42) ─────────────────────────────
+// agy -p … --output-format stream-json --sandbox --dangerously-skip-permissions --mode accept-edits --json-schema FIX_SCHEMA, cwd = 워크트리.
+//   headless 는 명령 허용을 물을 수 없어(자동 거절) skip-permissions 가 필요하다. 대신 두 겹으로 막는다(2026-10-17 직접 확인, #42):
+//   - 터미널 명령은 --sandbox: 쓰기는 워크트리 폴더(전역 permissions.allow write_file(~/.cy-agent/worktrees))와 임시 폴더만,
+//     레포 .git 은 read_file 로 읽기만 → git status 는 되고 커밋·푸시는 못 한다(ship 이 한다). 네트워크는 열려 있다(Claude 수정 run 의 셸과 같다)
+//   - agy 자체 파일 도구는 샌드박스 밖이라, 워크트리 .agents/hooks.json 의 PreToolUse 훅(AGY_GUARD)이 워크트리 밖 경로·웹·MCP·서브에이전트를 거절한다.
+//     훅 파일은 끝나면 지운다(ship 의 git add -A 에 섞이지 않게). 레포에 원래 .agents/hooks.json 이 있으면 agy 로 하지 않는다
+//   턴 단위: 세션 창에서 보낸 말은 턴이 끝나면 --conversation 으로 이어 간다. agy 에는 갈래(fork)가 없어 이어서 하기는 그 대화를 이어 쓴다
+export type AgyRun = (args: string[], o: { cwd: string; env: NodeJS.ProcessEnv; onLine: (line: string) => void; signal: AbortSignal }) => Promise<{ code: number | null; stderr: string }>;
+export const AGY_SESSION = "agy:";
+export const agyRun: AgyRun = (args, o) => new Promise((resolve, reject) => {
+  const sp = spawnSpec("agy", args);
+  const child = spawn(sp.file, sp.args, { cwd: o.cwd, env: o.env, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["ignore", "pipe", "pipe"] });
+  let stderr = "";
+  const kill = () => { killTree(child.pid); child.kill(); };
+  o.signal.addEventListener("abort", kill, { once: true });
+  createInterface({ input: child.stdout }).on("line", o.onLine);
+  child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
+  child.on("error", () => reject(new Error(MISSING_AGY)));
+  child.on("close", (code) => { o.signal.removeEventListener("abort", kill); resolve({ code, stderr }); });
+});
+export const agyConversationExists = (id: string, home = homedir()) => /^[\w-]{8,100}$/.test(id) && existsSync(join(home, ".gemini", "antigravity-cli", "conversations", `${id}.db`));
+
+// 워크트리 밖 경로·웹·MCP·서브에이전트는 거절, 터미널(샌드박스)·finish(구조화 답)·워크트리 안 파일은 허용. 어떤 입력에도 죽지 않는다(죽으면 그 도구가 막힌다)
+export const AGY_GUARD = `// 우사기 수정 run 이 넣은 훅(agent/src/fixer.ts AGY_GUARD). run 이 끝나면 지워진다
+import { resolve } from "node:path";
+const out = (decision, reason) => process.stdout.write(JSON.stringify(reason ? { decision, reason } : { decision }));
+try {
+  let raw = ""; for await (const c of process.stdin) raw += c;
+  const call = JSON.parse(raw || "{}").toolCall ?? {};
+  const name = String(call.name ?? ""), args = call.args && typeof call.args === "object" ? call.args : {};
+  const root = process.env.USAGI_AGY_WT;
+  if (!root) out("ask");
+  else if (name === "run_command" || name === "finish" || name === "send_command_input" || name === "read_terminal") out("allow");
+  else if (/^(read_url|browser|search_web|web_|call_mcp|invoke_subagent|open_browser)/.test(name)) out("deny", "우사기 수정 run 에서는 웹·MCP·서브에이전트를 쓰지 않아요");
+  else {
+    const paths = Object.entries(args).filter(([k, v]) => typeof v === "string" && /(file|path|dir|directory|cwd|uri)$/i.test(k)).map(([, v]) => resolve(root, String(v).replace(/^file:\\/\\//, "")));
+    const inside = (p) => p === root || p.startsWith(root + "/");
+    if (paths.every(inside)) out("allow"); else out("deny", "우사기 수정 run: 워크트리 밖은 읽거나 쓰지 않아요");
+  }
+} catch (e) { out("deny", "우사기 훅 오류: " + String(e?.message ?? e).slice(0, 120)); }
+`;
+const agyGuardFiles = (wt: string) => ({ dir: join(wt, ".agents"), hooks: join(wt, ".agents", "hooks.json"), guard: join(wt, ".agents", "usagi-guard.mjs") });
+// 훅 넣기: 데몬과 같은 node(앱이면 Electron 을 node 로)로 돈다. 원래 hooks.json 이 있으면 덮지 않고 실패
+function installAgyGuard(wt: string): () => void {
+  const f = agyGuardFiles(wt);
+  if (existsSync(f.hooks)) throw new Error("이 레포에는 .agents/hooks.json 이 있어서 agy 로 고치지 않아요(그 훅을 덮게 돼요). 뇌를 Claude Code·Codex 로 바꿔 주세요");
+  const madeDir = !existsSync(f.dir);
+  mkdirSync(f.dir, { recursive: true });
+  writeFileSync(f.guard, AGY_GUARD);
+  const node = `ELECTRON_RUN_AS_NODE=1 '${process.execPath.replace(/'/g, `'\\''`)}'`;
+  writeFileSync(f.hooks, JSON.stringify({ "usagi-guard": { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: `${node} usagi-guard.mjs`, timeout: 10 }] }] } }));
+  return () => {
+    rmSync(f.hooks, { force: true });
+    rmSync(f.guard, { force: true });
+    if (madeDir) try { rmdirSync(f.dir); } catch { /* 모델이 뭔가 넣었으면 남긴다 */ }
+  };
+}
+
+const AGY_TOOL: Record<string, [string, string]> = { // agy 도구 → 세션 창 이름·보여 줄 인자
+  run_command: ["Bash", "CommandLine"], write_to_file: ["Write", "TargetFile"], replace_file_content: ["Edit", "TargetFile"],
+  multi_replace_file_content: ["Edit", "TargetFile"], view_file: ["Read", "AbsolutePath"], list_dir: ["LS", "DirectoryPath"], grep_search: ["Grep", "Query"],
+};
+
+async function driveAgy(s: Session, cfg: Config, wt: string, deps: FixDeps, step: (s: string) => void, from?: { conversation: string }): Promise<any> {
+  const { run, input, st, inbox } = s;
+  const exec = deps.agyRun ?? agyRun;
+  if (!deps.agyRun && !commandOnPath("agy")) throw new Error(MISSING_AGY);
+  const gitDir = (() => { try { return execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: wt, encoding: "utf8" }).trim(); } catch { return ""; } })();
+  const rules = [`write_file(${deps.worktreesDir ?? join(HOME_DIR, "worktrees")})`, `read_file(${join(homedir(), ".gitconfig")})`, `read_file(${join(homedir(), ".config", "git")})`, ...(gitDir ? [`read_file(${gitDir})`] : [])];
+  (deps.agyAllow ?? ((r) => { ensureAgyAllow(r); }))(rules);
+  const uninstall = installAgyGuard(wt);
+  let conv = from?.conversation, out: any, turn = 0;
+  let cur: AbortController | undefined;
+  st.q = { interrupt: async () => cur?.abort(), setModel: async () => {} } as any; // 모델 바꾸기는 Claude 모델 이름이라 무시
+  s.abort.signal.addEventListener("abort", () => cur?.abort());
+  const it = input[Symbol.asyncIterator]();
+  try {
+    while (true) {
+      if (turn) {
+        if (st.interrupted) {
+          run.log({ type: "system", text: "중단됨 — 메시지를 보내면 이어서 할게요" });
+          st.idleTimer = setTimeout(() => { st.stopped = true; s.finishInput(); }, deps.awaitAfterInterruptMs ?? 10 * 60e3);
+        } else if (!input.pending) s.finishInput();
+      }
+      const next = await it.next();
+      if (next.done || st.stopped) break;
+      s.clearIdle();
+      st.interrupted = false;
+      const msgs = [next.value, ...input.drain()];
+      for (const m of msgs) if (inbox.ack(String(m.uuid), { now: st.nowFor!.has(String(m.uuid)) })) st.nowFor!.delete(String(m.uuid));
+      let text = msgs.map((m) => String(m.message.content)).join("\n\n");
+      if (!conv) text = [loadInstructions(wt), codeGuidelines(), text].filter(Boolean).join("\n\n");
+      if (Buffer.byteLength(text) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요");
+      const model = agyModel(cfg);
+      const args = ["-p", text, "--output-format", "stream-json", "--sandbox", "--dangerously-skip-permissions", "--mode", "accept-edits", "--json-schema", JSON.stringify(FIX_SCHEMA), ...(conv ? ["--conversation", conv] : []), ...(model ? ["--model", model] : [])];
+      turn++;
+      let failed: string | undefined, said = new Map<number, string>();
+      const id = (n: unknown) => `ag${turn}-${String(n)}`;
+      cur = new AbortController();
+      st.inTurn = true;
+      const r = await exec(args, { cwd: wt, env: { ...process.env, USAGI_AGY_WT: wt }, signal: cur.signal, onLine: (line) => {
+        let e: any;
+        try { e = JSON.parse(line); } catch { return; }
+        const u = e?.step_update;
+        if (u && typeof u.conversation_id === "string" && u.conversation_id !== conv) {
+          conv = u.conversation_id;
+          run.setSession(AGY_SESSION + conv);
+          run.log({ type: "system", text: `세션 시작 · Antigravity · ${wt}` });
+        }
+        if (u?.step_type === "tool" && u.tool_name !== "finish") {
+          const [name, key] = AGY_TOOL[u.tool_name] ?? [u.tool_name, ""];
+          const params = u.tool_info?.parameters ?? {};
+          if (u.state === "ACTIVE") {
+            const shown = String(key ? params[key] ?? "" : JSON.stringify(params)).slice(0, 500);
+            step(name === "Bash" ? `$ ${shown.split("\n")[0].slice(0, 80)}` : `${name} ${basename(shown).slice(0, 80)}`);
+            run.log({ type: "tool_use", name, input: shown, toolUseId: id(u.step_index) });
+          } else if (u.state === "DONE" || u.state === "ERROR") {
+            run.log({ type: "tool_result", toolUseId: id(u.step_index), output: String(u.tool_info?.error?.message ?? "").slice(0, 2000), ...(u.state === "ERROR" ? { isError: true } : {}) });
+          }
+        } else if (u?.step_type === "agent_response") {
+          said.set(u.step_index, (said.get(u.step_index) ?? "") + String(u.text_delta ?? ""));
+          if (u.state === "DONE") { const t = said.get(u.step_index)!.trim(); if (t && !t.startsWith("{")) run.log({ type: "assistant", text: t }); }
+        } else if (e?.result) {
+          if (e.result.status !== "SUCCESS") failed = String(e.result.status);
+          else if (e.result.structured_output) out = e.result.structured_output;
+        }
+      } });
+      st.inTurn = false;
+      if (st.stopped) break;
+      if (cur.signal.aborted) { st.interrupted = true; continue; }
+      if (r.code !== 0 || failed) throw new Error(`agy 수정 실패: ${(failed ?? r.stderr.trim().split("\n").at(-1) ?? `종료 코드 ${r.code}`).slice(0, 300)}`);
+      if (out) run.log({ type: "result", text: String(out.summary ?? "") });
+    }
+  } finally {
+    inbox.dropAll();
+    uninstall();
+  }
+  if (st.stopped) return undefined;
+  if (!out || shapeError(out, FIX_SCHEMA)) throw new Error("수정 에이전트가 결과를 보고하지 않았어요");
+  return out;
+}
 
 // 서브에이전트(Agent/Task): 포그라운드·내장 종류만(subagents.ts). isolation "worktree" 면 iso 가 워크트리를 파고 지시를 고친다.
 // 막은 도구(WebFetch·WebSearch)는 서브에이전트 안에서도 훅으로 한 번 더 막는다(disallowedTools 가 서브에이전트에 물려지는지와 상관없이)
@@ -686,7 +834,9 @@ export async function runFix(cfg: Config, p: Proposal, onStep: (s: string) => vo
 
   let pushed = false;
   try {
-    const out = usesCodex(cfg) ? await driveCodex(s, cfg, wt, deps, step) : await drive(s, deps.query ?? query, sdkOptions(cfg, wt, {}, deps.hooks?.(wt), iso), deps, step);
+    const out = usesCodex(cfg) ? await driveCodex(s, cfg, wt, deps, step)
+      : usesAgy(cfg) ? await driveAgy(s, cfg, wt, deps, step)
+        : await drive(s, deps.query ?? query, sdkOptions(cfg, wt, {}, deps.hooks?.(wt), iso), deps, step);
     await iso.closeAll();
     if (!out) { s.run.end("stopped"); return { ok: false, summary: "사용자가 정지했어요 — 커밋 안 함.", branch, log, runId: s.run.id }; }
     const r = await ship(cfg, s, out, { wt, branch, base, trailer: `Requested-via: cy-agent (proposal ${p.id})`, planLine: `계획: ${p.plan}` }, reg, step, log, deps);
@@ -786,9 +936,11 @@ export function prepareContinue(cfg: Config, spec: ContinueSpec, deps: FixDeps =
       // 이전 SDK 세션을 이어 쓸 수 있으면 resume(fork — 앞선 세션은 그대로), 아니면 요약을 넣고 새 세션
       // Codex 는 앞선 run 도 Codex 였을 때만 fork(경로가 달라도 된다). Claude 는 같은 경로의 Claude 세션만
       const sid = parent.sdkSessionId;
-      const codex = usesCodex(cfg);
-      const exists = deps.sessionExists ?? (codex ? (id: string) => Promise.resolve(codexSessionExists(id.slice(CODEX_SESSION.length), cfg.codexSessionsDir)) : defaultSessionExists);
-      const canResume = !!(sid && (codex ? sid.startsWith(CODEX_SESSION) : reuse && !sid.startsWith(CODEX_SESSION)) && await exists(sid, wt).catch(() => false));
+      const codex = usesCodex(cfg), agy = usesAgy(cfg);
+      const exists = deps.sessionExists ?? (codex ? (id: string) => Promise.resolve(codexSessionExists(id.slice(CODEX_SESSION.length), cfg.codexSessionsDir))
+        : agy ? (id: string) => Promise.resolve(agyConversationExists(id.slice(AGY_SESSION.length))) : defaultSessionExists);
+      const own = (x: string) => (codex ? x.startsWith(CODEX_SESSION) : agy ? x.startsWith(AGY_SESSION) : reuse && !x.startsWith(CODEX_SESSION) && !x.startsWith(AGY_SESSION));
+      const canResume = !!(sid && own(sid) && await exists(sid, wt).catch(() => false));
       const prompt = canResume ? continuePrompt(spec.text, { note }) : continuePrompt(spec.text, { summary: spec.summary, note });
       run.log({ type: "system", text: canResume ? `↩︎ 이전 세션 이어서(resume ${sid!.slice(0, 8)}…)` : "📝 이전 세션을 열 수 없어 앞선 기록 요약을 넣고 새로 시작해요" });
       s.input.push(prompt, undefined, true); // 시작 전에 보낸 메시지보다 앞에
@@ -796,6 +948,7 @@ export function prepareContinue(cfg: Config, spec: ContinueSpec, deps: FixDeps =
       iso = new WorktreeIsolation({ roots: [wt], author: cfg.gitAuthor, worktreesDir: wtDir, log: (ev) => run.log(ev) });
       const out = codex
         ? await driveCodex(s, cfg, wt, deps, step, canResume ? { thread: sid!.slice(CODEX_SESSION.length), fork: true } : undefined)
+        : agy ? await driveAgy(s, cfg, wt, deps, step, canResume ? { conversation: sid!.slice(AGY_SESSION.length) } : undefined)
         : await drive(s, deps.query ?? query, sdkOptions(cfg, wt, canResume ? { resume: sid, forkSession: true } : {}, [], iso), deps, step);
       await iso.closeAll();
       if (!out) { run.end("stopped"); return { ok: false, summary: "사용자가 정지했어요 — 커밋 안 함.", branch, log }; }

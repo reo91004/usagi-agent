@@ -106,10 +106,22 @@ export function ensureAgyMcp(url: string, home = homedir()): string[] {
     writeObj(p.mcp, { ...mcp, mcpServers: { ...(mcp.mcpServers ?? {}), [MCP_NAME]: { url } } }, 0o644);
     changed.push(p.mcp);
   }
-  const allow: unknown[] = Array.isArray(st.permissions?.allow) ? st.permissions.allow : [];
-  if (!allow.includes(AGY_ALLOW)) {
-    writeObj(p.settings, { ...st, permissions: { ...(st.permissions ?? {}), allow: [...allow, AGY_ALLOW] } }, 0o600);
-    changed.push(p.settings);
-  }
+  if (addAllow(p.settings, st, [AGY_ALLOW])) changed.push(p.settings);
   return changed;
+}
+
+function addAllow(path: string, st: Obj, rules: string[]): boolean {
+  const allow: unknown[] = Array.isArray(st.permissions?.allow) ? st.permissions.allow : [];
+  const add = rules.filter((r) => !allow.includes(r));
+  if (!add.length) return false;
+  writeObj(path, { ...st, permissions: { ...(st.permissions ?? {}), allow: [...allow, ...add] } }, 0o600);
+  return true;
+}
+
+// agy settings.json permissions.allow 에 규칙들을 넣는다(있는 건 그대로, 다른 키 유지). 바꿨으면 true. 읽을 수 없는 파일이면 던진다
+export function ensureAgyAllow(rules: string[], home = homedir()): boolean {
+  const p = agyPaths(home).settings;
+  const st = readObj(p);
+  if (!st) throw new Error(`agy 설정 파일을 읽지 못해 그대로 둬요(${p})`);
+  return addAllow(p, st, rules);
 }

@@ -236,7 +236,7 @@ test("캘린더 MCP 동기화: 뇌가 Claude Code 가 아니면 SDK 를 부르�
   assert.deepEqual(r, { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 });
 });
 
-test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Claude Code 가 있어야 · 코드는 Claude 로그인", () => {
+test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Claude Code 가 있어야 · 코드 고치기는 그 뇌의 명령으로", () => {
   const conns = { connectors: { mail: { mode: "mcp", server: "gmail" }, calendar: { mode: "api", icsUrl: "https://x.example/a.ics" } } };
   const hasServer = () => true;
   // codex 뇌: 빈 실행 파일 하나를 둔 가짜 PATH(실행은 하지 않는다 — PATH 만 본다)
@@ -249,7 +249,7 @@ test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Clau
   assert.deepEqual(cx.features.background, { by: "codex", ready: true, detail: "Codex 로 돌아요" });
   assert.equal(cx.coder.codex, true);
   assert.equal(cx.features.mcp, false);
-  assert.equal(cx.features.code, false);
+  assert.equal(cx.features.code, true); // 뇌가 codex 면 코드 고치기도 Codex(#33) — Claude 로그인이 없어도
   const mail = cx.connectors.find((c) => c.cap === "mail")!;
   assert.deepEqual([mail.ready, mail.needs], [false, "claude-code"]);
   assert.equal(cx.connectors.find((c) => c.cap === "calendar")!.ready, true); // ICS 는 뇌 상관없이
