@@ -191,7 +191,7 @@ export function recordSession(store: Store, s: SessionDigest) {
 }
 
 // 접는 규칙(claudeFold·codexFold·isHumanText 등)을 바꾸면 올린다: 저장된 중간 상태를 버리고 처음부터 다시 읽는다
-const FOLD_V = 2;
+const FOLD_V = 3;
 type SavedRead = { v: number; offset: number; ino: number; edge: string; fold: FoldState };
 // 이어 읽을 자리가 같은 파일인지: 맨 앞과 읽은 자리 바로 앞 각 256바이트의 해시(덧붙기만 했으면 그대로다)
 function edgeHash(path: string, off: number): string {
