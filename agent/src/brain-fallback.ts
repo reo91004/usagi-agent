@@ -6,7 +6,7 @@ import { DEFAULT_GENERAL_MODEL, type BrainProvider, type Config } from "./config
 import { BrainAuthError, BrainCreditError, BrainLimitError, brainKeyReady } from "./providers.ts";
 
 export const BRAIN_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", agy: "Antigravity", anthropic: "Claude API", gemini: "Gemini", openai: "OpenAI", genspark: "Genspark", local: "로컬(모델 없음)" };
-export const COOLDOWN_MS = { exhausted: 60 * 60_000, rate: 2 * 60_000 };
+export const COOLDOWN_MS = { exhausted: 60 * 60_000, rate: 2 * 60_000, auth: 10 * 60_000 }; // 로그인은 터미널에서 고치면 설정을 안 거치니 짧게
 
 type Cfg = Pick<Config, "brain" | "models">;
 export type BrainEntry = { provider: BrainProvider; model?: string };
@@ -19,7 +19,7 @@ export const resetBrainCooldowns = () => cooled.clear();
 const unusable = (e: unknown): e is BrainLimitError | BrainAuthError | BrainCreditError => e instanceof BrainLimitError || e instanceof BrainAuthError || e instanceof BrainCreditError;
 
 function markCooldown(provider: string, err: Error, now: number) {
-  const until = err instanceof BrainLimitError ? err.resetsAt ?? now + COOLDOWN_MS[err.kind] : now + COOLDOWN_MS.exhausted; // 인증·크레딧은 사용자가 고쳐야 풀린다 — 설정을 바꾸면 resetBrainCooldowns
+  const until = err instanceof BrainLimitError ? err.resetsAt ?? now + COOLDOWN_MS[err.kind] : err instanceof BrainAuthError ? now + COOLDOWN_MS.auth : now + COOLDOWN_MS.exhausted; // 크레딧은 사용자가 채워야 풀린다 — 설정을 바꾸면 resetBrainCooldowns
   cooled.set(provider, { until: Math.max(until, now + 1000), err });
 }
 export const isCooled = (provider: string, now = Date.now()) => !!coolUntil(provider, now);

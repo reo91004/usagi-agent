@@ -774,8 +774,9 @@ export const CODEX_TIMEOUT_MS = 120_000;
 export type CodexUsage = { inTokens: number; outTokens: number };
 
 // 사용량·한도 문구. 출처 확인 못 함: Codex 는 "You've hit your usage limit …"(usage_limit_reached)를 낸다고 알려져 있으나 이 저장소엔 실제 출력 표본이 없어
-// 보수적으로 흔한 문구(usage limit·rate limit·quota·insufficient·resource exhausted)만 본다. 분당 한도(rate limit 만 있고 usage limit 아님)는 rate, 나머지는 exhausted
-const LIMIT_TEXT = /usage[ _]limit|rate[ _]limit|quota|insufficient|resource[ _]exhausted|out of (?:usage|credits)|too many requests/i;
+// 한도를 뜻하는 문구만 본다(그냥 quota·insufficient 는 "disk quota exceeded"·"insufficient permissions" 에도 걸려 빼고, 구글·OpenAI 의 한도 문구 꼴로).
+// 분당 한도(rate limit 만 있고 usage limit 아님)는 rate, 나머지는 exhausted
+const LIMIT_TEXT = /usage[ _]limit|rate[ _]limit|insufficient_quota|quota exceeded for|exceeded your current quota|resource[ _]exhausted|out of (?:usage|credits)|too many requests/i;
 export function limitKindOf(text: string): LimitKind | undefined {
   if (!LIMIT_TEXT.test(text)) return undefined;
   return /rate[ _]limit|too many requests/i.test(text) && !/usage[ _]limit|quota|insufficient|exhausted/i.test(text) ? "rate" : "exhausted";

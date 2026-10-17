@@ -83,6 +83,9 @@ test("분류: Codex 실패 이벤트·stderr 의 한도 문구 → BrainLimitErr
   assert.equal(codexLimit("", ""), undefined);
   assert.equal(limitKindOf("quota exceeded for model"), "exhausted");
   assert.equal(limitKindOf("rate limit reached"), "rate");
+  assert.equal(limitKindOf("You've hit your usage limit"), "exhausted");
+  assert.equal(limitKindOf("insufficient_quota"), "exhausted");
+  for (const x of ["disk quota exceeded", "insufficient permissions for scope", "quota"]) assert.equal(limitKindOf(x), undefined, x); // 한도가 아닌 글
 });
 
 test("분류: agy AGY_ERROR 의 quota → BrainLimitError, 다른 AGY_ERROR 는 일반 오류", async () => {
@@ -101,6 +104,34 @@ test("분류: Claude SDK 결과 — 사용량 문구·거절 이벤트·429 → 
   assert.ok(claudeFailure("Not logged in", null, "authentication_failed") instanceof BrainAuthError);
   const other = claudeFailure("boom", 500);
   assert.ok(!(other instanceof BrainLimitError) && /brain 실패/.test(other.message));
+  // 거절 알림만 있고 결과가 다른 오류면 한도가 아니다(며칠 쉬게 하지 않게)
+  assert.ok(!(claudeFailure("Prompt is too long", 500, undefined, { resetsAt: 1_800_000_000 }) instanceof BrainLimitError));
+});
+
+test("ask(): 초과 사용으로 이어 간 거절 알림 뒤의 다른 오류는 한도로 치지 않고 넘어가지도 않는다", async () => {
+  const cfg = cfgOf({ provider: "claude-code", anthropicApiKey: "sk-ant-x", fallback: [{ provider: "anthropic" }] });
+  const q: any = () => (async function* () {
+    yield { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 4_000_000_000, isUsingOverage: true, overageStatus: "allowed" } };
+    yield { type: "result", subtype: "success", is_error: true, result: "Prompt is too long", api_error_status: 400 };
+  })();
+  let calls = 0;
+  const fake = async () => { calls++; return json(200, { content: [{ type: "text", text: '{"reply":"x"}' }] }); };
+  resetBrainCooldowns();
+  await assert.rejects(ask<string>(cfg, "안녕", null, undefined, { query: q, deps: { fetch: fake as any, env: {} } }), (e: Error) => !(e instanceof BrainLimitError) && /Prompt is too long/.test(e.message));
+  assert.equal(calls, 0);
+  assert.deepEqual(brainCooldowns(Date.now()), {});
+});
+
+test("ask(): 슬래시 명령(project)·백그라운드 에이전트는 다른 뇌로 넘기지 않는다", async () => {
+  const cfg = cfgOf({ provider: "claude-code", anthropicApiKey: "sk-ant-x", fallback: [{ provider: "anthropic" }] });
+  const q: any = () => (async function* () { yield { type: "result", subtype: "success", is_error: true, result: "You've hit your limit · resets 5pm", api_error_status: null }; })();
+  let calls = 0;
+  const fake = async () => { calls++; return json(200, { content: [{ type: "text", text: '{"reply":"한 척"}' }] }); };
+  for (const extra of [{ project: true }, { background: { onRun() {} } as any }]) {
+    resetBrainCooldowns();
+    await assert.rejects(ask<string>(cfg, "/cmd", null, undefined, { query: q, deps: { fetch: fake as any, env: {} }, ...extra }), (e: any) => e instanceof BrainLimitError);
+  }
+  assert.equal(calls, 0);
 });
 
 const limit = (p: string, kind: "exhausted" | "rate" = "exhausted", resetsAt?: number) => new BrainLimitError(`${p} 한도`, p, kind, resetsAt);
@@ -127,10 +158,10 @@ test("withFallback: 순서대로 · 쉬는 뇌는 건너뜀 · resetsAt/기본 �
   assert.deepEqual(seen, ["codex"]);
   assert.equal(switches.length, 1);
   assert.equal(activeBrain(cfg, 2_000_000), "codex");
-  // codex 도 인증 실패 → gemini(기본 모델), 기본 쉬는 시간 60분
+  // codex 도 인증 실패 → gemini(기본 모델), 로그인 문제는 10분 쉼
   assert.equal(await run({ codex: new BrainAuthError("로그인") }, 3_000_000), "gemini");
   assert.equal(models.at(-1), "claude-sonnet-5-5");
-  assert.equal(brainCooldowns(3_000_000).codex, 3_000_000 + COOLDOWN_MS.exhausted);
+  assert.equal(brainCooldowns(3_000_000).codex, 3_000_000 + COOLDOWN_MS.auth); // 로그인은 10분만
   // resetsAt 이 지나면 다시 첫 뇌
   assert.equal(await run({}, 10_000_001), "claude-code");
   // 한도가 아닌 오류는 그대로 올리고 쉬지 않는다

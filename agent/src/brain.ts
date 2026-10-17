@@ -307,6 +307,8 @@ export function thinkPrompt(cfg: Config, store: Store, task: string, o: { tools?
 export async function ask<T>(
   cfg: Config, prompt: string, schema: unknown, onStep?: (s: string) => void, opts: AskOpts & { run?: AskRun } = {},
 ): Promise<T> {
+  // 백그라운드 에이전트·슬래시 명령은 Claude Code 의 도구·명령 펼치기에 기대어 다른 뇌로 넘기지 않는다(도구 없는 뇌가 한 척 보고하지 않게)
+  if (opts.background || opts.project) return askOnce<T>(cfg, prompt, schema, onStep, opts);
   return withFallback(cfg, (c, a) => askOnce<T>(c, prompt, schema, onStep, a.first ? opts : { ...opts, model: undefined }));
 }
 
@@ -527,8 +529,10 @@ async function askRun<T>(
   const called = new Map<string, string>(); // tool_use id → 단계 글(결과가 오면 onResult)
   try {
     for await (const m of trackQuery(run, q)) {
-      if (m.type === "rate_limit_event" && m.rate_limit_info.status === "rejected") rejected = { resetsAt: m.rate_limit_info.resetsAt };
-      if (m.type === "assistant" && m.error) assistantError = m.error;
+      // 초과 사용(overage)으로 이어 가는 거절은 한도가 아니다. 서브에이전트 줄의 오류는 이 답의 오류가 아니다
+      const rl = m.type === "rate_limit_event" ? m.rate_limit_info : undefined;
+      if (rl?.status === "rejected" && !rl.isUsingOverage && rl.overageStatus !== "allowed" && rl.overageStatus !== "allowed_warning") rejected = { resetsAt: rl.resetsAt };
+      if (m.type === "assistant" && !m.parent_tool_use_id) assistantError = m.error ?? undefined; // 뒤에 오류 없는 답이 오면 앞선 오류는 지나간 것
       if (m.type === "assistant") {
         for (const b of m.message.content) if (b.type === "tool_use") { const st = stepName(b.name, b.input); called.set(b.id, st); steps.tool(st); }
       }
@@ -560,7 +564,8 @@ export function claudeFailure(text: string, status: number | null | undefined, a
   const head = text.slice(0, 200);
   if (assistantError === "authentication_failed" || assistantError === "oauth_org_not_allowed" || assistantError === "account_on_hold") return new BrainAuthError(`Claude Code 로그인이 필요해요: ${head}`);
   const usage = USAGE_LIMIT_ERROR_PREFIXES.some((p) => text.startsWith(p));
-  if (rejected || usage || assistantError === "billing_error" || assistantError === "rate_limit" || status === 429) {
+  // 거절 알림(rejected)만으로는 한도로 보지 않는다 — 결과가 다른 오류(프롬프트 너무 김·500)면 그 오류다. rejected 는 풀리는 시각만 준다
+  if (usage || assistantError === "billing_error" || assistantError === "rate_limit" || status === 429) {
     const at = rejected?.resetsAt;
     return new BrainLimitError(`Claude 사용량 한도에 걸렸어요: ${head}`, "claude-code", rejected || usage || assistantError === "billing_error" ? "exhausted" : "rate", at ? (at < 1e11 ? at * 1000 : at) : undefined);
   }
