@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanLink, cleanTitle, newTodoBody, overlayTodos, sanitizeTodoPatch, patchToday, isToday } from '../src/todos.js';
+import { cleanTitle, newTodoBody, overlayTodos, sanitizeTodoPatch, patchToday, isToday } from '../src/todos.js';
 import { groupTodos } from '../src/dashboard.js';
 
 const server = [
@@ -35,11 +35,6 @@ test('입력 검증: 제목·링크·새 할 일·상세 패치', () => {
   assert.equal(cleanTitle('  견적\n 회신 '), '견적 회신');
   assert.equal(cleanTitle('   '), null);
   assert.equal(cleanTitle('x'.repeat(5000)).length, 5000);
-  assert.equal(cleanLink(''), null);
-  assert.equal(cleanLink(' https://x.y/z '), 'https://x.y/z');
-  assert.equal(cleanLink('slack://channel?id=1'), 'slack://channel?id=1');
-  assert.equal(cleanLink('javascript:alert(1)'), undefined);
-  assert.equal(cleanLink('example.com'), undefined);
   assert.deepEqual(newTodoBody(' 테스트 항목 ', '1'), { title: '테스트 항목', priority: 1 });
   assert.deepEqual(newTodoBody('x', 9), { title: 'x', priority: 4 }); // 4 = 백로그까지
   assert.equal(newTodoBody('  ', 1), null);

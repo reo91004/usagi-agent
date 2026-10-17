@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MOODS, SERIOUS_KINDS, TONE, VOICE_EVERY, seedHash, stretch, voice } from "./voice.ts";
+import { CHARACTERS } from "./characters.ts";
+import { SERIOUS_KINDS, TONE, VOICE_EVERY, seedHash, stretch, voice } from "./voice.ts";
 import { SYSTEM } from "./brain.ts";
 
 const seeds = (n: number, prefix = "b") => Array.from({ length: n }, (_, i) => `${prefix}:${i}:2026-10-10`);
@@ -28,7 +29,7 @@ test("voice: 같은 seed면 늘 같은 결과, 바뀐 말은 '~요' 늘이기 �
     if (a === "새 할 일이 생겼어~요") tilde++;
     else {
       const tag = a.slice("새 할 일이 생겼어요 ".length);
-      assert.ok((MOODS.excited as readonly string[]).includes(tag), a);
+      assert.ok((CHARACTERS.shisa.tail!.excited as readonly string[]).includes(tag), a);
       tagged++;
     }
   }

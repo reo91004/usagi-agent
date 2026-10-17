@@ -141,7 +141,6 @@ export const noShipHook: HookCallback = async (input) => {
     ? { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "커밋·푸시·머지는 cy-agent가 직접 한다. 파일 수정과 테스트까지만 해." } }
     : {};
 };
-export const isBlockedBash = (cmd: string) => shipBlocked(cmd);
 
 const FIX_SCHEMA = {
   type: "object",
@@ -659,7 +658,6 @@ export function fixSubagentHookFor(iso?: WorktreeIsolation, cwd?: string): HookC
     return allow(v.input, "서브에이전트(포그라운드)");
   };
 }
-export const fixSubagentHook: HookCallback = fixSubagentHookFor();
 
 // 수정 run 프롬프트 덧붙임: 독립된 일은 서브에이전트 여럿을 각자 워크트리에서 동시에
 export const FIX_FANOUT = "- 서로 독립된 하위 작업이 여럿이면 Agent 도구를 한 메시지에 여러 번 불러 동시에 돌려도 된다(개수 상한 없음). 같은 파일을 건드릴 수 있으면 isolation: \"worktree\" 로 불러 서브에이전트마다 새 워크트리(이 작업 폴더 HEAD 에서 새 브랜치)를 판다 — 끝나면 바뀐 게 있으면 그 브랜치에 커밋돼 남고(경로·브랜치·커밋이 결과 뒤에 붙는다), 없으면 지워진다. 결과는 이 작업 폴더에서 `git cherry-pick -n <기준>..<브랜치>` 로 커밋 없이 가져와 합친다(커밋·푸시는 cy-agent 가 한다).";

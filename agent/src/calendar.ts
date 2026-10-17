@@ -61,12 +61,6 @@ export function kstDate(d: Date = new Date()): string {
   return new Date(d.getTime() + KST).toISOString().slice(0, 10);
 }
 
-// KST 기준 0시부터 지난 분
-export function kstMinutes(d: Date = new Date()): number {
-  const t = new Date(d.getTime() + KST);
-  return t.getUTCHours() * 60 + t.getUTCMinutes();
-}
-
 // ---- 이 맥의 시간대(TZ) 기준 — 오늘 할 일·알림·정기 브리핑·하루 진행률·집중하기가 같은 하루를 본다 ----
 const pad2 = (n: number) => String(n).padStart(2, "0");
 // Date → 로컬 날짜 "YYYY-MM-DD"

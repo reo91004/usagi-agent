@@ -11,8 +11,6 @@ export const TONE = CHARACTERS.shisa.tone;
 // 지금 캐릭터의 말투 한 줄(그때그때 만드는 프롬프트용 — 머지 추가질문 등)
 export const tone = (): string => character().tone;
 
-// 데모(desktop/scripts/demo-*.mjs)에서 쓰는 시사 감정 표시를 기분별로 묶었다
-export const MOODS = CHARACTERS.shisa.tail as Record<Mood, readonly string[]>;
 
 // 양념을 치지 않는 말: 오류·머지·결재(제안 승인/보류)·회의 알림·진행 보고
 export const SERIOUS_KINDS: ReadonlySet<string> = new Set(["error", "merge", "approval", "meeting", "progress"]);

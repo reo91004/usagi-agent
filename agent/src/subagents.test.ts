@@ -11,13 +11,14 @@ import { PermissionBroker, PermissionRules, type PermQueue } from "./permissions
 import { Store } from "./store.ts";
 import { loadConfig } from "./config.ts";
 import { toolOptions } from "./brain.ts";
-import { fixSubagentHook, noShipHook } from "./fixer.ts";
+import { fixSubagentHookFor, noShipHook } from "./fixer.ts";
 
 const root = mkdtempSync(join(tmpdir(), "cy-sub-"));
 const repo = join(root, "ax", "app");
 mkdirSync(join(repo, ".git"), { recursive: true });
 const cfg = () => ({ ...loadConfig(), repoRoots: [join(root, "ax")], claudeProjectsDir: "/none", codexSessionsDir: "/none", localAutoAllow: false });
 const sig = { signal: new AbortController().signal };
+const fixSubagentHook = fixSubagentHookFor();
 const pre = (tool_name: string, tool_input: unknown, agent_id?: string) =>
   ({ hook_event_name: "PreToolUse", tool_name, tool_input, session_id: "s", transcript_path: "/x", cwd: repo, tool_use_id: "tu", ...(agent_id ? { agent_id, agent_type: "general-purpose" } : {}) }) as any;
 const decision = (o: any) => o?.hookSpecificOutput?.permissionDecision;
