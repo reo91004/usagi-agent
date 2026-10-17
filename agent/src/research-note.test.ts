@@ -2,9 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
 import { Store } from "./store.ts";
-import { autoBlock, collectDay, formatDay, notePath, plain, summarizeDay, summaryPrompt, writeNote, type DayNote } from "./research-note.ts";
+import { autoBlock, autoId, collectDay, formatDay, notePath, plain, summarizeDay, summaryPrompt, writeNote, type DayNote } from "./research-note.ts";
 import type { ExecFileLike } from "./providers.ts";
 
 const cfg = { repoRoots: [], gitAuthor: { name: "me", email: "me@x" }, onboarded: true, readSessions: true };
@@ -31,6 +32,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   store.upsertNode("session:c", "session", "숨김", { tool: "claude", cwd: "/secret/x", turns: 1 }, at("11:00"));
   store.hideProject("/secret", "secret");
   store.upsertNode("session:d", "session", "임시 폴더", { tool: "claude", cwd: "/private/tmp/x", turns: 1 }, at("11:30"));
+  store.upsertNode("session:e", "session", "하위 에이전트", { tool: "claude", cwd: "/r/app/.claude/worktrees/agent-1", turns: 0 }, at("11:40")); // 0턴은 뺀다
   store.upsertNode("job:gpu1:1", "job", "resnet 학습", { seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] }, at("12:00"));
   store.upsertNode("job:gpu1:2", "job", "도는 중", { host: "gpu1", start: 1, running: true }, at("12:30"));
   store.upsertNode("job:gpu1:3", "job", "죽은 것", { host: "gpu1", start: 1, lost: true }, at("12:40"));
@@ -69,13 +71,13 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
 
   const md = `${autoBlock(n)}\n`;
   assert.equal(md, [
-    "- 우사기 기록", "  usagi-auto:: true",
-    "\t- ### 실험",
+    "- 오늘 한 일", `  id:: ${autoId("2026-10-17")}`,
+    "\t- 실험",
     "\t\t- resnet 학습 @gpu1 · 1시간 2분 · 끝", "\t\t\t- 폴더 `/home/me/exp` · 명령 `python train.py`", "\t\t\t- 바뀐 파일: `out/m.json`",
     "\t\t- 죽은 것 @gpu1 · 끊김(끝 기록 없이 사라짐)",
-    "\t- ### 회의", "\t\t- 14:00 랩 미팅",
-    "\t- ### 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴) · 마지막 요청: 다시 돌려줘",
-    "\t- ### 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 새로 생김: 교수님께 결과 보내기",
+    "\t- 회의", "\t\t- 14:00 랩 미팅",
+    "\t- 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴) · 마지막 요청: 다시 돌려줘",
+    "\t- 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 새로 생김: 교수님께 결과 보내기",
     "\t- 집중 1시간 6분 (가장 길게 이어서 30분)", "",
   ].join("\n"));
 
@@ -105,10 +107,34 @@ test("writeNote: 저널이 없으면 폴더째 우사기 블록만 담아 만들
   assert.equal(existsSync(join(graph, "journals")), false);
   const path = notePath(graph, "2026-10-17");
   assert.equal(writeNote(store, graph, one), "written");
-  assert.equal(readFileSync(path, "utf8"), "- 우사기 기록\n  usagi-auto:: true\n\t- ### 할 일\n\t\t- 끝냄: a\n");
+  assert.equal(readFileSync(path, "utf8"), `- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n`);
   assert.equal(writeNote(store, graph, one), "same");
   assert.deepEqual(readdirSync(join(graph, "journals")), ["2026_10_17.md"]); // 임시 파일 안 남음
   assert.equal(existsSync(join(graph, "pages")), false);
+});
+
+test("writeNote: 0.6.0 이 쓴 「우사기 기록」(usagi-auto) 블록은 다음 쓰기 때 「오늘 한 일」로 바꾸고 앞뒤 사용자 블록은 그대로", () => {
+  const graph = graphDir();
+  const store = new Store(":memory:");
+  const path = notePath(graph, "2026-10-17");
+  const legacy = "- 우사기 기록\n  usagi-auto:: true\n\t- ### 할 일\n\t\t- 끝냄: a";
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `- 앞\n${legacy}\n- 뒤\n`);
+  store.setMark(`tine-note-auto:${path}`, parseInt(createHash("sha1").update(legacy).digest("hex").slice(0, 13), 16)); // 0.6.0 이 그 블록을 쓴 뒤 남긴 해시
+  assert.equal(writeNote(store, graph, one), "written");
+  assert.equal(readFileSync(path, "utf8"), `- 앞\n- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n- 뒤\n`);
+  assert.match(autoId("2026-10-17"), /^75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.notEqual(autoId("2026-10-17"), autoId("2026-10-18"));
+});
+
+test("writeNote: Tine 이 줄바꿈만 넣어 만든 빈 일지에는 빈 줄 없이 블록만", () => {
+  const graph = graphDir();
+  const store = new Store(":memory:");
+  const path = notePath(graph, "2026-10-17");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "\n");
+  assert.equal(writeNote(store, graph, one), "written");
+  assert.equal(readFileSync(path, "utf8"), `- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n`);
 });
 
 test("writeNote: 있는 저널 끝에 덧붙이고, 다시 쓸 때는 우사기 블록 줄만 바꾼다(나머지는 바이트 그대로)", () => {
@@ -173,5 +199,5 @@ test("summarizeDay: 끝난 날 한 번만, 뇌 답을 3줄로 잘라 저장하�
   const day = await collectDay({ ...cfg, readSessions: false }, store, "2026-10-17", { git: async () => [] });
   assert.deepEqual(day.summary, { lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] });
   const md = autoBlock({ ...n, summary: day.summary });
-  assert.match(md, /- 우사기 기록\n  usagi-auto:: true\n\t- ### 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- 다음: 결과 파일 확인\n\t- ### 실험\n/);
+  assert.match(md, /- 오늘 한 일\n  id:: 75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\n\t- 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- 다음: 결과 파일 확인\n\t- 실험\n/);
 });
