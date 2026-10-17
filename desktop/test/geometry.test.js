@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultPosition, restorePosition } from '../src/geometry.js';
+import { defaultPosition, restorePosition, contentMismatch } from '../src/geometry.js';
 
 const size = { width: 360, height: 420 };
 const wa = { x: 0, y: 25, width: 1440, height: 800 };
@@ -34,4 +34,11 @@ test('놓은 자리: 아래쪽은 그대로, 창 윗변이 작업영역 위로 �
   assert.deepEqual(dropPlacement(700, true, area, s), { y: 268, flip: false }); // 뒤집힌 채 아래로 → 되돌림
   assert.deepEqual(dropPlacement(300, true, area, s), { y: 300, flip: true });
   assert.deepEqual(dropPlacement(-500, false, area, s), { y: 35, flip: true }); // 메뉴 막대 뒤로는 안 감
+});
+
+test('contentMismatch: 페이지가 창보다 좁게 그려졌으면 true, 확대 배율은 셈에 넣는다', () => {
+  assert.equal(contentMismatch([900, 640], { width: 900, height: 640 }), false);
+  assert.equal(contentMismatch([751, 640], { width: 900, height: 640 }), true);
+  assert.equal(contentMismatch([1000, 711], { width: 900, height: 640 }, 0.9), false);
+  assert.equal(contentMismatch(null, { width: 900, height: 640 }), false);
 });
