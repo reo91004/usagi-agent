@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHARACTERS, CHARACTER_IDS, LEGACY_SHISA_INTRO, SHISA_PERSONA, character, characterId, installCharacters, setCharacter, withCharacter } from "./characters.ts";
+import { CHARACTERS, CHARACTER_IDS, LEGACY_SHISA_INTRO, SHISA_INTRO, SHISA_TONE, character, characterId, installCharacters, setCharacter, withCharacter } from "./characters.ts";
 import { SYSTEM, INTERACTIVE_SYSTEM, systemPrompt, ask } from "./brain.ts";
 import { CHAT_SYSTEM, CHAT_SYSTEM_INLINE, BG_AGENT_SYSTEM } from "./chat.ts";
 import { ASK_SYSTEM } from "./todo-ask.ts";
@@ -76,7 +76,7 @@ test("소개: 시사는 「cy」가 아니라 「시사」라고 소개하고, �
 
 test("시스템 프롬프트: 시사면 글자 하나 안 바뀌고, 다른 캐릭터면 모든 프롬프트에서 시사 소개·말투가 그 캐릭터 것으로", () => {
   for (const [name, sys] of Object.entries(SYSTEMS)) {
-    assert.ok(sys.includes(SHISA_PERSONA), `${name}: 바꿀 자리(시사 소개+말투)가 없다`);
+    assert.ok(sys.includes(`${SHISA_INTRO} ${SHISA_TONE}`), `${name}: 바꿀 자리(시사 소개+말투)가 없다`);
     assert.equal(withCharacter(sys), sys, `${name}: 시사인데 바뀜`);
   }
   for (const id of OTHERS) {
@@ -89,7 +89,7 @@ test("시스템 프롬프트: 시사면 글자 하나 안 바뀌고, 다른 캐�
       assert.ok(out.startsWith(`${c.intro} ${c.tone}`), `${id}/${name}`);
       assert.equal(out.split(c.tone).length - 1, 1, `${id}/${name}: 말투 줄은 한 번만`);
       // 말투 말고 나머지(규칙·안전 지시)는 그대로
-      assert.equal(out.slice(`${c.intro} ${c.tone}`.length), sys.slice(SHISA_PERSONA.length), `${id}/${name}: 나머지가 바뀜`);
+      assert.equal(out.slice(`${c.intro} ${c.tone}`.length), sys.slice(`${SHISA_INTRO} ${SHISA_TONE}`.length), `${id}/${name}: 나머지가 바뀜`);
     }
   }
   assert.equal(withCharacter(undefined), undefined);

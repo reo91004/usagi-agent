@@ -1,5 +1,4 @@
 // 할 일 편집 — 순수 로직. 낙관적 반영(대기 중인 변경을 서버 목록 위에 겹쳐 보기)과 입력 검증.
-import { isSafeLink } from './bubbles.js';
 import { reorderLocal } from './todo-rows.js';
 
 
@@ -22,12 +21,6 @@ export function cleanTitle(v) {
   return s || null;
 }
 
-// 링크: 빈 값은 지우기(null), http(s)·slack 만. 잘못되면 undefined
-export function cleanLink(v) {
-  const s = str(v).trim();
-  if (!s) return null;
-  return /^(https?|slack):\/\/\S+$/i.test(s) && isSafeLink(s) ? s : undefined;
-}
 
 export function clampPriority(p) {
   const n = Math.round(Number(p));

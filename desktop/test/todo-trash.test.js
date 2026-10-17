@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   daysAgo, trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey,
-  createUndo, readTrashOpen, writeTrashOpen, overTrash, okTodoId, UNDO_MS, TRASH_OPEN_KEY,
+  createUndo, readTrashOpen, writeTrashOpen, overTrash, UNDO_MS, TRASH_OPEN_KEY,
 } from '../src/todo-trash.js';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
@@ -163,15 +163,11 @@ test('휴지통 펼침 기억(기본 접힘), 저장소 오류도 견딘다', ()
   assert.equal(readTrashOpen(undefined), false);
 });
 
-test('overTrash·okTodoId', () => {
+test('overTrash', () => {
   const r = { top: 100, bottom: 160, left: 10, right: 300 };
   assert.equal(overTrash(50, 120, r), true);
   assert.equal(overTrash(null, 120, r), true);
   assert.equal(overTrash(5, 120, r), false);
   assert.equal(overTrash(50, 99, r), false);
   assert.equal(overTrash(50, 120, null), false);
-  assert.equal(okTodoId('mail:1'), true);
-  assert.equal(okTodoId(''), false);
-  assert.equal(okTodoId(3), false);
-  assert.equal(okTodoId('x'.repeat(501)), false);
 });

@@ -1,13 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isBusinessDay, kstDate, kstMinutes } from "./calendar.ts";
+import { isBusinessDay, kstDate } from "./calendar.ts";
 
 const at = (iso: string) => new Date(iso);
 
-test("kstDate·kstMinutes: UTC 15시는 KST 다음날 0시", () => {
+test("kstDate: UTC 15시는 KST 다음날 0시", () => {
   assert.equal(kstDate(at("2026-10-07T15:00:00Z")), "2026-10-08");
   assert.equal(kstDate(at("2026-10-07T14:59:59Z")), "2026-10-07");
-  assert.equal(kstMinutes(at("2026-10-08T01:30:00Z")), 10 * 60 + 30);
 });
 
 test("isBusinessDay: 주말·공휴일·대체공휴일·추가 휴일", () => {

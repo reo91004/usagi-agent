@@ -141,6 +141,3 @@ export function writeTrashOpen(storage, open) {
 export function overTrash(x, y, rect) {
   return !!rect && y >= rect.top && y <= rect.bottom && (x == null || (x >= rect.left && x <= rect.right));
 }
-
-// IPC 인자(메인 프로세스): 할 일 id
-export const okTodoId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 500;
