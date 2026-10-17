@@ -6,7 +6,7 @@ import {
   RELEASES_PAGE, CHECK_EVERY_MS, BUBBLE_ID,
 } from '../src/update-check.js';
 import { normalizeBubble, isSafeLink } from '../src/bubbles.js';
-import { readFileSync } from 'node:fs';
+import { buildHandler, decl } from './helpers/main-calls.js';
 
 test('parseVersion: v 붙은 태그·두 자리·미리보기판', () => {
   assert.deepEqual(parseVersion('v1.2.3'), { nums: [1, 2, 3], pre: '' });
@@ -145,13 +145,47 @@ test('updateBubble: 받을 파일 주소가 있으면 그 파일로 바로, 터�
   assert.equal(updateBubble({ version: '0.2.0' }).link, RELEASES_PAGE);
 });
 
-test('main.js 배선: 이 PC 용 파일이 있을 때만 알림 기록, 휴대용은 Update.exe 로 가린다', () => {
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  const fn = main.slice(main.indexOf('async function checkForUpdate()'));
-  assert.match(fn, /newestRelease\(await r\.json\(\), target\)/);
-  assert.ok(fn.indexOf('newestRelease(') < fn.indexOf('state.updateNotified = rel.version'));
-  assert.match(fn, /assetUrl: rel\.asset\?\.url/);
-  assert.match(main, /const isPortableWin = \(\) => process\.platform === 'win32' && app\.isPackaged && !fs\.existsSync\(path\.join\(path\.dirname\(process\.execPath\), '\.\.', 'Update\.exe'\)\);/);
+// checkForUpdate 를 가짜 GitHub 응답으로
+async function updateRun(releases, target = { platform: 'darwin', arch: 'arm64' }) {
+  const log = { bubbles: [], saved: 0 };
+  const state = {};
+  const deps = {
+    Date, state, saveState: () => log.saved++, DEBUG: false, RELEASES_API, checkDue, newestRelease, shouldNotify, updateBubble,
+    fetch: async () => ({ ok: true, json: async () => releases }), AbortSignal,
+    process: { platform: target.platform, arch: target.arch }, isPortableWin: () => !!target.portable, isCheckout: () => false,
+    app: { getVersion: () => '0.1.0' }, send: (...a) => log.bubbles.push(a),
+  };
+  await buildHandler(decl('checkForUpdate'), deps)();
+  return { log, state };
+}
+const relOf = (tag, names) => ({ tag_name: tag, html_url: `${RELEASES_PAGE}/tag/${tag}`, assets: names.map((name) => ({ name, browser_download_url: `${RELEASES_PAGE}/download/${tag}/${name}` })) });
+
+test('checkForUpdate: 이 PC 용 파일이 있을 때만 알림을 기록하고 그 파일 주소를 말풍선에 싣는다', async () => {
+  const ok = await updateRun([relOf('v0.2.0', ['Shisa-0.2.0-arm64.dmg'])]);
+  assert.equal(ok.state.updateNotified, '0.2.0');
+  assert.equal(ok.log.bubbles.length, 1);
+  assert.equal(ok.log.bubbles[0][0], 'bubble');
+  assert.match(ok.log.bubbles[0][1].link, /Shisa-0\.2\.0-arm64\.dmg$/);
+  // 새 릴리스는 있지만 이 PC 용 파일이 아직 없으면 기록·알림 없음(다음 확인 때 다시 본다)
+  const none = await updateRun([relOf('v0.2.0', ['Shisa-0.2.0-Setup.exe'])]);
+  assert.equal(none.state.updateNotified, undefined);
+  assert.deepEqual(none.log.bubbles, []);
+});
+
+test('checkForUpdate: 휴대용 윈도우는 zip, isPortableWin 은 Update.exe 가 없을 때만', async () => {
+  const list = [relOf('v0.4.0-windows', ['Shisa-0.4.0-Setup.exe', 'Shisa-0.4.0-win-x64.zip'])];
+  const portable = await updateRun(list, { platform: 'win32', arch: 'x64', portable: true });
+  assert.match(portable.log.bubbles[0][1].link, /win-x64\.zip$/);
+  const setup = await updateRun(list, { platform: 'win32', arch: 'x64' });
+  assert.match(setup.log.bubbles[0][1].link, /Setup\.exe$/);
+  const mk = (platform, packaged, hasUpdate) => buildHandler(decl('isPortableWin'), {
+    process: { platform, execPath: '/L/Shisa/app-1/Shisa.exe' }, app: { isPackaged: packaged }, path: { join: (...a) => a.join('/'), dirname: () => '/L/Shisa/app-1' },
+    fs: { existsSync: (f) => hasUpdate && f.endsWith('Update.exe') },
+  })();
+  assert.equal(mk('win32', true, false), true);
+  assert.equal(mk('win32', true, true), false);
+  assert.equal(mk('win32', false, false), false);
+  assert.equal(mk('darwin', true, false), false);
 });
 
 test('newestRelease: 맥(v<버전>)·윈도우(v<버전>-windows) 릴리스가 따로여도 이 PC 용 가장 높은 정식 버전', () => {
