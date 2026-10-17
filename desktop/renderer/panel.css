@@ -1289,7 +1289,7 @@ button.focus-start:hover:not(:disabled) { background: color-mix(in srgb, var(--g
 .focus-live { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px;
   background: color-mix(in srgb, var(--grass) 14%, transparent); color: var(--fg); }
 .focus-live b { font-variant-numeric: tabular-nums; font-weight: 650; }
-.focus-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--grass); animation: focus-dot 2s ease-in-out infinite; }
+.focus-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--grass); animation: focus-dot 2s ease-in-out 3; } /* 몇 번만 깜빡이고 멈춘다(끝없는 애니메이션은 패널이 보이는 내내 스타일 재계산을 일으킨다) */
 .focus-live.paused { background: color-mix(in srgb, var(--p2) 14%, transparent); }
 .focus-live.paused .focus-dot { background: var(--p2); animation: none; }
 .focus-live.paused b { color: var(--muted); }
