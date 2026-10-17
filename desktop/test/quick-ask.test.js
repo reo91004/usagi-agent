@@ -46,10 +46,10 @@ test('chipAction: AI 연결하기는 마법사 뇌 단계, 나머지는 데몬�
 });
 
 test('answerBubble: 데몬 답 → 말풍선, 실패면 다시 눌러 달라고', () => {
-  const ok = answerBubble('today', { ok: true, status: 200, data: { ok: true, answer: { id: 'today', text: '오늘 할 일 5개 중 3개 끝냈어요.', kind: 'info', open: { section: 'today' } } } });
-  assert.deepEqual(ok, { id: 'local-ask-today', kind: 'info', ttlMs: 12000, text: '오늘 할 일 5개 중 3개 끝냈어요.', open: { section: 'today' }, openLabel: '오늘 할 일 보기' });
+  const ok = answerBubble('today', { ok: true, status: 200, data: { ok: true, answer: { id: 'today', text: '오늘 할 일 5개 중 3개 끝냈어요.', kind: 'info', open: { section: 'todos' } } } });
+  assert.deepEqual(ok, { id: 'local-ask-today', kind: 'info', ttlMs: 12000, text: '오늘 할 일 5개 중 3개 끝냈어요.', open: { section: 'todos' }, openLabel: '할 일 보기' });
   const b = normalizeBubble(ok);
-  assert.deepEqual(b.open, { section: 'today' });
+  assert.deepEqual(b.open, { section: 'todos' });
   const todo = answerBubble('next_todo', { ok: true, data: { answer: { text: '지금은', kind: 'info', detail: '- P1 a', open: { section: 'todos' } } } });
   assert.equal(todo.detail, '- P1 a');
   assert.equal(todo.openLabel, '할 일 보기');

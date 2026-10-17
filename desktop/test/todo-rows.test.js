@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView } from '../src/todo-rows.js';
+import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, dueChip } from '../src/todo-rows.js';
 import { overlayTodos } from '../src/todos.js';
 
 function fakeTimers() {
@@ -120,4 +120,14 @@ test('직접 추가한 할 일의 원본 칸엔 안쪽 id 를 보이지 않는�
   const v = detailView({ source: { kind: 'user', ref: 'user:eb08ba75-1111-2222-3333-444455556666', at: new Date().toISOString() } });
   assert.equal(v.source.kindLabel, '직접 추가');
   assert.ok(!v.source.meta.join(' ').includes('eb08ba75'), v.source.meta.join(' '));
+});
+
+test('dueChip: 지남(빨강)·오늘 마감·「10/21 마감」, 마감이 없거나 이상하면 null', () => {
+  const now = new Date(2026, 9, 17, 15).getTime();
+  const at = (m, d, h = 9) => new Date(2026, m - 1, d, h).toISOString();
+  assert.deepEqual(dueChip(at(10, 16, 23), now), { text: '지남', kind: 'late' });
+  assert.deepEqual(dueChip(at(10, 17, 8), now), { text: '오늘 마감', kind: 'today' }); // 시각이 지났어도 그날은 오늘 마감
+  assert.deepEqual(dueChip(at(10, 21, 17), now), { text: '10/21 마감', kind: 'soon' });
+  assert.equal(dueChip(undefined, now), null);
+  assert.equal(dueChip('아무거나', now), null);
 });
