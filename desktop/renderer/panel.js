@@ -1,8 +1,9 @@
-// 패널 렌더러 — 대시보드(개요·프로젝트·할 일·오늘 할 일)와 채팅. 네트워크는 전부 메인을 거친다.
+// 패널 렌더러 — 대시보드(개요·작업 폴더·할 일·오늘 할 일)와 채팅. 네트워크는 전부 메인을 거친다.
 import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
 import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
+import { candidateHosts } from '../src/folders.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
 import { agentSteps } from '../src/setup-flow.js';
@@ -356,7 +357,7 @@ function renderOverview() {
     h('div.stats', null,
       stat(stats.commitsToday, '오늘 커밋', vm.projects.filter((p) => p.commitsToday > 0).map((p) => `${p.name} ${p.commitsToday}`).join(' · ') || null),
       stat(stats.openTodos, '열린 할 일', stats.p1Todos ? `P1 ${stats.p1Todos}개` : 'P1 없음', stats.p1Todos > 0),
-      stat(stats.activeProjects, '진행 중 프로젝트', active.slice(0, 3).join(', ') || null),
+      stat(stats.activeProjects, '진행 중 작업 폴더', active.slice(0, 3).join(', ') || null),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
     researchSummaryCard(),
@@ -1022,8 +1023,8 @@ function maybeOpenSetup() {
   if (section === 'overview') openSetup('name');
 }
 
-// ---- 프로젝트 ----
-// 숨기기: 카드의 '숨기기' 버튼 → 낙관적으로 아래 '숨긴 프로젝트'로, 실패하면 되돌림. 숨긴 건 집계·에이전트 맥락에서도 빠진다
+// ---- 작업 폴더 ----
+// 숨기기: 줄의 '숨기기' 버튼 → 낙관적으로 아래 '숨긴 작업 폴더'로, 실패하면 되돌림. 숨긴 건 집계·에이전트 맥락에서도 빠진다
 const hidePending = new Map(); // path → hidden (응답 대기 중)
 let projMsg = null;
 let hiddenOpen = false;
@@ -1052,17 +1053,46 @@ function toggleHiddenGroup() {
   renderProjects();
 }
 
+const openRows = new Set(); // 펼친 줄(path)
+let pickFor = null; // 서버를 모르는 폴더에서 VS Code 를 누른 줄 { path, hosts }
+
+async function openFolder(p, how, host) {
+  const r = await cy.folderOpen(p.path, how, host).catch(() => null);
+  pickFor = null;
+  projMsg = r?.ok ? null : { ok: false, text: `${how === 'code' ? 'VS Code' : 'Finder'} 로 열지 못했어요 — ${r?.error || '다시 시도해 주세요'}` };
+  renderProjects();
+}
+
+// 서버 이름을 모르는 폴더: ssh User 가 맞는 서버를 후보로 보여 주고 고르게 한다
+async function pickHost(p) {
+  const r = await cy.folderHosts().catch(() => null);
+  const hosts = candidateHosts(p.dir, r?.hosts || []);
+  if (!hosts.length) {
+    projMsg = { ok: false, text: '어느 서버의 폴더인지 몰라서 VS Code 로 열 수 없어요. ~/.ssh/config 에 이 폴더의 계정(/home/<계정>/)으로 접속하는 서버가 있어야 해요' };
+    return renderProjects();
+  }
+  projMsg = null;
+  pickFor = { path: p.path, hosts };
+  renderProjects();
+}
+
+const WHERE_CHIP = {
+  server: (p) => ({ text: p.host, accent: true, title: `서버 ${p.host} 의 작업 기록` }),
+  mac: () => ({ text: '이 Mac', title: '이 Mac 의 작업 기록·git' }),
+  unknown: () => ({ text: '서버(이름 모름)', accent: true, title: '이 Mac 에 없는 폴더예요 — VS Code 원격 세션 기록 같은 서버 폴더로 보여요' }),
+};
+
 function renderProjects() {
   const el = $('sec-projects');
   const hidden = vm.hiddenProjects;
-  const kids = [h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 작업 기록이 있었던 폴더와 커밋이 있는 레포예요. 서버는 ssh 로 작업 기록만 받아 와요.' })];
+  const kids = [h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' })];
   if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
-  if (!vm.projects.length) kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : hidden.length ? '숨긴 프로젝트만 있음' : '최근 프로젝트 없음' }));
-  else kids.push(projectCards());
+  if (!vm.projects.length) kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
+  else kids.push(projectRows());
   if (hidden.length) {
     kids.push(h('div.hidden-projects', null,
       h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(hiddenOpen), onclick: toggleHiddenGroup },
-        h('span.caret', { text: hiddenOpen ? '▾' : '▸' }), h('span', { text: `숨긴 프로젝트 (${hidden.length})` })),
+        h('span.caret', { text: hiddenOpen ? '▾' : '▸' }), h('span', { text: `숨긴 작업 폴더 (${hidden.length})` })),
       hiddenOpen
         ? h('div.card.hidden-list', null, hidden.map((p) => h('div.hidden-row', null,
           h('span.name', { text: p.name }),
@@ -1074,29 +1104,43 @@ function renderProjects() {
   fill(el, ...kids);
 }
 
-function projectCards() {
-  return h('div.projects', null, vm.projects.map((p) => h('article.card.proj', null,
-    h('div.head', null, h('span.name', { text: p.name }), p.branch ? h('span.chip.mono', { text: p.branch }) : null,
-      h('span.spacer'),
-      h('button.ghost.hide-btn', { type: 'button', text: '숨기기', title: '이 프로젝트 숨기기 — 집계와 에이전트 맥락에서도 빠져요', 'aria-label': `숨기기: ${p.name}`, onclick: () => setHidden(p, true) })),
-    h('div.where', null,
-      h(`span.chip.src${p.host ? '.accent' : ''}`, { text: p.host || '이 Mac', title: p.host ? `서버 ${p.host} 의 작업 기록` : '이 Mac 의 작업 기록·git' }),
-      p.dir ? h('div.path.mono', { title: p.path }, h('bdi', { text: p.dir })) : null),
-    h('div.meta', null,
-      h('span', null, '마지막 활동 ', h('b', { text: p.lastActiveRel || '—', title: p.lastActive })),
-      h('span', { title: '24시간 안에 갱신된 작업 기록 수' }, '24h 세션 ', h('b', { text: String(p.sessions24h) })),
-      // 서버는 git 을 ssh 로 돌리지 않아 0 이 거짓이 되므로 보이지 않는다
-      p.host ? null : h('span', { title: '오늘 이 Mac 의 레포에서 한 커밋 수' }, '오늘 커밋 ', h(`b${p.commitsToday ? '.today' : ''}`, { text: String(p.commitsToday) }))),
-    p.lastTitle || p.lastPrompt
-      ? h('div.session', null,
-        p.lastTitle ? h('div.title', { text: p.lastTitle, title: p.lastTitle }) : null,
-        p.lastPrompt ? h('div.prompt', { text: p.lastPrompt, title: p.lastPrompt }) : null)
-      : null,
-    p.recentCommits.length
-      ? h('ul.commits', null, p.recentCommits.map((c) => h('li', null,
-        h('span.sha.mono', { text: c.sha }), h('span.subj', { text: c.subject, title: c.subject }), h('span.when', { text: c.rel }))))
-      : null,
-  )));
+function projectRows() {
+  return h('div.card.proj-list', null, vm.projects.map((p) => {
+    const open = openRows.has(p.path);
+    const chip = WHERE_CHIP[p.where](p);
+    const toggle = () => { if (open) openRows.delete(p.path); else openRows.add(p.path); renderProjects(); };
+    return h('article.proj', null,
+      h('div.proj-head', null,
+        h('button.proj-toggle', { type: 'button', 'aria-expanded': String(open), 'aria-label': `${p.name} ${open ? '접기' : '펼치기'}`, onclick: toggle },
+          h('span.caret', { text: open ? '▾' : '▸', 'aria-hidden': 'true' }),
+          h('span.proj-main', null,
+            h('span.proj-line', null,
+              h('span.name', { text: p.name }), p.branch ? h('span.chip.mono', { text: p.branch }) : null,
+              h(`span.chip.src${chip.accent ? '.accent' : ''}`, { text: chip.text, title: chip.title }),
+              h('span.meta', null,
+                h('span', null, '마지막 활동 ', h('b', { text: p.lastActiveRel || '—', title: p.lastActive })),
+                h('span', { title: '24시간 안에 갱신된 작업 기록 수' }, '24h 세션 ', h('b', { text: String(p.sessions24h) })),
+                // 서버는 깃을 ssh 로 돌리지 않아 0 이 거짓이 되므로 보이지 않는다
+                p.where === 'mac' ? h('span', { title: '오늘 이 Mac 의 레포에서 한 커밋 수' }, '오늘 커밋 ', h(`b${p.commitsToday ? '.today' : ''}`, { text: String(p.commitsToday) })) : null)),
+            p.lastTitle ? h('span.proj-title', { text: p.lastTitle, title: p.lastTitle }) : null)),
+        h('span.proj-actions', null,
+          h('button.ghost', { type: 'button', text: 'VS Code', title: p.where === 'mac' ? 'VS Code 로 이 폴더 열기' : 'VS Code Remote-SSH 로 서버 폴더 열기', 'aria-label': `VS Code 로 열기: ${p.name}`, onclick: () => (p.where === 'unknown' ? pickHost(p) : openFolder(p, 'code')) }),
+          p.where === 'mac' ? h('button.ghost', { type: 'button', text: 'Finder', 'aria-label': `Finder 로 열기: ${p.name}`, onclick: () => openFolder(p, 'finder') }) : null,
+          h('button.ghost.hide-btn', { type: 'button', text: '숨기기', title: '이 작업 폴더 숨기기 — 집계와 에이전트 맥락에서도 빠져요', 'aria-label': `숨기기: ${p.name}`, onclick: () => setHidden(p, true) }))),
+      pickFor?.path === p.path
+        ? h('div.proj-pick', null, h('span.muted.small', { text: '어느 서버예요?' }),
+          pickFor.hosts.map((host) => h('button.ghost', { type: 'button', text: host, onclick: () => openFolder(p, 'code', host) })))
+        : null,
+      open
+        ? h('div.proj-body', null,
+          p.dir ? h('div.path.mono', { title: p.path }, h('bdi', { text: p.dir })) : null,
+          p.lastPrompt ? h('div.prompt', { text: p.lastPrompt, title: p.lastPrompt }) : null,
+          p.recentCommits.length
+            ? h('ul.commits', null, p.recentCommits.map((c) => h('li', null,
+              h('span.sha.mono', { text: c.sha }), h('span.subj', { text: c.subject, title: c.subject }), h('span.when', { text: c.rel }))))
+            : null)
+        : null);
+  }));
 }
 
 // ---- 할 일 ----

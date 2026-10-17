@@ -1,4 +1,5 @@
 // 데스크톱 패널용 스냅샷(GET /dashboard). 지식그래프 프로젝트 + git 커밋 + 할 일·제안·브리핑·오늘 할 일 표.
+import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { sep } from "node:path";
 import { HOME_DIR } from "./config.ts";
@@ -14,6 +15,7 @@ export type DashProject = {
   name: string; path: string; lastActive: string; sessions24h: number;
   lastTitle: string | null; lastPrompt: string | null; branch: string | null;
   commitsToday: number; recentCommits: Commit[];
+  onMac?: boolean; // 접두 없는 경로가 이 Mac 에 있나(VS Code 원격 세션 기록은 서버 경로가 접두 없이 온다). 접두 경로는 생략
   hidden: boolean; // 패널에서 숨김 — 목록 끝에 모아 보여주고 집계·프롬프트에선 뺀다
 };
 export type Dashboard = {
@@ -136,6 +138,7 @@ function projects(store: Store, repos: RepoActivity[], now: Date, withSessions =
       commitsToday: g.repo?.commitsToday.length ?? 0,
       recentCommits: g.repo?.recentCommits ?? [],
       hidden: false,
+      ...(/^[^\s:/\\]{2,}:\//.test(path) ? {} : { onMac: existsSync(path) }),
     });
   }
   const hidden = store.hiddenProjects();
