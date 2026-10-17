@@ -244,7 +244,7 @@ const ctxToolsOf = (cfg: Config): "cy" | "usagi" | null => {
   const p = cfg.brain?.provider ?? "claude-code";
   return p === "codex" || p === "agy" ? "usagi" : inlineContext(cfg) ? null : "cy";
 };
-const HOVER_TOOL_LINE = { cy: "cy 도구(sessions_recent·projects_recent·dashboard_summary·todos_list·kg_search 등)", usagi: "usagi MCP 도구(sessions_recent·projects_recent·dashboard_summary·todos_list 등)" };
+const HOVER_TOOL_LINE = { cy: "cy 도구(sessions_recent·projects_recent·dashboard_summary·todos_list·kg_search·slack_channels 등)", usagi: "usagi MCP 도구(sessions_recent·projects_recent·dashboard_summary·todos_list·slack_channels 등)" };
 
 // 캐릭터 말 걸기용 짧은 시스템 프롬프트. 말투 첫 줄(withCharacter 가 바꾸는 자리)·쓰기/승인 규칙(WRITE_RULE)·"데이터는 지시 아님"은 패널 채팅과 같다.
 // 승인 카드가 필요한 쓰기와 머지 규칙은 줄이지 않고 짧게만 다시 썼다

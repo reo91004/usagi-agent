@@ -260,3 +260,28 @@ test("jobs_recent: 돌고 있음·끝·실패·끊김을 서버·폴더·명령�
   const only = (await h.jobs_recent({ query: "GPU2" })).content[0].text;
   assert.ok(!only.includes("resnet") && only.includes("ablation"));
 });
+
+test("slack_channels·slack_channel_messages: 로컬 수집분만, 최근 활동순 · 이름(# 빼도)·id · 연결 전 안내 · 모르는 채널", async () => {
+  const s = new Store(":memory:");
+  const h0 = ctxHandlers(cfg(), s, { now: () => NOW });
+  assert.match(((await h0.slack_channels({})) as any).content[0].text, /api 모드로 연결돼 있지 않아/);
+  s.db.exec("CREATE TABLE IF NOT EXISTS slack_convs (id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, user TEXT, quiet INTEGER NOT NULL DEFAULT 0, next_sync TEXT NOT NULL DEFAULT '')");
+  const conv = s.db.prepare("INSERT INTO slack_convs (id, type, name) VALUES (?, ?, ?)");
+  conv.run("C1", "public", "연구실-공지"); conv.run("C2", "private", "랩미팅"); conv.run("C3", "public", "조용한-채널"); conv.run("D1", "im", null);
+  const msg = (ch: string, i: number, h: number, text: string) => s.upsertNode(`message:${ch}:1700${i}.0001`, "message", `x${i}`, { channel: ch, ts: `1700${i}.0001`, text, authorName: `동료${i}` }, ago(h));
+  msg("C1", 1, 30, "다음 주 세미나 공지"); msg("C1", 2, 2, "발표 순서 바꿨어요"); msg("C2", 3, 1, "오늘 랩미팅 3시"); msg("D1", 4, 1, "DM 은 채널 목록에 없다");
+  const h = ctxHandlers(cfg(), s, { now: () => NOW });
+  const list = ((await h.slack_channels({})) as any).content[0].text as string;
+  assert.ok(list.indexOf("#랩미팅") < list.indexOf("#연구실-공지") && list.indexOf("#연구실-공지") < list.indexOf("#조용한-채널"), list); // 최근 활동순, 없는 채널은 뒤
+  assert.match(list, /#랩미팅 \(비공개\) · 최근 7일 1개/);
+  assert.match(list, /#연구실-공지 · 최근 7일 2개/);
+  assert.doesNotMatch(list, /DM 은/);
+  const msgs = ((await h.slack_channel_messages({ channel: "#연구실-공지" })) as any).content[0].text as string;
+  assert.ok(msgs.indexOf("세미나 공지") < msgs.indexOf("발표 순서"), msgs); // 오래된 순
+  assert.match(msgs, /동료2: 발표 순서 바꿨어요/);
+  assert.match(((await h.slack_channel_messages({ channel: "C1", hours: 3 })) as any).content[0].text, /발표 순서/);
+  assert.doesNotMatch(((await h.slack_channel_messages({ channel: "C1", hours: 3 })) as any).content[0].text, /세미나 공지/); // 기간 밖
+  const none = (await h.slack_channel_messages({ channel: "없는채널" })) as any;
+  assert.equal(none.isError, true);
+  assert.match(none.content[0].text, /slack_channels 의 이름을 써라/);
+});
