@@ -19,7 +19,7 @@ import { fixBranch } from "./fixer.ts";
 import { worktreeSummary } from "./agent-worktrees.ts";
 import { repoLocks, repoName, type RepoLocks } from "./repo-lock.ts";
 import { contextHeader, CTX_GUIDE, fmtTime, inlineContext as configInline, type CtxDeps } from "./ctx-tools.ts";
-import { cliMcpReady } from "./providers.ts";
+import { API_TOOL_PROVIDERS, cliMcpReady } from "./providers.ts";
 import { TITLE_RUN_TITLE } from "./todo-progress.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
 import { CONNECTORS } from "./connectors.ts";
@@ -246,7 +246,7 @@ export const HOVER_SCHEMA = {
 // 어떤 도구로 업무 맥락을 읽는 뇌인가: claude-code(맥락 도구 cy) · codex/agy(데몬 MCP usagi — 프롬프트 끝에 도구 안내가 따로 붙는다) · 그 밖의 뇌는 도구 없음
 const ctxToolsOf = (cfg: Config): "cy" | "usagi" | null => {
   const p = cfg.brain?.provider ?? "claude-code";
-  return p === "codex" || p === "agy" ? "usagi" : inlineContext(cfg) ? null : "cy";
+  return p === "codex" || p === "agy" ? "usagi" : API_TOOL_PROVIDERS.includes(p) ? null : inlineContext(cfg) ? null : "cy"; // API 뇌의 캐릭터 말 걸기는 도구 없이(패널 채팅만 읽기 도구)
 };
 const HOVER_TOOL_LINE = { cy: "cy 도구(sessions_recent·projects_recent·dashboard_summary·todos_list·kg_search·slack_channels 등)", usagi: "usagi MCP 도구(sessions_recent·projects_recent·dashboard_summary·todos_list·slack_channels 등)" };
 
@@ -337,6 +337,7 @@ export function applyTodoChanges(reply: string, c: { rule?: unknown; ops?: TodoO
 export function inlineContext(cfg: Config): boolean {
   if (!configInline(cfg)) return false;
   const p = cfg.brain?.provider ?? "claude-code";
+  if (API_TOOL_PROVIDERS.includes(p)) return cfg.contextMode === "inline"; // Gemini·OpenAI·Claude API: 읽기 도구(brain.ts askOther)가 있으니 작은 머리말
   if (cfg.contextMode === "inline" || (p !== "codex" && p !== "agy")) return true;
   return !cliMcpReady(p, cliMcpServers(cfg.connectors ?? CONNECTORS));
 }

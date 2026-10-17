@@ -80,11 +80,15 @@ test("shapeError: 필수 키·맨 위 타입만 본다 → codexStructured 가 �
   assert.match(ok.calls[0].input, /시스템-표식[\s\S]*프롬프트-표식/);
 });
 
-test("featureBrain: claude-code·codex(명령 있을 때)만, 나머지는 null · 건너뜀 로그는 기능마다 한 번", () => {
+test("featureBrain: claude-code·codex(명령)·API 키 뇌(키 있을 때), 키 없는 API·local 은 null · 건너뜀 로그는 기능마다 한 번", () => {
   assert.equal(featureBrain(withBrain("claude-code"), () => false), "claude-code");
   assert.equal(featureBrain(withBrain("codex"), has), "codex");
   assert.equal(featureBrain(withBrain("codex"), () => false), null);
-  for (const p of ["gemini", "openai", "anthropic", "local"]) assert.equal(featureBrain(withBrain(p), has), null, p);
+  for (const p of ["gemini", "openai", "anthropic", "genspark"]) {
+    const keyed = { ...withBrain(p), brain: { provider: p, geminiApiKey: "k", openaiApiKey: "k", anthropicApiKey: "k", gensparkApiKey: "k" } } as any;
+    assert.equal(featureBrain(keyed, () => false), "api", p);
+  }
+  assert.equal(featureBrain(withBrain("local"), has), null);
   resetSkipNotes();
   const logs: string[] = [];
   skipQuietly("x", withBrain("gemini"), (s) => logs.push(s));
@@ -216,11 +220,11 @@ test("지식그래프 추출: codex 로 1·2단계, 검증은 그대로(모르�
 
 test("지식그래프: Claude Code·Codex 가 아니면 증분·다듬기·견적은 모델 없이 건너뜀", async () => {
   resetSkipNotes();
-  const cfg = withBrain("gemini");
+  const cfg = withBrain("local");
   const store = new Store(":memory:");
   const kg = new KgBackfill(cfg, store, { query: noSdk, slack: false, dirs: { claude: "/nonexistent-a", codex: "/nonexistent-b" } });
   assert.deepEqual(await kg.incremental(), { chunks: 0, costUsd: 0, complete: false });
-  await assert.rejects(kg.estimate(), new RegExp(NEEDS_CODER));
+  await assert.rejects(kg.estimate(), new RegExp(NEEDS_CODER.replace(/[()]/g, "\\$&")));
   await kg.start();
   assert.equal(kg.status().phase, "paused");
   const logs: string[] = [];

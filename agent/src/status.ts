@@ -80,6 +80,7 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     ? { by, ready: claude === undefined ? null : claude, detail: claude === false ? "Claude Code 로그인이 필요해요" : "Claude Code 로 돌아요" }
     : by === "codex" ? { by, ready: true, detail: "Codex 로 돌아요" }
     : by === "agy" ? { by, ready: true, detail: "Antigravity(agy)로 돌아요" }
+    : by === "api" ? { by, ready: true, detail: "API 키 AI 로 돌아요" }
     : { by: null, ready: false, detail: cfg.onboarded === false ? WAIT_SETUP : provider === "codex" ? "Codex 를 찾을 수 없어요" : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요" : NEEDS_CODER };
   const cliBrain = provider === "codex" || provider === "agy";
   const mcp = provider === "claude-code" || cliBrain;

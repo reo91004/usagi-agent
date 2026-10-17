@@ -92,7 +92,7 @@ for (const c of connectorStatus(conns)) console.log(`[connectors] ${c.label}: ${
 console.log(`[brain] ${cfg.brain.provider}`);
 { // 뒤에서 하는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)를 누가 돌리나 — 시작할 때 한 줄
   const fb = featureBrain(cfg);
-  console.log(`[features] 뒤에서 하는 정리: ${fb === "codex" ? "Codex" : fb === "agy" ? "Antigravity" : fb === "claude-code" ? "Claude Code" : cfg.onboarded === false ? "설치 마법사를 마치면 시작" : `안 돎 — ${NEEDS_CODER}`}${cfg.brain.provider !== "claude-code" ? ` · ${mcpBrainNote(cfg.brain.provider)}` : ""}`);
+  console.log(`[features] 뒤에서 하는 정리: ${fb === "codex" ? "Codex" : fb === "agy" ? "Antigravity" : fb === "api" ? "API 키 뇌" : fb === "claude-code" ? "Claude Code" : cfg.onboarded === false ? "설치 마법사를 마치면 시작" : `안 돎 — ${NEEDS_CODER}`}${cfg.brain.provider !== "claude-code" ? ` · ${mcpBrainNote(cfg.brain.provider)}` : ""}`);
 }
 // 읽기 전용 GitHub 도구: 설정이 안 정했으면 gh 로그인 여부로(비동기 — 시작을 막지 않는다)
 if (cfg.github?.enabled === undefined) probeGh({ bin: cfg.github?.bin }).then((ok) => console.log(`[cy-agent] GitHub(gh) 읽기 도구 ${ok ? "켬" : "끔 — gh auth status 실패"}`));

@@ -16,7 +16,7 @@ export function normStatus(raw) {
   // 뒤에서 하는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)·MCP 읽기·코드 — 예전 데몬엔 없다(모름)
   const f = obj(s.features) ?? {};
   const bg = obj(f.background) ?? {};
-  const by = bg.by === 'claude-code' || bg.by === 'codex' || bg.by === 'agy' ? bg.by : null;
+  const by = bg.by === 'claude-code' || bg.by === 'codex' || bg.by === 'agy' || bg.by === 'api' ? bg.by : null;
   return {
     brain: {
       provider: str(b.provider, 40), label: str(b.label, 60) || b.provider, ready: tri(b.ready), local: b.local === true, detail: str(b.detail),
@@ -39,7 +39,7 @@ export function normStatus(raw) {
 
 // { status, sisa, caps } → { ready, known, provider, label, local, coder, code, codex, detail, connected: [cap…], background, mcp, needsClaude: [cap…] }
 // coder: 이 맥에 Claude Code 로그인(워크트리·백그라운드 에이전트) · code: 코드 고치기·이어 하기를 할 수 있나(뇌에 따라)
-// background: 뒤에서 하는 정리를 누가 돌리나('claude-code' | 'codex' | 'agy' | null) · mcp: MCP 연결을 읽나(Claude Code 뇌, Codex·agy 뇌는 채팅에서만) · needsClaude: Claude Code 뇌여야 읽는 연결
+// background: 뒤에서 하는 정리를 누가 돌리나('claude-code' | 'codex' | 'agy' | 'api' | null) · mcp: MCP 연결을 읽나(Claude Code 뇌, Codex·agy 뇌는 채팅에서만) · needsClaude: Claude Code 뇌여야 읽는 연결
 // ready: 말 걸 수 있나. 확인 중(Claude Code 로그인 확인 전)이면 막지 않는다(known=false) — 앱이 본 로그인이 없다고 할 때만 막는다
 export function brainView({ status = null, sisa = null, caps = null } = {}) {
   const st = status ? normStatus(status) : null;

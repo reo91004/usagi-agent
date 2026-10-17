@@ -38,10 +38,10 @@ import { ledgerContext } from "./todo-ledger.ts";
 import { TONE } from "./voice.ts";
 import { SHISA_INTRO, withCharacter } from "./characters.ts";
 import { localThought, type LocalTodo } from "./local-mode.ts";
-import { LOCAL_ONLY, remoteJson, resolveAnthropicModel, resolveHttpModel, type ProviderDeps } from "./providers.ts";
+import { API_TOOL_PROVIDERS, LOCAL_ONLY, remoteJson, resolveAnthropicModel, resolveHttpModel, type ProviderDeps } from "./providers.ts";
 import { GH_HINT, GH_SERVER, ghEnabled, ghMcpServer } from "./gh.ts";
 import { SUBAGENT_SDK_OPTIONS, SUBAGENT_TOOLS, subagentEnv } from "./subagents.ts";
-import { contextHeader, ctxMcpServer, CTX_GUIDE, CTX_SERVER, fmtTime, todoLine, type CtxDeps } from "./ctx-tools.ts";
+import { contextHeader, ctxApiTools, ctxMcpServer, CTX_GUIDE, CTX_SERVER, fmtTime, todoLine, type CtxDeps } from "./ctx-tools.ts";
 import { WorktreeIsolation } from "./agent-worktrees.ts";
 import { DENIED_STEP, LOCK_WAIT_MS, getBroker, waitStep, withRunOrigin, type PermissionBroker, type PermOrigin, type PermWait } from "./permissions.ts";
 
@@ -357,7 +357,11 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
     }
     const system = withCharacter(opts.system); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
     // 채팅이면 맥락 도구 + 사용자 MCP 연결(cli-mcp.ts). Codex·agy 만 도구를 받는다 — agy 는 읽기 도구만, Codex 는 문지기(codexGate)를 거쳐 쓰기도
-    const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}), ...(provider === "codex" ? { gate: codexGate(cfg, opts, run, onStep) } : {}) } : {};
+    // API 키 뇌의 채팅: 읽기 전용 맥락 도구(ctxApiTools). 캐릭터 말 걸기(quick)는 도구 없이
+    const apiTools = opts.interactive && opts.ctx && !opts.quick && API_TOOL_PROVIDERS.includes(provider)
+      ? { tools: { ...ctxApiTools(cfg, opts.ctx.store, opts.ctx), onCall: (name: string, args: unknown) => { onStep?.(stepName(`mcp__${CTX_SERVER}__${name}`, args)); run.log({ type: "tool_use", name, input: JSON.stringify(args).slice(0, 200) }); } } }
+      : {};
+    const tools = opts.interactive ? { mcp: true, ...apiTools, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}), ...(provider === "codex" ? { gate: codexGate(cfg, opts, run, onStep) } : {}) } : {};
     if (schema === null) {
       const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
