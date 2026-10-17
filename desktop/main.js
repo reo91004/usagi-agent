@@ -599,6 +599,7 @@ function showPanel(section, id) {
     if (panelReady) sendPanel('section', id ? { section, id } : { section });
     else { panelSection = section; panelFocusId = id ?? null; }
   }
+  spaceMoved = false;
   showOnCurrentSpace(panel, app); // 다른 데스크탑에 열려 있던 패널도 지금 데스크탑으로(#88)
 }
 
@@ -618,9 +619,11 @@ function showOrigin(origin) {
   return true;
 }
 
-// 캐릭터 클릭: 안 보이면 열고, 뒤에 있으면 앞으로, 앞에 있으면 숨김
+// 캐릭터 클릭: 안 보이면 열고, 뒤에 있으면 앞으로, 앞에 있으면 숨김.
+// 다른 데스크탑으로 옮긴 뒤엔 옛 데스크탑에서 포커스를 가진 패널도 여기선 안 보이니 숨기지 않고 가져온다
+let spaceMoved = false;
 function togglePanel() {
-  if (panelClickAction({ visible: !!panel?.isVisible(), focused: !!panel?.isFocused() }) === 'hide') panel.hide();
+  if (panelClickAction({ visible: !!panel?.isVisible(), focused: !!panel?.isFocused() && !spaceMoved }) === 'hide') panel.hide();
   else showPanel(null);
 }
 
@@ -2154,7 +2157,10 @@ if (SQUIRREL) {
   app.whenReady().then(() => {
     // 입력창을 닫는 win.blur() 는 맥에서 창을 orderOut→orderBack 해 창 애니메이션(페이드)이 돌아 캐릭터가 ~220ms 사라진다.
     // blur 는 키 창을 놓으려면 필요하니 그대로 두고, 이 앱의 창 애니메이션을 끈다(애니메이션 설정은 창마다 못 바꾼다).
-    if (process.platform === 'darwin') systemPreferences.setUserDefault('NSAutomaticWindowAnimationsEnabled', 'boolean', false);
+    if (process.platform === 'darwin') {
+      systemPreferences.setUserDefault('NSAutomaticWindowAnimationsEnabled', 'boolean', false);
+      systemPreferences.subscribeWorkspaceNotification('NSWorkspaceActiveSpaceDidChangeNotification', () => { spaceMoved = true; });
+    }
     session.defaultSession.setSpellCheckerEnabled(false); // 창보다 먼저
     const firstRun = !fs.existsSync(statePath()); // 이 앱 저장소를 처음 쓴다 → 마법사를 바로 연다
     loadState();
