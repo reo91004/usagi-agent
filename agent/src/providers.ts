@@ -907,7 +907,8 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   const user = mcp && opts.gate ? opts.servers ?? [] : [];
   const gate = user.length ? openGate(user, opts.gate!) : undefined;
   const input = [...cliParts(prompt, opts, "Codex", true, mcp ? cliToolGuide(connectorGuide(user, "", true)) : undefined), JSON.stringify(schema)].filter(Boolean).join("\n\n");
-  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, ...(gate ? codexMcpArgs(user, `${mcp}/${gate.key}`) : []), "-"] : CODEX_ARGS;
+  // agent_start(백그라운드 에이전트)는 읽기 전용 표시가 없어 codex exec(승인 정책 never)가 바로 거절한다 → 이 도구만 승인. 채팅 실행 열쇠가 없으면 데몬이 거절한다(mcp-http.ts)
+  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, "-c", `mcp_servers.${MCP_NAME}.tools.agent_start.approval_mode="approve"`, ...(gate ? codexMcpArgs(user, `${mcp}/${gate.key}`) : []), "-"] : CODEX_ARGS;
   // shortcut: 승인 카드 한 장(10분)까지 기다릴 만큼 늘린다. 한 답에서 카드 여러 장을 오래 두면 끝까지 못 기다린다 — 그런 일이 잦으면 대기 중엔 시계를 멈춘다
   const timeout = opts.timeoutMs ?? (gate ? CODEX_TIMEOUT_MS + PERMISSION_TTL_MS : CODEX_TIMEOUT_MS);
   let stdout = "";

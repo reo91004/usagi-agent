@@ -88,7 +88,7 @@ test("codex·agy: mcp 실행(채팅)만 우사기 도구를 붙이고 안내를 
   setAgyMcpHome(home);
   try {
     await codexExec("p", { type: "object" }, { execFile, commandExists: has, mcp: true });
-    assert.deepEqual(seen[0].args.slice(-3), ["-c", `mcp_servers.usagi.url="${url}"`, "-"]);
+    assert.deepEqual(seen[0].args.slice(-5), ["-c", `mcp_servers.usagi.url="${url}"`, "-c", `mcp_servers.usagi.tools.agent_start.approval_mode="approve"`, "-"]);
     assert.ok(seen[0].args.includes("--ignore-user-config"));
     assert.match(seen[0].input!, /usagi MCP 도구/);
     await codexExec("p", { type: "object" }, { execFile, commandExists: has });

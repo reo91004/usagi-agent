@@ -55,6 +55,24 @@ test("agent_start: 채팅 실행 열쇠로 broker.onBackgroundAgent 를 부르�
   assert.match(started[0].toolUseId, /^cli-/);
 });
 
+test("agent_start: 답 형식(스키마)이 있는 채팅에서도 실행이 끝날 때까지 열쇠가 살아 있다", async () => {
+  const broker = new PermissionBroker(new PermissionRules(new Store(":memory:")), { requestPermission: () => { throw new Error("카드 없음"); } } as any);
+  const started: any[] = [];
+  broker.onBackgroundAgent = (r) => { started.push(r); return "[백그라운드 에이전트] 시작했어요"; };
+  let during = "";
+  const execFile: ExecFileLike = async (_f, args, o) => {
+    const url = JSON.parse(args.find((a) => a.startsWith("mcp_servers.usagi.url="))!.split("=").slice(1).join("="));
+    const key = /agent_start 도구\(key: ([0-9a-f]+)\)/.exec(String(o?.input))![1];
+    during = await callTool(url, { key, description: "리팩터", prompt: "~/repo 정리" });
+    return { stdout: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ reply: "시작했어요" }) } }) };
+  };
+  await withDaemon(() => ask(cfg, "뒤에서 따로 해 줘", { type: "object", required: ["reply"], properties: { reply: { type: "string" } } }, undefined, {
+    interactive: { origin: { via: "chat", threadId: "t2" }, broker }, deps: { execFile, commandExists: () => true },
+  }));
+  assert.match(during, /시작했어요/);
+  assert.equal(started.length, 1);
+});
+
 test("agent_start: 대화 없는 실행(브리핑 등)에는 열쇠가 안 붙는다", async () => {
   let input = "";
   const execFile: ExecFileLike = async (_f, _a, o) => { input = String(o?.input); return reply("."); };
