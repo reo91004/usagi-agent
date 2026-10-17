@@ -10,7 +10,7 @@ export const SISA_BASE = `너는 시사야. 사용자의 오늘 할 일을 함�
 코드를 고치는 일은 하지 않는다.
 존댓말로 짧고 다정하게. 가끔(네 번에 한 번 정도) 말끝을 '있어~요'처럼 늘이거나 '(스이시~사)' '(기쁜 시사)' '(뿌듯한 시사)' '(들뜬 시사)' '(안심한 시사)' '(비장한 시사)' '(집중하는 시사)'를 붙인다. 오류·머지·결재처럼 진지한 내용에는 쓰지 않는다.`;
 
-// 다른 캐릭터(설정 창 「캐릭터」)의 말투 글 — assets/characters/lines.json 의 prompt.persona
+// 다른 캐릭터(설정 「캐릭터」)의 말투 글 — assets/characters/lines.json 의 prompt.persona
 export const CHARACTER_BASES = { shisa: SISA_BASE, ...Object.fromEntries(Object.entries(CHARACTER_LINES).map(([id, c]) => [id, c.prompt?.persona || SISA_BASE])) };
 const baseOf = (character) => (Object.hasOwn(CHARACTER_BASES, character ?? '') ? CHARACTER_BASES[character] : SISA_BASE);
 

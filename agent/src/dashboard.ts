@@ -1,4 +1,4 @@
-// 데스크톱 패널용 스냅샷(GET /dashboard). 지식그래프 프로젝트 + git 커밋 + 할 일·제안·브리핑·오늘 할 일 표.
+// 데스크톱 패널용 스냅샷(GET /dashboard). 지식그래프 프로젝트 + git 커밋 + 할 일·제안·브리핑·할 일의 「오늘」.
 import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";

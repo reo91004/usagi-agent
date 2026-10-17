@@ -95,7 +95,7 @@ export const BRAIN_CHOICES = [
   { id: 'openai', title: 'OpenAI(GPT) 키', blurb: 'OpenAI 플랫폼 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'claude', title: 'Claude API 키', blurb: 'Anthropic 콘솔 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'genspark', title: 'Genspark', blurb: 'gsk login 한 키를 쓰거나 키를 붙여 넣어요. Claude·GPT 등 여러 모델을 고를 수 있어요. 유료 플랜이 있어야 대답해요.' },
-  { id: 'none', local: true, title: 'AI 없이 쓰기', blurb: '준비물도 결제도 필요 없어요. 할 일, 오늘 할 일 표, 캘린더 회의 알림, 인사와 응원은 그대로 돼요. AI는 나중에 설정에서 언제든 연결할 수 있어요.' },
+  { id: 'none', local: true, title: 'AI 없이 쓰기', blurb: '준비물도 결제도 필요 없어요. 할 일, 할 일의 「오늘」, 캘린더 회의 알림, 인사와 응원은 그대로 돼요. AI는 나중에 설정에서 언제든 연결할 수 있어요.' },
 ];
 // 「더 연결하기」(선택): 캘린더 주소(구글·Outlook) · Slack · 레포 폴더. 이 Mac 캘린더·미리알림과 작업 기록 읽기는 같은 화면의 따로 칸
 export const EXTRAS = ['gcal', 'outlook', 'slack', 'repos'];
@@ -124,7 +124,7 @@ export const HUB = [
 // 시사가 말풍선으로 하는 말
 export const SISA_SAY = {
   name: '안녕하세요, 저는 **시사**예요.\n뭐라고 불러 드릴까요?',
-  brain: '**AI**를 연결하면 저랑 자유롭게 이야기할 수 있어요.\nAI 없이도 할 일, 오늘 할 일 표, 회의 알림은 **그대로** 돼요.\n이 맥에서 찾은 게 있으면 바로 고르면 돼요.',
+  brain: '**AI**를 연결하면 저랑 자유롭게 이야기할 수 있어요.\nAI 없이도 할 일, 할 일의 「오늘」, 회의 알림은 **그대로** 돼요.\n이 맥에서 찾은 게 있으면 바로 고르면 돼요.',
   extras: '더 연결하고 싶은 게 있으면 **골라** 주세요.\n전부 **선택**이에요. 건너뛰어도 돼요.\n고른 것 말고는 **아무것도 읽지 않아요**.',
   done: '준비 끝! 🎉\n어떻게 쓰는지 **짧게** 보여 드릴까요?',
 };

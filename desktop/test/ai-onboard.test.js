@@ -140,7 +140,7 @@ test('뇌 고르기: AI 없이 쓰기가 다른 뇌와 같은 카드로 있고, 
   assert.ok(none, 'AI 없이 쓰기 카드');
   assert.equal(none.local, true);
   assert.equal(none.title, 'AI 없이 쓰기');
-  for (const w of [/할 일/, /오늘 할 일 표/, /회의 알림/, /인사/, /나중에 설정/]) assert.match(none.blurb, w);
+  for (const w of [/할 일/, /할 일의 「오늘」/, /회의 알림/, /인사/, /나중에 설정/]) assert.match(none.blurb, w);
   assert.equal(BRAIN_CHOICES.filter((c) => c.local).length, 1);
   assert.doesNotMatch(SISA_SAY.brain, /필요해요/);
   assert.match(SISA_SAY.brain, /AI 없이도/);

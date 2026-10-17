@@ -199,7 +199,7 @@ export class Agent {
       mood: (busy) => this.bus.setMood(busy ? "thinking" : "idle"),
       dance: (ms, say) => {
         this.bus.activity.startDance(ms, "dance"); // 「춤」이 든 말 → 춤 영상(일정 알림 영상 아님)
-        if (say) this.bus.bubble({ id: "dance", text: say, kind: "info", ttlMs: ms }); // 춤 한마디(설정 창 문구 dance)
+        if (say) this.bus.bubble({ id: "dance", text: say, kind: "info", ttlMs: ms }); // 춤 한마디(설정 문구 dance)
       },
       threads: (ev) => this.bus.threads(ev),
       proposeActions: (raw, ctx) => this.actions.propose(raw, ctx),
@@ -843,7 +843,7 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
       const r = this.deps.autoMergeOp ? this.deps.autoMergeOp(o.op, slug) : this.memAutoMerge(o.op, slug);
       if (!r.ok) { out.push(`⚠️ 자동 머지 레포를 저장하지 못했어요: ${r.error}`); continue; }
       out.push(o.op === "add"
-        ? `🤖 ${slug} — ${r.changed ? "이제부터" : "이미"} 자동 머지 레포예요: 이 레포 PR 은 검사가 통과하면 ✓ 없이 머지해요(설정 창 「자동 머지」에서 뺄 수 있어요)`
+        ? `🤖 ${slug} — ${r.changed ? "이제부터" : "이미"} 자동 머지 레포예요: 이 레포 PR 은 검사가 통과하면 ✓ 없이 머지해요(설정 「자동 머지」에서 뺄 수 있어요)`
         : `🔀 ${slug} — ${r.changed ? "이제부터 머지 전에 다시 물어볼게요" : "자동 머지 레포가 아니었어요(머지 전에 물어봐요)"}`);
     }
     if (out.length) this.changed();
@@ -980,7 +980,7 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
   guidelineFromModel(op: unknown, ctx: GuidelineCtx): string {
     return applyGuidelineOp(this.guidelines, op, ctx).line;
   }
-  // GET/POST/PUT/DELETE /guidelines (설정 창)
+  // GET/POST/PUT/DELETE /guidelines (설정)
   guidelinesApi(): GuidelinesApi {
     return guidelinesApi(this.guidelines);
   }

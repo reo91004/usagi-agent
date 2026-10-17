@@ -647,7 +647,7 @@ export async function gensparkJson(
   // 모델: 따로 준 것 > models.general. Claude Code 기본 이름(DEFAULT_GENERAL_MODEL)이면 고른 게 아니라 기본값으로 본다
   const chosen = (opts.model ?? "").trim() || (cfg.models?.general ?? "").trim();
   const asked = chosen && chosen !== DEFAULT_GENERAL_MODEL ? chosen : "";
-  if (asked && !ids.includes(asked)) throw new Error(`그 모델(${asked.slice(0, 60)})은 Genspark 에서 못 써요. 모델 탭에서 목록에 있는 모델을 골라 주세요.`);
+  if (asked && !ids.includes(asked)) throw new Error(`그 모델(${asked.slice(0, 60)})은 Genspark 에서 못 써요. 설정 › AI 에서 목록에 있는 모델을 골라 주세요.`);
   const model = asked || pickGensparkModel(ids);
   const text = await chatCompletionsText(
     { url: `${GENSPARK_URL}/chat/completions`, label: "Genspark", provider: "genspark", key, model, failText: gensparkFailText, limit: (st) => (st === 429 ? "rate" : undefined), retry: { sleep: opts.sleep } },

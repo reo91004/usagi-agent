@@ -39,7 +39,7 @@ test('main.js: 메인과 설정 창이 같은 denied 를 쓰고, 복사·대화 
 
 test('정해진 말 입력칸: maxlength 없음', () => {
   assert.doesNotMatch(read('../renderer/models-view.js'), /maxlength/);
-  for (const f of ['panel.html', 'session.html', 'settings.html', 'index.html']) {
+  for (const f of ['panel.html', 'session.html', 'index.html']) {
     let html = '';
     try { html = read(`../renderer/${f}`); } catch { continue; }
     assert.doesNotMatch(html, /maxlength/i, f);

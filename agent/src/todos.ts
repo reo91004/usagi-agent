@@ -89,7 +89,6 @@ export function opPatch(op: TodoOp): Result<TodoPatch> {
 
 // 우선순위 뜻(스키마·프롬프트 공용). 4 = 언젠가·백로그: 기한이 딱히 없고 별로 안 중요한 것
 export const PRIORITY_DESC = "1=오늘 꼭, 2=이번 주, 3=나중에(마감이 일주일 넘게 남았거나 날짜 없음), 4=언젠가·백로그(기한 없고 별로 안 중요함)";
-export const PRIORITIES = [1, 2, 3, 4] as const;
 
 // 채팅·DM 구조화 출력의 todo_ops 스키마
 export const TODO_OPS_SCHEMA = {

@@ -1,4 +1,4 @@
-// 설정 창 "연결 상태": 에이전트가 쓰는 바깥 연결마다 한 줄(● 초록·주황·빨강, 마지막 확인, 지연, 오류 글).
+// 설정 "연결 상태": 에이전트가 쓰는 바깥 연결마다 한 줄(● 초록·주황·빨강, 마지막 확인, 지연, 오류 글).
 // 읽기만 한다 — 자격 증명을 넣거나 토큰을 보여 주지 않는다. 연결 방법은 커넥터 안내 문서(doc) 경로만 준다.
 //
 // 확인 단위(check id):
@@ -38,7 +38,7 @@ export type ConnRow = {
   latencyMs?: number;
   checkedAt?: string;
   check: CheckId;          // [다시 확인] 이 부를 확인 단위
-  pending?: boolean;       // 아직 한 번도 확인 안 함(설정 창이 열리면 check 를 부른다)
+  pending?: boolean;       // 아직 한 번도 확인 안 함(설정이 열리면 check 를 부른다)
   doc?: string;            // 연결 방법 안내 문서(레포 안 경로, 예 docs/connect/slack.md)
   server?: string;         // 커넥터가 mcp 모드면 Claude Code 에 등록한 서버 이름([연결 해제] 안내용)
   used?: boolean;          // 이 에이전트가 실제로 쓰는 연결인가(아니면 접어서 보여 준다)

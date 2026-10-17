@@ -56,7 +56,7 @@ export function planItem(t: Todo): PlanItem {
   return { id: t.id, title: t.title, done: t.status === "done", priority: t.priority, source: t.source, ...(t.doing !== undefined ? { doing: t.doing } : {}) };
 }
 
-// ---- 알림 설정(config.json todayReminder · 설정 창) ----
+// ---- 알림 설정(config.json todayReminder · 설정) ----
 // auto: 영업일 아침 첫 실행(또는 9시가 지나 처음 확인할 때) 한 번 + everyHours 시간마다(0 = 안 함) + times 시각마다
 // off: 알리지 않는다(패널도 저절로 열지 않는다)
 export type TodayReminder = { mode: "auto" | "off"; everyHours: number; times: string[] };

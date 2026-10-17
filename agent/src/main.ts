@@ -115,7 +115,7 @@ let slack = createSlack(cfg, () => agent);
 // 채팅 슬래시 명령 목록: 처음 물을 때 SDK 에서(모델 턴 없이), 10분마다 새로
 const commands = new SlashCommands(() => loadCommands());
 agent = new Agent(cfg, store, bus, slack?.port, { retitle: suggestTitle, commands, mergePr,
-  autoMergeOp: (op, slug) => settings.autoMergeOp(op, slug) }); // 새 대화 제목: 가벼운 모델(답 뒤에 따로) · 자동 머지 레포는 설정 창과 같은 config.json 에
+  autoMergeOp: (op, slug) => settings.autoMergeOp(op, slug) }); // 새 대화 제목: 가벼운 모델(답 뒤에 따로) · 자동 머지 레포는 설정과 같은 config.json 에
 // 캐릭터 반응(그림 말풍선·진행 보고·머지 승인). 하루 한 번 규칙은 reactions.json 에 남는다
 const reactions = new Reactions(bus, { logPath: join(HOME_DIR, "reactions.json"), lotsThreshold: Number(process.env.CY_LOTS_THRESHOLD) || 8 });
 agent.setReactions(reactions, realMergeAsk(cfg));
@@ -144,7 +144,7 @@ function remindToday(opened = false) {
 bus.onOverlay = () => remindToday(true);
 setInterval(() => { try { remindToday(false); } catch (e: any) { console.warn("[today] 알림:", e?.message ?? e); } }, 60e3).unref?.();
 
-// 설정 창: 모델·브리핑 출처(바로 반영 + config.json) · 연결 상태(읽기만). KG 상태는 아래에서 kgBackfill 이 생긴 뒤에 붙는다
+// 설정: 모델·브리핑 출처(바로 반영 + config.json) · 연결 상태(읽기만). KG 상태는 아래에서 kgBackfill 이 생긴 뒤에 붙는다
 // 뇌·이름·레포 폴더를 바꾸면 바로 반영되고(재시작 불필요) 데스크톱에 SSE status 로 알린다
 // 커넥터는 시작 때 한 번 정한다(캘린더 동기화·Slack 수집·가드가 붙잡고 있다). 마법사·[연결 해제]가 바꾸면 다시 켜서 반영:
 // launchd(install.sh, KeepAlive) 아래면 스스로 끄고 launchd 가 다시 켠다. 손으로 띄운 데몬은 바뀜만 알린다

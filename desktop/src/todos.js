@@ -29,11 +29,6 @@ export function cleanLink(v) {
   return /^(https?|slack):\/\/\S+$/i.test(s) && isSafeLink(s) ? s : undefined;
 }
 
-export function cleanNote(v) {
-  const s = str(v).trim();
-  return s || null;
-}
-
 export function clampPriority(p) {
   const n = Math.round(Number(p));
   return Number.isFinite(n) ? Math.min(4, Math.max(1, n)) : 2;

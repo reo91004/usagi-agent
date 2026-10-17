@@ -1,5 +1,5 @@
 // 연결 해제: AI(뇌)와 커넥터(Slack·캘린더·메일·이슈)를 끊는 데 쓰는 값·문구·[연결 해제] 단추(바로 끊지 않고 그 자리에서 한 번 더 묻는다).
-// 패널(모델 탭·개요 연결 카드·설치 마법사)과 설정 창(AI·연결 상태)이 같이 쓴다. 파일·데몬 호출은 main 이 한다.
+// 패널(설정 › AI·개요 연결 카드·연결 도우미)과 설정(AI·연결 상태)이 같이 쓴다. 파일·데몬 호출은 main 이 한다.
 
 import { ALL_PROVIDERS, CLI_PROVIDERS, DAEMON_BRAIN, KEY_PROVIDERS } from './sisa-store.js';
 
@@ -59,7 +59,7 @@ export function brainDisconnectCopy(p, active) {
   return { ask, note: `${what}${after}`, done: `${title} 연결을 끊었어요.` };
 }
 
-// 설정 창 AI 칸: 연결된 AI 줄. sisa = 앱 저장(publicView), brain = GET /settings brain({ provider, keys: { gemini, openai, anthropic } })
+// 설정 AI 칸: 연결된 AI 줄. sisa = 앱 저장(publicView), brain = GET /settings brain({ provider, keys: { gemini, openai, anthropic } })
 export function brainRows(sisa, brain) {
   const connected = new Set(Array.isArray(sisa?.connected) ? sisa.connected.filter(okBrainId) : []);
   const keys = brain?.keys && typeof brain.keys === 'object' ? brain.keys : {};
@@ -113,7 +113,7 @@ export function reloadNote(r) {
 }
 
 // 줄마다 맞는 주 동작: 꺼져 있으면 연결하기, 켜져 있으면(준비 안 됐어도) 연결 해제
-// row: 대시보드 커넥터({ mode }) 또는 설정 창 연결 줄({ id: 'connector:x', state })
+// row: 대시보드 커넥터({ mode }) 또는 설정 연결 줄({ id: 'connector:x', state })
 export function connectorAction(row) {
   if (!row || typeof row !== 'object') return null;
   if (typeof row.mode === 'string') return row.mode === 'off' ? 'connect' : 'disconnect';

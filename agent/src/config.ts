@@ -1,5 +1,5 @@
 // 설정: 환경변수 > ~/.cy-agent/config.json > 기본값. 비밀값(토큰)은 레포 밖에만 둔다.
-// 설정 창(PUT /settings, settings.ts)이 models·briefing·phrases·autoMerge·todayReminder·calendarAlert 를 config.json 에 합쳐 쓰고 메모리의 cfg 도 바로 바꾼다.
+// 설정(PUT /settings, settings.ts)이 models·briefing·phrases·autoMerge·todayReminder·calendarAlert 를 config.json 에 합쳐 쓰고 메모리의 cfg 도 바로 바꾼다.
 import { existsSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolveConnectors, type Connectors } from "./connectors.ts";
@@ -32,19 +32,19 @@ export type Config = {
   // 할 일 진행 확인 간격(분, todo-progress.ts — 작업 세션을 읽고 끝난 일 자동 완료·진척 한 줄). 0 이면 끔
   progressCheckMin?: number;
   // 일 종류별 모델: 코딩(수정 실행기)·일반(브리핑·채팅·개인화)·경량(도구만 순서대로 부르는 수집)
-  // quick: 캐릭터 더블클릭 빠른 대화(스레드 kind hover) 전용 — 패널 모델 선택과 따로. 설정 창에서 바꾼다.
+  // quick: 캐릭터 더블클릭 빠른 대화(스레드 kind hover) 전용 — 패널 모델 선택과 따로. 설정에서 바꾼다.
   // loadConfig 는 늘 채운다(기본 Sonnet). 손으로 만든 cfg(시험)에 없으면 hover 도 general
   models: { code: string; general: string; light: string; quick?: string };
-  // 브리핑에서 뺄 출처(settings.ts BRIEFING_SOURCES 의 id: mail·calendar·slack·issues·sessions). 설정 창에서 끈다
+  // 브리핑에서 뺄 출처(settings.ts BRIEFING_SOURCES 의 id: mail·calendar·slack·issues·sessions). 설정에서 끈다
   briefing?: { exclude: string[] };
-  // 고친 고정 문구(phrases.ts 키 → 줄들, 여러 줄이면 하나를 무작위로). 없으면 기본. 설정 창 「문구」에서 고친다
+  // 고친 고정 문구(phrases.ts 키 → 줄들, 여러 줄이면 하나를 무작위로). 없으면 기본. 설정 「문구」에서 고친다
   phrases?: Record<string, string[]>;
-  // ✓ 없이 머지까지 하는 레포(owner/name, auto-merge.ts). 채팅에서 「이 레포는 알아서 머지까지 해」·설정 창에서 고친다.
+  // ✓ 없이 머지까지 하는 레포(owner/name, auto-merge.ts). 채팅에서 「이 레포는 알아서 머지까지 해」·설정에서 고친다.
   // config.json 에 없으면 빈 목록. loadConfig 는 늘 채운다
   autoMerge?: string[];
-  // 오늘 할 일 알림(설정 창 「오늘 할 일 알림」). 없으면 영업일 아침 한 번(daily-plan.ts DEFAULT_TODAY_REMINDER)
+  // 오늘 할 일 알림(설정 「오늘 할 일 알림」). 없으면 영업일 아침 한 번(daily-plan.ts DEFAULT_TODAY_REMINDER)
   todayReminder?: TodayReminder;
-  // 일정 알림(설정 창 「일정 알림」): 일정 몇 분 전에 알릴지. 없으면 10분 전 한 번, minutesBefore: [] 이면 끔(calendar-alert.ts)
+  // 일정 알림(설정 「일정 알림」): 일정 몇 분 전에 알릴지. 없으면 10분 전 한 번, minutesBefore: [] 이면 끔(calendar-alert.ts)
   calendarAlert?: CalendarAlertConfig;
   // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host. sshHosts 도 들어간다
   jobHosts: string[];
@@ -290,7 +290,7 @@ export function repoRootsOf(raw: unknown, notes: string[]): string[] | undefined
   return out;
 }
 
-// 그래프 폴더(~ 허용). logseq/config.edn 이 없으면 Tine 그래프가 아니라 쓰지 않는다(엉뚱한 폴더에 pages/ 를 만들지 않게)
+// 그래프 폴더(~ 허용). logseq/config.edn 이 없으면 Tine 그래프가 아니라 쓰지 않는다(엉뚱한 폴더에 journals/ 를 만들지 않게)
 function tineGraphOf(raw: unknown, notes: string[]): string | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const p = typeof raw === "string" ? resolve(raw.trim().replace(/^~(?=\/|$)/, homedir())) : "";

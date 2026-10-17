@@ -280,7 +280,7 @@ export async function think(
 ): Promise<Thought> {
   const run = opts.run ?? (task.startsWith(BRIEFING_HEAD) ? { kind: "briefing", title: "정기 브리핑" } : { kind: "other", title: task.split("\n")[0].slice(0, 80) });
   const tools = opts.context === "tools";
-  if (task.startsWith(BRIEFING_HEAD)) task = excludeBriefingSources(task, briefingExcludeOf(cfg)); // 설정 창에서 뺀 출처는 브리핑에서 빼기(연결 상태로 만든 과제 글 위에)
+  if (task.startsWith(BRIEFING_HEAD)) task = excludeBriefingSources(task, briefingExcludeOf(cfg)); // 설정에서 뺀 출처는 브리핑에서 빼기(연결 상태로 만든 과제 글 위에)
   // 사용자가 정한 행동 지침(guidelines.ts): 브리핑은 briefing, 사용자가 직접 말한 요청(Slack DM)은 chat 범위. 그 밖의 정기 작업엔 없음
   const prompt = thinkPrompt(cfg, store, task, { tools, scope: run.kind === "briefing" ? "briefing" : opts.interactive ? "chat" : undefined });
   return ask<Thought>(cfg, prompt, opts.todoOps ? REQUEST_SCHEMA : SCHEMA, onStep, {

@@ -7,7 +7,7 @@ export const SETUP_FLOW_VERSION = '7';
 
 const KEY_AI = ['gemini', 'claude', 'openai', 'genspark'];
 const CLI_AI = ['claudecode', 'codexcli', 'agycli'];
-// AI 없이 쓰기: 정해진 말·할 일·오늘 할 일 표·회의 알림만(로컬 뇌). 나중에 설정에서 AI 를 연결할 수 있다
+// AI 없이 쓰기: 정해진 말·할 일·할 일의 「오늘」·회의 알림만(로컬 뇌). 나중에 설정에서 AI 를 연결할 수 있다
 export const NO_AI = 'none';
 
 export function isSetupPhase(p) {

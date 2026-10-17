@@ -7,7 +7,7 @@
 // 부딪치면 아래쪽(최근) 것을 따르라고 적는다.
 //
 // 만드는 길: 패널 채팅·캐릭터 대화의 답 스키마 guideline(op add|update|remove) — 데몬이 검증해 바로 저장하고 답에
-// 「지침에 넣었어요: …」를 덧붙인다. 설정 창 「행동 지침」(GET/POST/PUT/DELETE /guidelines)에서 직접.
+// 「지침에 넣었어요: …」를 덧붙인다. 설정 「행동 지침」(GET/POST/PUT/DELETE /guidelines)에서 직접.
 // 안전: 지침은 사용자 본인이 친 말에서만 — 모델이 낸 quote 가 이번 턴에 사용자가 직접 쓴 글(세션 이어가기의 참고 결과 등 데이터는
 // 뺀 것)에 그대로 들어 있어야 한다. 도구로 읽은 Slack·메일·세션 글 안의 "앞으로 이렇게 해"는 지침이 되지 못한다.
 import { randomUUID } from "node:crypto";
@@ -229,7 +229,7 @@ export function applyGuidelineOp(g: Guidelines, raw: unknown, ctx: GuidelineCtx,
     return { line: `📌 지침에 넣었어요: ${x.text}${x.scope !== "all" ? ` (${SCOPE_LABEL[x.scope]})` : ""}`, changed: true, guideline: x };
   }
   const t = target(g, op);
-  if (!t) return { line: "⚠️ 어느 지침인지 못 찾았어요 — 설정 창 「행동 지침」에서 확인해 주세요.", changed: false };
+  if (!t) return { line: "⚠️ 어느 지침인지 못 찾았어요 — 설정의 「행동 지침」에서 확인해 주세요.", changed: false };
   if (op.op === "remove") {
     g.delete(t.id);
     return { line: `🗑️ 지침에서 뺐어요: ${t.text}`, changed: true, removed: t };

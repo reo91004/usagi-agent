@@ -20,7 +20,7 @@ export function daysAgo(iso, now = Date.now()) {
 
 const shapeItem = (t, now) => {
   const priority = [1, 2, 3, 4].includes(t.priority) ? t.priority : 2;
-  const priorityLabel = PRIORITIES.find((x) => x.value === priority).label; // 짧은 칩: 오늘 꼭·이번 주·천천히·언젠가
+  const priorityLabel = PRIORITIES.find((x) => x.value === priority).label; // 짧은 칩: 오늘 꼭·이번 주·나중에·언젠가
   return { id: t.id, title: t.title, priority, priorityLabel, source: str(t.source), trashedAt: str(t.trashedAt), ago: daysAgo(t.trashedAt, now) };
 };
 

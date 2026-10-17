@@ -46,7 +46,6 @@ contextBridge.exposeInMainWorld('cy', {
   folderHosts: () => ipcRenderer.invoke('folder-hosts'), // ~/.ssh/config 서버 별칭 [{ host, user }]
   folderOpen: (path, how, host) => ipcRenderer.invoke('folder-open', String(path), String(how), host ? String(host) : null), // how: code | finder
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기({ enabled?, text? }) · 지우기
-  todoRules: () => ipcRenderer.invoke('todo-rules'),
   todoRuleEdit: (id, patch) => ipcRenderer.invoke('todo-rule-edit', String(id), patch),
   todoRuleDelete: (id) => ipcRenderer.invoke('todo-rule-delete', String(id)),
   // opts: { threadId?, todoId?, model?, clientId? } — threadId 없으면 새 대화(todoId 면 그 할 일의 대화). 결과 { ok, chatId, threadId, queued?, position? }
@@ -69,10 +68,9 @@ contextBridge.exposeInMainWorld('cy', {
   chatQueue: () => ipcRenderer.invoke('chat-queue'), // 줄 선 말·지금 답하는 말(GET /chat/queue) → { queue, running }
   listModels: () => ipcRenderer.invoke('session-models'), // 고를 수 있는 모델(GET /models)
   listCommands: () => ipcRenderer.invoke('slash-commands'), // 슬래시 명령 자동완성 목록(GET /commands)
-  // 대화 스레드: 목록(archived=true 면 보관함) · 만들기({title?, kind?, todoId?}) · 이름/보관({title?, archived?}) · 삭제 · 말(before = 순번)
+  // 대화 스레드: 목록(archived=true 면 보관함) · 이름/보관({title?, archived?}) · 삭제 · 말(before = 순번)
   onThreads: on('threads'),
   chatThreads: (archived) => ipcRenderer.invoke('chat-threads', archived === true),
-  chatThreadCreate: (body) => ipcRenderer.invoke('chat-thread-create', body && typeof body === 'object' ? { title: body.title, kind: body.kind, todoId: body.todoId } : {}),
   chatThreadEdit: (id, patch) => ipcRenderer.invoke('chat-thread-edit', String(id), patch && typeof patch === 'object' ? { title: patch.title, archived: patch.archived } : {}),
   chatThreadDelete: (id) => ipcRenderer.invoke('chat-thread-delete', String(id)),
   chatThreadMessages: (id, before) => ipcRenderer.invoke('chat-thread-messages', String(id), Number.isInteger(before) ? before : null),

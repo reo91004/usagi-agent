@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, visibleSections, SECTIONS, navGroups, shapeMeetings, splitHost } from '../src/dashboard.js';
+import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, SECTIONS, navGroups, shapeMeetings, splitHost } from '../src/dashboard.js';
 
 const NOW = Date.parse('2026-10-09T05:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -53,20 +53,19 @@ test('shapeDashboard: 숫자 요약과 프로젝트 정리', () => {
     proposals: [{ id: 'p', title: 'x', status: 'pending' }, { id: 'q', title: 'y', status: 'done' }],
     today: { date: '2026-10-09', items: [{ id: '1', title: '리뷰', done: false, priority: 1 }, { id: 'd', title: '끝', done: true, priority: 2 }] },
   }, NOW);
-  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 1, p1Todos: 1, backlogTodos: 0, activeProjects: 1, pendingProposals: 1, todayOpen: 1, todayTotal: 2 });
+  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 1, p1Todos: 1, backlogTodos: 0, pendingProposals: 1 });
   assert.equal(vm.projects[0].lastActiveRel, '10분 전');
   assert.deepEqual(vm.projects[0].recentCommits, [{ sha: 'abcdef1', subject: 'feat: x', time: ago(HOUR), rel: '1시간 전' }]);
   assert.equal(vm.briefing.rel, '2시간 전');
   assert.equal(vm.briefing.md, '# 요약');
-  assert.equal(vm.today.items[0].title, '리뷰');
+  assert.equal(vm.today.date, '2026-10-09');
 });
 
 test('shapeDashboard: 빈/깨진 응답도 안전', () => {
   const vm = shapeDashboard(null, NOW);
-  assert.deepEqual(vm.stats, { commitsToday: 0, openTodos: 0, p1Todos: 0, backlogTodos: 0, activeProjects: 0, pendingProposals: 0, todayOpen: 0, todayTotal: 0 });
+  assert.deepEqual(vm.stats, { commitsToday: 0, openTodos: 0, p1Todos: 0, backlogTodos: 0, pendingProposals: 0 });
   assert.equal(vm.briefing, null);
-  assert.deepEqual(vm.today.items, []);
-  assert.deepEqual(shapeDashboard({ projects: 'x', todos: {} }, NOW).today.items, []);
+  assert.equal(vm.today.date, '');
 });
 
 test('navGroups: 위쪽은 자주 쓰는 화면, 설정은 맨 아래, 설치는 사이드바에 없다', () => {
@@ -131,7 +130,6 @@ test('shapeDashboard: 숨긴 프로젝트는 목록·진행 중 집계에서 빼
   ] }, now);
   assert.deepEqual(vm.projects.map((p) => p.name), ['app']);
   assert.deepEqual(vm.hiddenProjects.map((p) => [p.name, p.hidden]), [['secret', true]]);
-  assert.equal(vm.stats.activeProjects, 1);
   assert.deepEqual(shapeDashboard(null).hiddenProjects, []);
 });
 
@@ -165,19 +163,15 @@ test('shapeConnectors: 아는 기능·모드만, 필드 검증, 중복은 앞의
   assert.deepEqual(shapeConnectors({ cap: 'slack' }), []);
 });
 
-test('shapeDashboard: connectors → notReady, 오늘 탭은 따로 없음', () => {
+test('shapeDashboard: connectors', () => {
   const old = shapeDashboard({ today: null }, NOW);
   assert.deepEqual(old.connectors, []);
-  assert.deepEqual(old.notReady, []);
-  assert.ok(!visibleSections(old).includes('today'));
-  assert.deepEqual(visibleSections(old), SECTIONS);
 
   const off = shapeDashboard({ connectors: [
     { cap: 'slack', label: 'Slack', mode: 'api', ready: true, detail: 'ok', doc: 'docs/connect/slack.md' },
     { cap: 'mail', label: '메일', mode: 'off', ready: false, detail: '연결 안 됨', doc: 'docs/connect/mail.md' },
   ] }, NOW);
-  assert.deepEqual(off.notReady, ['mail']);
-  assert.ok(!visibleSections(off).includes('today'));
+  assert.deepEqual(off.connectors.map((c) => c.cap), ['slack', 'mail']);
   assert.equal(shapeConnectors([{ cap: 'scrum', mode: 'mcp', ready: true }]).length, 0);
   assert.equal(shapeConnectors([{ cap: 'slack', mode: 'gateway', ready: true }]).length, 0);
 });
@@ -206,8 +200,6 @@ test('shapeDashboard: 오늘로 고른 일은 맨 위 「오늘」 묶음, 아�
   assert.deepEqual(vm.todayDone.map((t) => [t.id, t.priority, t.auto]), [['x', 3, false]]);
   assert.equal(vm.stats.openTodos, 3 + 1 + 1); // 오늘 3 + 오늘 꼭 1 + 이번 주 1, 나중에 제외
   assert.equal(vm.stats.p1Todos, 2); // b(오늘 묶음) + c
-  assert.equal(vm.stats.todayOpen, 3);
-  assert.equal(vm.stats.todayTotal, 4);
   assert.equal(shapeDashboard({ todos: [{ id: 'a', title: '가', priority: 2, today: '2026-10-09' }] }, NOW).todoGroups[0].label, '이번 주', '날짜를 모르면 오늘 묶음 없음');
 });
 

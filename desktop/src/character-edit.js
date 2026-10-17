@@ -1,4 +1,4 @@
-// 설정 창 「캐릭터」 편집 — 순수 로직: 대사 칸 묶기·글 ↔ 값·자리표시 검사·고친 칸만 고르기·그림 칸·만들기 본문.
+// 설정 「캐릭터」 편집 — 순수 로직: 대사 칸 묶기·글 ↔ 값·자리표시 검사·고친 칸만 고르기·그림 칸·만들기 본문.
 // 칸 목록(schema)·설명(help)·칸 이름(phrases.dance, flair.lead.happy …)은 데몬 GET /characters 가 준다(agent/src/character-store.ts).
 import { MEDIA_SLOTS, REQUIRED_SLOTS, MEDIA_EXTS, clipKind } from './character.js';
 

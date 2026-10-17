@@ -20,7 +20,7 @@
 | `state` | `{ mood: idle\|thinking\|working\|alert, activity: idle\|studying\|dancing, runs: [{ id, kind, title, startedAt }], danceId?, character }` | 캐릭터 상태. `character`는 고른 캐릭터 id(`shisa`·`hachi`·`rakko`·`momonga`·`usagi` 또는 사용자가 만든 `u-…`)이고, 바뀌면 바로 다시 보낸다 |
 | `status` | `{ status: Status }` | 연결 상태가 바뀜(`GET /status`와 같은 모양) |
 | `dashboard` | `{}` | 대시보드를 다시 가져오라는 신호 |
-| `open_panel` | `{ section: overview\|projects\|todos\|today\|chat\|null }` | 패널을 그 탭으로 열기 |
+| `open_panel` | `{ section: overview\|projects\|todos\|chat\|null }` | 패널을 그 탭으로 열기 |
 | `chat` | `{ chatId, status: thinking\|step\|done\|error, … }` | 채팅 진행·답 |
 | `threads` | `{ thread?, deleted? }` | 대화 목록이 바뀜 |
 | `agents` | `{ threadId }` | 그 대화의 백그라운드 에이전트·작업 세션 카드가 바뀜 → `GET /chat/threads/:id/agents` |
@@ -36,7 +36,7 @@ type Bubble = {
   ttlMs?: number; proposalId?: string; link?: string;           // link: http(s)·slack 만 연다
   image?: "merge" | "merge_complete" | "lots" | "daily" | "daily_all_complete" | "daily_half_complete" | "to_do_new"; // 스티커(~/.cy-agent/assets/reactions)
   detail?: string;                                              // 긴 본문
-  open?: { section: "overview" | "projects" | "todos" | "today" | "chat"; id?: string }; // 누르면 패널 그 자리
+  open?: { section: "overview" | "projects" | "todos" | "chat"; id?: string }; // 누르면 패널 그 자리
   actions?: "merge" | "action" | "permission"; actionId?: string; always?: boolean; blocked?: string;
 };
 ```
@@ -119,7 +119,7 @@ type Bubble = {
 
 ### 캐릭터 만들기·대사 고치기
 
-설정 창 「캐릭터」가 쓴다(`agent/src/character-store.ts`). 쓰기(POST·PUT·DELETE)는 다른 쓰기처럼 `X-CY-Agent: 1` 헤더가 있어야 한다. 바뀌면 SSE `characters`를 보내고, 지금 캐릭터의 말투도 바로 바뀐다.
+설정 「캐릭터」가 쓴다(`agent/src/character-store.ts`). 쓰기(POST·PUT·DELETE)는 다른 쓰기처럼 `X-CY-Agent: 1` 헤더가 있어야 한다. 바뀌면 SSE `characters`를 보내고, 지금 캐릭터의 말투도 바로 바뀐다.
 
 | | |
 |---|---|
@@ -140,7 +140,7 @@ type Bubble = {
 
 ### `GET /connections` · `POST /connections/check { id? }`
 
-- 설정 창의 「연결 상태」 줄이다. 응답은 `{ rows: ConnRow[], checkedAt }`.
+- 설정의 「연결 상태」 줄이다. 응답은 `{ rows: ConnRow[], checkedAt }`.
 - `ConnRow` 필드: `id`, `label`, `group: core|service|local`, `state: ok|warn|error|off|unknown`, `detail`, `error?`(가림), `check`, `pending?`, `doc?`, `used?`, `briefing?`.
 - `check`는 `id`(`net|claude|gh|local`)만 다시 확인한다.
 
@@ -206,7 +206,7 @@ type Bubble = {
 
 ### 오늘 할 일
 
-따로 표를 두지 않고 할 일에 "오늘로 고른 날"(`today`, KST `YYYY-MM-DD`)을 단다. 패널 '오늘 할 일' 탭은 할 일 탭과 같은 줄·우선순위 묶음(P1·P2·P3·백로그)으로 그날 고른 것만 보인다. 이 맥의 SQLite에만 둔다.
+따로 표를 두지 않고 할 일에 "오늘로 고른 날"(`today`, KST `YYYY-MM-DD`)을 단다. 패널 할 일 맨 위 「오늘」 묶음에 그날 고른 것이 모인다. 이 맥의 SQLite에만 둔다.
 
 - 새로 적기: `POST /todos { title, priority?, today: true }`
 - 고르기·빼기: `POST /todos/:id { today: true | false | null }` (빼도 할 일은 남는다)

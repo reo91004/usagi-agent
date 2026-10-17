@@ -1,5 +1,5 @@
 // 지금 캐릭터 이름(「시사」·「하치와레」…) — 창 안의 글(「하치와레 켜짐」·「하치와레에 연결되지 않았어요」)이 같이 쓴다.
-// 창마다 데몬 state 의 캐릭터를 받아 setWho 로 바꾼다(패널·오버레이·세션 창·설정 창).
+// 창마다 데몬 state 의 캐릭터를 받아 setWho 로 바꾼다(패널·오버레이·세션 창·설정).
 import { okCharacter, characterName, appName, START_CHARACTER } from '../src/character.js';
 
 let id = START_CHARACTER;
@@ -12,7 +12,7 @@ export function setWho(next) {
   if (n === id && characterName(n) === shown) return false;
   id = n;
   shown = characterName(n);
-  if (/ 비서$/.test(document.title)) document.title = appName(id); // 앱 이름을 제목으로 쓰는 창만(설정 창은 「설정」 그대로)
+  if (/ 비서$/.test(document.title)) document.title = appName(id); // 앱 이름을 제목으로 쓰는 창만(설정은 「설정」 그대로)
   for (const fn of listeners) { try { fn(id); } catch { /* 한 곳이 실패해도 나머지는 바뀐다 */ } }
   return true;
 }

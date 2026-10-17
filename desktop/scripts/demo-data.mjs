@@ -414,7 +414,7 @@ export function chat(text, focus, { emit, history }) {
     reply = RISK_MD;
   } else if (/프로젝트|현황|커밋/.test(text)) {
     steps = ['git.log', 'store.recent_sessions'];
-    reply = `오늘 커밋은 **${projects.reduce((n, p) => n + p.commitsToday, 0)}개**예요 — 노트앱 4 · 가계부 2 · 지도앱 1. 프로젝트 탭 열어 둘게요~`;
+    reply = `오늘 커밋은 **${projects.reduce((n, p) => n + p.commitsToday, 0)}개**예요 — 노트앱 4 · 가계부 2 · 지도앱 1. 작업 폴더 탭 열어 둘게요~`;
     show = 'projects';
   } else if (/회의|일정/.test(text)) {
     steps = ['google-calendar.list-events', 'store.todos'];
@@ -482,7 +482,7 @@ export async function route(req, res, url, ctx) {
   const p = url.pathname;
   const { emit, json, clients } = ctx;
   if (p === '/events' && Date.now() < downUntil) { req.socket.destroy(); return true; }
-  // 설정 창(⚙)용: 가짜 데몬의 빈 설정 대신 그럴듯한 모델·출처·문구·연결 상태(전부 지어낸 값)
+  // 설정(⚙)용: 가짜 데몬의 빈 설정 대신 그럴듯한 모델·출처·문구·연결 상태(전부 지어낸 값)
   if (req.method === 'GET' && p === '/settings') { json(res, 200, demoSettings()); return true; }
   if (req.method === 'GET' && p === '/connections') { json(res, 200, { rows: demoConnRows(), checkedAt: new Date().toISOString() }); return true; }
   if (req.method === 'POST' && p === '/connections/check') { json(res, 200, { rows: demoConnRows(), checkedAt: new Date().toISOString() }); return true; }
