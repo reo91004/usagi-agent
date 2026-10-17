@@ -334,6 +334,7 @@ export function chatAskOpts(cfg: Config, text: string, repo?: RelatedRepo, threa
     system: inlineContext(cfg) ? CHAT_SYSTEM_INLINE : CHAT_SYSTEM, model: model ?? cfg.models.general,
     code: { roots: cfg.repoRoots, ...(repo ? { cwd: repo.path } : {}) },
     interactive: { origin: { via, ...(threadId ? { threadId } : {}) } },
+    ...(via === "hover" ? { quick: true } : {}),
     run: { kind: "chat" as const, title: `채팅: ${text.split("\n")[0].slice(0, 60)}`, ...(threadId ? { ref: threadId } : {}) },
   };
 }

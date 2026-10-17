@@ -344,10 +344,10 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
     // 채팅이면 맥락 도구 + 사용자 MCP 연결(cli-mcp.ts). Codex·agy 만 도구를 받는다 — agy 는 읽기 도구만, Codex 는 문지기(codexGate)를 거쳐 쓰기도
     const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}), ...(provider === "codex" ? { gate: codexGate(cfg, opts, run, onStep) } : {}) } : {};
     if (schema === null) {
-      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as { reply?: string };
+      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
-    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
   });
 }
 
@@ -399,6 +399,7 @@ export function askCwd(cfg: Config, opts: AskOpts): string {
 //   origin = 승인 카드를 띄울 자리. broker 없으면 데몬이 붙인 것(getBroker), 그것도 없으면 쓰기는 거부
 export type AskOpts = {
   system?: string; model?: string; tools?: boolean; code?: { roots: string[]; cwd?: string };
+  quick?: boolean; // 캐릭터 말 걸기: 빠른 대화 모델을 따로 안 골랐으면 뇌마다 빠른 모델(agy 는 AGY_QUICK_MODEL)
   interactive?: { origin: PermOrigin; broker?: PermissionBroker };
   project?: boolean; // 프로젝트 설정(.claude/commands·skills 등)도 읽는다(슬래시 명령)
   // 멈춤 손잡이(채팅 정지): SDK options.abortController 로 넘기고, 세션 창 [정지](RunControl.stop)도 이걸 abort 한다.

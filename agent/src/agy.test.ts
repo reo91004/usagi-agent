@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { HOME_DIR, loadConfig, pickBrain } from "./config.ts";
 import { validateBrain } from "./settings.ts";
 import { SCHEMA, ask } from "./brain.ts";
-import { AGY_FAILED, AGY_PROMPT_MAX_BYTES, MISSING_AGY, agyArgs, agyExec, agyModel, brainKeyReady, parseAgyStdout, type ExecFileLike } from "./providers.ts";
+import { chatAskOpts } from "./chat.ts";
+import { AGY_FAILED, AGY_PROMPT_MAX_BYTES, AGY_QUICK_MODEL, MISSING_AGY, agyArgs, agyExec, agyModel, brainKeyReady, parseAgyStdout, type ExecFileLike } from "./providers.ts";
 import { cliStructured, featureBrain } from "./feature-brain.ts";
 
 const has = (n: string) => n === "agy";
@@ -100,4 +101,38 @@ test("cliStructured(agy): 모양 검사 · 고른 모델만 --model · 토큰 �
   assert.ok(!argv[1].includes("--model"));
   const bad: ExecFileLike = async () => ({ stdout: ok({ structured_output: { nope: 1 } }) });
   await assert.rejects(cliStructured(cfgOf("agy"), { system: "s", prompt: "p", schema }, { execFile: bad, commandExists: has }), /Antigravity 답이 형식에 맞지 않아요/);
+});
+
+test("캐릭터 말 걸기(quick): 빠른 대화 모델을 안 골랐으면 AGY_QUICK_MODEL, 골랐으면 그 모델, 일반 대화는 agy 기본", async () => {
+  const body = { bubble: "안녕", reply_md: "본문", todos: [], done_todo_ids: [], proposals: [] };
+  const seen: (string | undefined)[] = [];
+  const execFile: ExecFileLike = async (_f, args) => { const i = args.indexOf("--model"); seen.push(i < 0 ? undefined : args[i + 1]); return { stdout: ok({ structured_output: body }) }; };
+  const deps = { commandExists: has, execFile, env: {} };
+  await ask(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, model: "claude-sonnet-5-5", deps });
+  await ask(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, model: "gemini-3.8-flash-medium", deps });
+  await ask(cfgOf("agy"), "x", SCHEMA, undefined, { deps });
+  assert.deepEqual(seen, [AGY_QUICK_MODEL, "gemini-3.8-flash-medium", undefined]);
+});
+
+test("캐릭터 말 걸기(quick): 빠른 모델 이름이 agy 에서 없어졌으면 기본 모델로 한 번 더, 한도 오류는 그대로", async () => {
+  const body = { bubble: "안녕", reply_md: "본문", todos: [], done_todo_ids: [], proposals: [] };
+  const fail = (stderr: string) => Object.assign(new Error("agy 실행이 실패했어요."), { code: 3, stderr });
+  let models: (string | undefined)[] = [];
+  const flaky = (stderr: string): ExecFileLike => async (_f, args) => {
+    const i = args.indexOf("--model"); models.push(i < 0 ? undefined : args[i + 1]);
+    if (i >= 0) throw fail(stderr);
+    return { stdout: ok({ structured_output: body }) };
+  };
+  const out = await ask<typeof body>(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, deps: { commandExists: has, execFile: flaky("AGY_ERROR: unknown model claude-sonnet-5-5-low\n"), env: {} } });
+  assert.equal(out.reply_md, "본문");
+  assert.deepEqual(models, [AGY_QUICK_MODEL, undefined]);
+  models = [];
+  await assert.rejects(ask(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, deps: { commandExists: has, execFile: flaky("AGY_ERROR: quota exceeded for model\n"), env: {} } }));
+  assert.deepEqual(models, [AGY_QUICK_MODEL]); // 한도는 다시 부르지 않는다(자동 전환이 받는다)
+});
+
+test("chatAskOpts: 캐릭터 말 걸기(hover)만 quick", () => {
+  const cfg = cfgOf("agy");
+  assert.equal(chatAskOpts(cfg, "안녕", undefined, "t", "hover").quick, true);
+  assert.equal("quick" in chatAskOpts(cfg, "안녕", undefined, "t", "chat"), false);
 });
