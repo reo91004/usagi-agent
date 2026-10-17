@@ -84,6 +84,7 @@ type Bubble = {
 - `todayReminder{mode,everyHours,times}`, `calendarAlert{minutesBefore[]}`
 - `brain{provider,model,keys{gemini,openai,anthropic: boolean}}`
 - `slackMuted[]`(끈 Slack 채널 id), `slackChannels[{id,name,type}]`(GET 에만, 내가 들어간 공개·비공개 채널 이름순)
+- `slackTeam{url,id}`(GET 에만, Slack 워크스페이스 주소와 팀 id. 앱이 permalink 를 slack:// 로 바꿀 때 씀. 모르면 null)
 - `user{name?}`, `repoRoots[]`, `configPath`
 - `onboarded`(설치 마법사를 마쳤나), `readSessions`(이 맥의 Claude Code·Codex 작업 기록을 읽나)
 - `character`(고른 캐릭터 id), `characters[{id,name}]`(고를 수 있는 캐릭터)
