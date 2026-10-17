@@ -1583,3 +1583,9 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
   opacity: 0; pointer-events: none; transition: opacity 0.12s ease 0.2s;
 }
 #top .top-ico:hover::after, #top .top-ico:focus-visible::after { opacity: 1; }
+#sec-settings .me-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+#sec-settings .me-line code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sec-settings .me-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#sec-settings .me-grid label { display: grid; gap: 3px; font-size: 12px; }
+#sec-settings .conn-extra { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
+#sec-settings .conn-extra input { flex: 1; min-width: 120px; }

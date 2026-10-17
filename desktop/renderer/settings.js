@@ -867,6 +867,65 @@ function renderServers() {
   }
 }
 
+// ---- 나(이름·다른 이름·커밋 작성자) ----
+const GIT_DEFAULT = ['cy-agent', 'cy-agent@localhost']; // 데몬의 기본값(git 설정도 없을 때) — 칸은 비워 둔다
+function renderMe() {
+  if (!settings) return;
+  $('me-name').value = settings.user?.name ?? '';
+  $('me-aliases').value = (settings.user?.aliases ?? []).join(', ');
+  const g = settings.gitAuthor ?? {};
+  $('me-git-name').value = GIT_DEFAULT.includes(g.name) ? '' : g.name ?? '';
+  $('me-git-email').value = GIT_DEFAULT.includes(g.email) ? '' : g.email ?? '';
+}
+async function saveMe(patch, rerender = true) {
+  const ok = await save(patch);
+  $('me-err').textContent = ok ? '' : '저장하지 못했어요. 값을 확인해 주세요';
+  if (rerender) renderMe();
+}
+$('me-name').addEventListener('change', () => saveMe({ user: { name: $('me-name').value.trim() || null } }));
+$('me-aliases').addEventListener('change', () => saveMe({ user: { aliases: $('me-aliases').value.split(/[,，]/).map((x) => x.trim()).filter(Boolean) } }));
+for (const [id, key] of [['me-git-name', 'name'], ['me-git-email', 'email']]) {
+  $(id).addEventListener('change', () => { const v = $(id).value.trim(); if (v) saveMe({ gitAuthor: { [key]: v } }); else renderMe(); });
+}
+
+// ---- Tine 그래프 · 채팅이 써도 되는 MCP 서버 ----
+function renderTine() {
+  const g = settings?.tineGraph;
+  $('tine-path').textContent = g || '고르지 않았어요';
+  $('tine-clear').hidden = !g;
+}
+$('tine-pick').addEventListener('click', async () => {
+  const dir = await window.cy.pickFolder?.().catch(() => null);
+  if (!dir) return;
+  const ok = await save({ tineGraph: dir });
+  $('tine-err').textContent = ok ? '' : 'Tine 그래프 폴더(logseq/config.edn 이 있는 곳)를 골라 주세요';
+  renderTine();
+});
+$('tine-clear').addEventListener('click', async () => { if (await save({ tineGraph: null })) $('tine-err').textContent = ''; renderTine(); });
+
+function renderMcp() {
+  const names = settings?.mcpServers ?? [];
+  $('mcp-card').hidden = !names.length;
+  const on = new Set(settings?.allowMcp ?? []);
+  const box = $('mcp-list');
+  box.replaceChildren();
+  for (const n of names) {
+    const lab = el('label', `toggle${on.has(n) ? '' : ' off'}`);
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = on.has(n);
+    cb.addEventListener('change', async () => {
+      cb.disabled = true;
+      const next = new Set(settings?.allowMcp ?? []);
+      if (cb.checked) next.add(n); else next.delete(n);
+      if (!(await save({ allowMcp: [...next] }))) cb.checked = !cb.checked;
+      renderMcp();
+    });
+    lab.append(cb, document.createTextNode(n));
+    box.append(lab);
+  }
+}
+
 // ---- 문구 ----
 const openGroups = new Set(['캐릭터']); // 펼쳐 둔 묶음(다시 그려도 유지)
 function phraseRow(p) {
@@ -970,6 +1029,45 @@ function loadCalendars() {
 const hasSetupStep = (r) => !r.doc || ['slack', 'calendar'].includes(capOfRow(r));
 const howToConnect = (r) => (hasSetupStep(r) ? nav.setup() : cy.openDoc?.(r.doc));
 
+// 캘린더 줄 아래: ICS 시간대·내 이메일(내가 초대받은 일정만 가려내는 데 써요)
+function calendarExtra() {
+  const box = el('div', 'conn-extra');
+  const tz = el('input');
+  tz.type = 'text';
+  tz.value = settings.calendar.timeZone;
+  tz.placeholder = 'Asia/Seoul';
+  tz.setAttribute('aria-label', '캘린더 시간대');
+  const em = el('input');
+  em.type = 'text';
+  em.value = settings.calendar.email;
+  em.placeholder = '내 이메일 (선택)';
+  em.setAttribute('aria-label', '캘린더에 쓰는 내 이메일');
+  const put = async (patch) => { await save({ connectors: { calendar: patch } }); renderRows(); };
+  tz.addEventListener('change', () => { if (tz.value.trim()) put({ timeZone: tz.value.trim() }); });
+  em.addEventListener('change', () => put({ email: em.value.trim() || null }));
+  box.append(el('span', null, '시간대'), tz, el('span', null, '이메일'), em);
+  return box;
+}
+
+// [연결하기] 옆: Claude Code 에 등록한 MCP 서버 중 하나로 연결(서버가 없으면 이 줄은 나오지 않고 안내 문서만)
+function mcpPick(cap) {
+  const box = el('div', 'conn-extra');
+  const sel = el('select');
+  sel.setAttribute('aria-label', 'MCP 서버로 연결');
+  sel.append(new Option('MCP 서버로 연결…', ''), ...settings.mcpServers.map((n) => new Option(n, n)));
+  const go = el('button', 'small', '이 서버로 연결');
+  go.type = 'button';
+  go.disabled = true;
+  sel.addEventListener('change', () => { go.disabled = !sel.value; });
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    if (await save({ connectors: { [cap]: { mode: 'mcp', server: sel.value } } })) { nav.connectionsChanged?.(); setTimeout(() => refreshConnections(true), 3000); }
+    go.disabled = false;
+  });
+  box.append(sel, go);
+  return box;
+}
+
 function rowEl(r) {
   const n = el('div', 'conn');
   n.dataset.id = r.id;
@@ -996,6 +1094,7 @@ function rowEl(r) {
     b.title = hasSetupStep(r) ? '연결 도우미에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
+    if (settings?.mcpServers?.length && ['mail', 'issues', 'slack', 'calendar'].includes(capOfRow(r))) main.append(mcpPick(capOfRow(r)));
   } else if (action === 'disconnect') {
     const cap = capOfRow(r);
     const copy = connectorDisconnectCopy(cap, r.server);
@@ -1010,7 +1109,7 @@ function rowEl(r) {
         return res;
       },
     }));
-    if (cap === 'calendar') main.append(calendarList());
+    if (cap === 'calendar') { main.append(calendarList()); if (settings?.calendar) main.append(calendarExtra()); }
   }
   if (needsSetupHint(r)) {
     const b = el('button', 'small primary', '연결 안내');
@@ -1079,12 +1178,12 @@ function applySnapshot(data, { first = false } = {}) {
   if (Array.isArray(data.slackChannels)) slackChannels = data.slackChannels;
   if (first || !settings) {
     settings = data;
-    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderPhrases(); renderCharacter(); loadCharacters();
+    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderMe(); renderTine(); renderMcp(); renderPhrases(); renderCharacter(); loadCharacters();
     return;
   }
   const { phrases, todayReminder, calendarAlert, character, characters } = settings;
   settings = { ...data, phrases, todayReminder, calendarAlert, ...(editDirty ? { character, characters } : {}) };
-  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge(); renderSlackChannels(); renderServers();
+  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderTine(); renderMcp();
 }
 
 async function load() {

@@ -293,7 +293,7 @@ export function repoRootsOf(raw: unknown, notes: string[]): string[] | undefined
 }
 
 // 그래프 폴더(~ 허용). logseq/config.edn 이 없으면 Tine 그래프가 아니라 쓰지 않는다(엉뚱한 폴더에 journals/ 를 만들지 않게)
-function tineGraphOf(raw: unknown, notes: string[]): string | undefined {
+export function tineGraphOf(raw: unknown, notes: string[]): string | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const p = typeof raw === "string" ? resolve(raw.trim().replace(/^~(?=\/|$)/, homedir())) : "";
   if (p && existsSync(join(p, "logseq", "config.edn"))) return p;
