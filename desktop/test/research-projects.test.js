@@ -3,21 +3,24 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { shapeDashboard, SECTIONS } from '../src/dashboard.js';
-import { shapeResearchProjects, deadlineChip, venuesUsed, subsBody, withCurrent, withNextVenue } from '../src/research-projects.js';
+import { shapeResearchProjects, cleanTitle, deadlineChip, venuesUsed, subsBody, withCurrent, withNextVenue } from '../src/research-projects.js';
 import { ipcHandlers, buildHandler } from './helpers/main-calls.js';
 
 const NOW = new Date(2026, 9, 18, 12, 0).getTime();
 const ymd = (d) => { const x = new Date(NOW + d * 864e5); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
-test('탭은 작업 폴더 없이 연구까지', () => {
-  assert.deepEqual(SECTIONS, ['overview', 'todos', 'chat', 'research', 'setup', 'settings']);
+test('탭 6개(+설치): 연구 다음에 작업 폴더', () => {
+  assert.deepEqual(SECTIONS, ['overview', 'todos', 'chat', 'research', 'projects', 'setup', 'settings']);
 });
 
-test('deadlineChip: D-day 글자, 21일 이하 경고, 지난 마감은 D+n, 끝난 단계는 없음', () => {
-  assert.deepEqual(deadlineChip(ymd(38), 'submitted', NOW), { text: 'D-38', warn: false });
-  assert.deepEqual(deadlineChip(ymd(21), 'prep', NOW), { text: 'D-21', warn: true });
-  assert.deepEqual(deadlineChip(ymd(0), 'prep', NOW), { text: 'D-day', warn: true });
-  assert.deepEqual(deadlineChip(ymd(-3), 'review', NOW), { text: 'D+3', warn: false });
+test('deadlineChip: D-day 글자, 21일 이하 warn, 7일 이하 err, 지난 마감은 D+n, 끝난 단계는 없음', () => {
+  assert.deepEqual(deadlineChip(ymd(38), 'submitted', NOW), { text: 'D-38', tone: '' });
+  assert.deepEqual(deadlineChip(ymd(22), 'prep', NOW), { text: 'D-22', tone: '' });
+  assert.deepEqual(deadlineChip(ymd(21), 'prep', NOW), { text: 'D-21', tone: 'warn' });
+  assert.deepEqual(deadlineChip(ymd(8), 'prep', NOW), { text: 'D-8', tone: 'warn' });
+  assert.deepEqual(deadlineChip(ymd(7), 'prep', NOW), { text: 'D-7', tone: 'err' });
+  assert.deepEqual(deadlineChip(ymd(0), 'prep', NOW), { text: 'D-day', tone: 'err' });
+  assert.deepEqual(deadlineChip(ymd(-3), 'review', NOW), { text: 'D+3', tone: '' });
   assert.equal(deadlineChip(ymd(5), 'rejected', NOW), null);
   assert.equal(deadlineChip('', 'prep', NOW), null);
 });
@@ -25,9 +28,9 @@ test('deadlineChip: D-day 글자, 21일 이하 경고, 지난 마감은 D+n, 끝
 const raw = [
   { key: '/a', kind: 'research', name: 'poly', folders: [{ path: '/a' }, { path: '/b' }], url: 'javascript:x',
     subs: [{ venue: 'CHES 2026', stage: 'rejected', at: 'x' }, { venue: 'CHES 2027', stage: 'submitted', deadline: ymd(38), at: 'y' }],
-    lastActive: new Date(NOW - 7200e3).toISOString(), running: [{ name: 't', host: 'h', kind: 'tmux', running: true, start: NOW / 1000 - 600 }],
+    lastActive: new Date(NOW - 7200e3).toISOString(), running: [{ name: 't', host: 'h', kind: 'tmux', running: true, start: NOW / 1000 - 600 }, { name: 'claude', host: 'h', kind: 'tmux', ai: 'claude', cwd: '/w/dp', running: true, start: NOW / 1000 - 8 * 86400 }],
     recent: { done: 3, failed: 1, lost: 0, items: [{ name: 'e', host: 'h', kind: 'job', start: NOW / 1000 - 5000, seconds: 60, code: 1, running: false }] },
-    sessions: [{ title: '세션', tool: 'claude', at: new Date(NOW - 3600e3).toISOString() }] },
+    sessions: [{ title: '# Files mentioned by the user: ## - docs/a.md', tool: 'claude', at: new Date(NOW - 3600e3).toISOString() }] },
   { key: '/p', kind: 'project', name: '', subs: [{ venue: 'X', stage: 'prep' }], running: [], recent: { done: 2, failed: 1 } },
   { key: '/c', kind: null },
   { name: 'no key' },
@@ -40,12 +43,18 @@ test('shapeResearchProjects: 목록 줄은 마지막 제출만, 프로젝트는 
   assert.equal(r.chip, 'CHES 2027 · 제출함');
   assert.equal(r.subs.length, 2);
   assert.equal(r.dday.text, 'D-38');
-  assert.equal(r.summary, '실험 1 도는 중');
+  assert.equal(r.cur.tone, 'accent');
+  assert.equal(r.line2, '실험 1개 도는 중 · Claude 작업 중 · 최근: docs/a.md');
+  assert.deepEqual([r.experiments.length, r.ais.length, r.ais[0].time, r.ais[0].folder], [1, 1, '8일째', 'dp']);
+  assert.equal(r.subs.at(-1).tone, 'accent');
   assert.equal(r.url, '');
   assert.equal(r.lastRel, '2시간 전');
   assert.deepEqual(r.recent.items.map((e) => e.state), ['failed']);
-  assert.equal(r.running[0].time, '10분째');
-  assert.deepEqual([p.name, p.chip, p.subs.length, p.summary], ['/p', '', 0, '끝 2 · 실패 1']);
+  assert.equal(r.experiments[0].time, '10분째');
+  assert.deepEqual([p.name, p.subs.length, p.line2], ['/p', 0, '최근 30일 활동 없음']);
+  assert.equal(shapeResearchProjects([{ key: '/n', kind: 'research' }], NOW)[0].chip, '학회 미정');
+  assert.equal(cleanTitle('> * # '), '(제목 없음)');
+  assert.equal(cleanTitle('- docs/x.md'), 'docs/x.md');
   assert.equal(c.kind, null);
 });
 

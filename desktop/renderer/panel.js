@@ -334,7 +334,7 @@ const loadSoon = () => { clearTimeout(loadTimer); loadTimer = setTimeout(load, 2
 
 
 // 구역별 그리기: 보이는 구역만 지금 그리고 나머지는 dirtySecs 에 두었다가 들어갈 때(goto)·창이 다시 보일 때 그린다
-const SECTION_RENDERERS = { overview: () => renderOverview(), research: () => renderResearch(), todos: () => renderTodos(), settings: () => renderSettingsConnectors() };
+const SECTION_RENDERERS = { overview: () => renderOverview(), research: () => renderResearch(), projects: () => renderProjects(), todos: () => renderTodos(), settings: () => renderSettingsConnectors() };
 const dirtySecs = new Set();
 function renderAll() {
   const todos = raw ? overlayTodos(raw.todos, pendingOps) : null;
@@ -546,24 +546,26 @@ function researchSection() {
 }
 // 연구 프로젝트 목록·상세. 저장은 PUT /research/projects, 낙관적으로 raw 를 고친 뒤 다시 읽는다
 const rp = createResearchProjects({
-  cy, why: (r) => why(r), loadSoon: () => loadSoon(), render: (force) => renderResearch(force),
+  cy, why: (r) => why(r), loadSoon: () => loadSoon(), render: (force) => renderBoth(force),
   getRaw: () => raw, setRaw: (r) => { raw = r; renderAll(); }, // 화면은 vm 에서 그리니 raw 를 바꾸면 vm 도 다시 만든다
   openFolder: (p, how, host) => openFolder(p, how, host), pickHost: (p) => pickHost(p),
-  pickFor: () => pickFor, msg: () => projMsg?.text,
+  pickFor: () => pickFor, msg: () => projMsg?.text, goto: (s) => goto(s),
 });
 function renderResearch(force) {
   const el = $('sec-research');
   if (!force && el.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName)) return; // 입력 중이면 저장될 때 다시 그린다
-  const top = rp.view(vm).flat().filter((k) => k != null);
-  const kids = rp.inDetail() ? top
-    : [...top, ...(researchSection() ?? []), ...(directivesSection() ?? []), unboundFolders()].filter((k) => k != null); // null 을 넣으면 'null' 글자가 찍힌다
+  const top = rp.view(vm, 'research').flat().filter((k) => k != null);
+  const kids = rp.inDetail(vm, 'research') ? top
+    : [...top, ...(researchSection() ?? []), ...(directivesSection() ?? [])].filter((k) => k != null); // null 을 넣으면 'null' 글자가 찍힌다
   el.replaceChildren(...(kids.length ? kids : [h('div.card.empty', { text: '연결된 실험 서버(sshHosts·jobHosts)나 Slack 이 아직 없어요. 설정의 연결에서 켜면 여기 보여요.' })]));
 }
+// 상세는 두 탭이 같이 쓰고 폴더 열기 같은 동작은 어느 탭에서든 시작되니 둘 다 다시 그린다
+const renderBoth = (force) => { renderResearch(force); renderProjects(force); };
 // 개요의 연구 한 줄 요약 → 연구 탭
 function researchSummaryCard() {
   const r = vm.research, d = vm.directives;
   if (!r && !d) return null;
-  const running = (r?.jobs.filter((j) => j.state === 'running').length ?? 0) + (r?.tmux.reduce((n, t) => n + t.sessions.filter((x) => x.running).length, 0) ?? 0);
+  const running = (r?.jobs.filter((j) => j.state === 'running').length ?? 0) + (r?.tmux.reduce((n, t) => n + t.sessions.filter((x) => x.running && !x.ai).length, 0) ?? 0);
   const parts = [r ? `도는 실험 ${running}` : '', d?.from.length ? `새 지시 ${d.open.length}` : '', r?.note ? '오늘 연구 노트' : ''].filter(Boolean);
   return h('h2', null, h('span', { text: '연구 ' }), h('span.chip.click', { text: parts.join(' · '), role: 'button', onclick: () => goto('research') }));
 }
@@ -1125,7 +1127,7 @@ async function setHidden(p, hide) {
 function toggleHiddenGroup() {
   hiddenOpen = !hiddenOpen;
   try { localStorage.setItem('hiddenProjectsOpen', hiddenOpen ? '1' : '0'); } catch { /* 무시 */ }
-  renderResearch(true);
+  renderBoth(true);
 }
 
 const openRows = new Set(); // 펼친 줄(path)
@@ -1135,7 +1137,7 @@ async function openFolder(p, how, host) {
   const r = await cy.folderOpen(p.path, how, host).catch(() => null);
   pickFor = null;
   projMsg = r?.ok ? null : { ok: false, text: `${how === 'code' ? 'VS Code' : 'Finder'} 로 열지 못했어요 — ${r?.error || '다시 시도해 주세요'}` };
-  renderResearch(true);
+  renderBoth(true);
 }
 
 // 서버 이름을 모르는 폴더: ssh User 가 맞는 서버를 후보로 보여 주고 고르게 한다
@@ -1144,11 +1146,11 @@ async function pickHost(p) {
   const hosts = candidateHosts(p.dir, r?.hosts || []);
   if (!hosts.length) {
     projMsg = { ok: false, text: '어느 서버의 폴더인지 몰라서 VS Code 로 열 수 없어요. ~/.ssh/config 에 이 폴더의 계정(/home/<계정>/)으로 접속하는 서버가 있어야 해요' };
-    return renderResearch(true);
+    return renderBoth(true);
   }
   projMsg = null;
   pickFor = { path: p.path, hosts };
-  renderResearch(true);
+  renderBoth(true);
 }
 
 const WHERE_CHIP = {
@@ -1157,40 +1159,38 @@ const WHERE_CHIP = {
   unknown: () => ({ text: '서버(이름 모름)', accent: true, title: '이 Mac 에 없는 폴더예요 — VS Code 원격 세션 기록 같은 서버 폴더로 보여요' }),
 };
 
-// 연구 탭 맨 아래, 접어 둔 「묶지 않은 폴더」 — 연구 프로젝트에 속하지 않은 작업 폴더와 숨긴 폴더
-let foldersOpen = false;
-function unboundFolders() {
+// 작업 폴더 탭: 맨 위 프로젝트, 그 아래 연구·프로젝트에 묶이지 않은 작업 폴더와 숨긴 폴더
+function renderProjects(force) {
+  const el = $('sec-projects');
+  if (!force && el.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName)) return;
+  const top = rp.view(vm, 'projects').flat().filter((k) => k != null);
+  if (rp.inDetail(vm, 'projects')) return el.replaceChildren(...top);
   const free = vm.projects.filter((p) => !p.byResearch);
   const hidden = vm.hiddenProjects;
-  if (!free.length && !hidden.length && !projMsg) return null;
-  const toggle = () => { foldersOpen = !foldersOpen; renderResearch(true); };
-  const kids = [h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(foldersOpen), onclick: toggle },
-    h('span.caret', { text: foldersOpen ? '▾' : '▸' }), h('span', { text: `묶지 않은 폴더 (${free.length})` }))];
-  if (foldersOpen) {
-    kids.push(h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' }));
-    if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
-    if (free.length) kids.push(projectRows(free));
-    if (hidden.length) {
-      kids.push(h('div.hidden-projects', null,
-        h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(hiddenOpen), onclick: toggleHiddenGroup },
-          h('span.caret', { text: hiddenOpen ? '▾' : '▸' }), h('span', { text: `숨긴 작업 폴더 (${hidden.length})` })),
-        hiddenOpen
-          ? h('div.card.hidden-list', null, hidden.map((p) => h('div.hidden-row', null,
-            h('span.name', { text: p.name }),
-            p.dir ? h('span.path.mono', { text: p.host ? `${p.host} · ${p.dir}` : p.dir, title: p.path }) : null,
-            h('span.spacer'),
-            h('button.ghost', { type: 'button', text: '다시 보이기', 'aria-label': `다시 보이기: ${p.name}`, onclick: () => setHidden(p, false) }))))
-          : null));
-    }
+  const kids = [...top, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' })];
+  if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
+  if (free.length) kids.push(projectRows(free));
+  else kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
+  if (hidden.length) {
+    kids.push(h('div.hidden-projects', null,
+      h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(hiddenOpen), onclick: toggleHiddenGroup },
+        h('span.caret', { text: hiddenOpen ? '▾' : '▸' }), h('span', { text: `숨긴 작업 폴더 (${hidden.length})` })),
+      hiddenOpen
+        ? h('div.card.hidden-list', null, hidden.map((p) => h('div.hidden-row', null,
+          h('span.name', { text: p.name }),
+          p.dir ? h('span.path.mono', { text: p.host ? `${p.host} · ${p.dir}` : p.dir, title: p.path }) : null,
+          h('span.spacer'),
+          h('button.ghost', { type: 'button', text: '다시 보이기', 'aria-label': `다시 보이기: ${p.name}`, onclick: () => setHidden(p, false) }))))
+        : null));
   }
-  return h('div.unbound-folders', null, ...kids);
+  el.replaceChildren(...kids);
 }
 
 function projectRows(list) {
   return h('div.card.proj-list', null, list.map((p) => {
     const open = openRows.has(p.path);
     const chip = WHERE_CHIP[p.where](p);
-    const toggle = () => { if (open) openRows.delete(p.path); else openRows.add(p.path); renderResearch(true); };
+    const toggle = () => { if (open) openRows.delete(p.path); else openRows.add(p.path); renderProjects(true); };
     return h('article.proj', null,
       h('div.proj-head', null,
         h('button.proj-toggle', { type: 'button', 'aria-expanded': String(open), 'aria-label': `${p.name} ${open ? '접기' : '펼치기'}`, onclick: toggle },

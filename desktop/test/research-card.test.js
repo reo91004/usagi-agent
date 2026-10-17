@@ -39,6 +39,9 @@ test('durationText', () => {
   assert.equal(durationText(600), '10분');
   assert.equal(durationText(3600), '1시간');
   assert.equal(durationText(5400), '1시간 30분');
+  assert.equal(durationText(47 * 3600), '47시간');
+  assert.equal(durationText(48 * 3600), '2일');
+  assert.equal(durationText(202 * 3600 + 1800), '8일');
 });
 
 test('shapeGpu: 짧은 이름·사용률·GB, 그 GPU 의 프로세스만, 실패한 서버는 이유', () => {
