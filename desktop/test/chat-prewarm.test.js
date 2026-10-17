@@ -24,3 +24,15 @@ test('prewarm 은 280ms 늦춰 데몬에 POST /chat/prewarm 을 보낸다', () =
   fire();
   assert.deepEqual(posts, [['/chat/prewarm', {}, 3000]]);
 });
+
+test('맥은 창 애니메이션을 꺼 둔다 — 입력창을 닫는 win.blur() 의 orderOut→orderBack 페이드가 캐릭터를 지우지 않게', () => {
+  const [args] = blocks('app.whenReady().then(');
+  const calls = [];
+  const run = buildHandler(args, {
+    process: { platform: 'darwin' },
+    systemPreferences: { setUserDefault: (...a) => calls.push(a) },
+    session: { defaultSession: { setSpellCheckerEnabled() { throw new Error('stop'); } } },
+  });
+  assert.throws(run, /stop/);
+  assert.deepEqual(calls, [['NSAutomaticWindowAnimationsEnabled', 'boolean', false]]);
+});

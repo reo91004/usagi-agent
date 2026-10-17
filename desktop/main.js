@@ -1,6 +1,6 @@
 // 데스크톱 마스코트 — 메인 프로세스.
 // 데몬 SSE 를 여기서 받고 IPC 로 렌더러에 넘긴다. 렌더러는 네트워크 접근 없음.
-import { app, BrowserWindow, Menu, Tray, clipboard, dialog, globalShortcut, ipcMain, nativeImage, net, protocol, screen, session, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, clipboard, dialog, globalShortcut, ipcMain, nativeImage, net, protocol, screen, session, shell, systemPreferences } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -2208,6 +2208,9 @@ if (SQUIRREL) {
     });
   });
   app.whenReady().then(() => {
+    // 입력창을 닫는 win.blur() 는 맥에서 창을 orderOut→orderBack 해 창 애니메이션(페이드)이 돌아 캐릭터가 ~220ms 사라진다.
+    // blur 는 키 창을 놓으려면 필요하니 그대로 두고, 이 앱의 창 애니메이션을 끈다(애니메이션 설정은 창마다 못 바꾼다).
+    if (process.platform === 'darwin') systemPreferences.setUserDefault('NSAutomaticWindowAnimationsEnabled', 'boolean', false);
     session.defaultSession.setSpellCheckerEnabled(false); // 창보다 먼저
     const firstRun = !fs.existsSync(statePath()); // 이 앱 저장소를 처음 쓴다 → 마법사를 바로 연다
     loadState();
