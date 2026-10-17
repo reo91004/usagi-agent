@@ -1785,6 +1785,7 @@ function setupIPC() {
     if (!win || e.sender !== win.webContents) return false;
     keepOverlayPos(() => {
       if (on) {
+        post('/chat/prewarm', {}, 3000).catch(() => {}); // 뇌가 agy 면 데몬이 예비 agy 를 띄운다(아니면 204 로 무시)
         quietActivation(1500); // 입력창 포커스로 앱이 활성화돼도 패널을 띄우지 않음
         win.setFocusable(true);
         win.focus();

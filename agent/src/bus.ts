@@ -108,6 +108,7 @@ export type BusHandlers = {
   runImport?(sessionId: string): { ok: boolean; status?: number; error?: string; runId?: string; imported?: number; existing?: boolean };
   // 긴 작업 끝(jobs.ts, ops/usagi-run 이 POST /jobs/done). 없으면 503
   jobDone?(j: JobDone): void;
+  chatPrewarm?(): void; // 말 걸기 입력창이 열림: 뇌가 agy 면 예비 agy 를 띄운다(POST /chat/prewarm → 204)
   // 그 대화에서 띄운 서브에이전트들(thread-agents.ts). 없는 대화면 undefined → 404, 없으면 503
   threadAgents?(id: string): unknown;
   // 백그라운드 에이전트 멈추기(대화 속 카드): 대기 중이면 빼고, 돌고 있으면 abort. 모르는·끝난 것이면 false → 404. 없으면 503
@@ -565,6 +566,11 @@ export class Bus {
     if (req.method === "POST") {
       // 브라우저 페이지가 localhost로 승인을 위조하지 못하게: 커스텀 헤더 필수(CORS preflight에 응답하지 않음)
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
+      if (url.pathname === "/chat/prewarm") {
+        h.chatPrewarm?.();
+        res.writeHead(204).end();
+        return;
+      }
       if (url.pathname === "/connectors/reload") {
         return h.connectorsReload ? json(res, 200, h.connectorsReload()) : json(res, 503, { error: "reload unavailable" });
       }

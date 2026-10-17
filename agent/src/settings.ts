@@ -8,6 +8,7 @@ import { readFileSync, renameSync, writeFileSync, mkdirSync, existsSync } from "
 import { dirname, join } from "node:path";
 import { isAbsolute } from "node:path";
 import { resetBrainCooldowns } from "./brain-fallback.ts";
+import { agyWarm } from "./providers.ts";
 import { BRAIN_PROVIDERS, DEFAULT_GENERAL_MODEL, HOME_DIR, configErrorText, type BrainFallback, type BrainProvider, type Config } from "./config.ts";
 import { modelLabel } from "./models.ts";
 import { gskLoginKey } from "./providers.ts";
@@ -400,6 +401,7 @@ export class Settings {
       if (patch.brain.fallback) b.fallback = patch.brain.fallback;
       if (b.fallback) { b.fallback = b.fallback.filter((e) => e.provider !== b.provider); if (!b.fallback.length) delete b.fallback; }
       resetBrainCooldowns(); // 키·순서를 바꾸면 쉬는 기록은 버린다
+      agyWarm.reset(); // 모델·MCP 가 바뀔 수 있으니 미리 띄운 agy 도 버린다
       this.cfg.brain = b; // brain.ts·connections 가 매번 cfg.brain 을 읽으니 다음 질문부터 바로
       if (patch.brain.model !== undefined) this.cfg.models.general = patch.brain.model || DEFAULT_GENERAL_MODEL;
     }

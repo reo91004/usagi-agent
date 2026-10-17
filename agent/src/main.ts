@@ -1,5 +1,5 @@
 // 데몬 엔트리포인트: 버스 + Slack + 주기 작업(세션·Slack 수집, 프로필 학습, 브리핑)
-import { BRAIN_LABEL, onBrainSwitch } from "./brain-fallback.ts";
+import { BRAIN_LABEL, activeBrain, onBrainSwitch } from "./brain-fallback.ts";
 import { installFileLog, stallLag } from "./log.ts";
 import { loadConfig } from "./config.ts";
 import { DEFAULT_TODAY_REMINDER } from "./daily-plan.ts";
@@ -55,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
-import { BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
+import { agyPrewarm, agyWarm, BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
 import { ctxTools } from "./ctx-tools.ts";
 import { briefingHours } from "./calendar.ts";
@@ -363,6 +363,7 @@ await bus.listen(cfg.port, {
   },
   connectorsReload: () => reloadConnectors(),
   jobDone: (j) => jobDone(j),
+  chatPrewarm: () => { if (activeBrain(cfg) === "agy") agyPrewarm(cfg, cliMcpServers(conns)); },
   // [연결 해제]: 그 기능만 off(토큰·ICS 주소도 지움) → 다시 읽기 → 메모리도 바로 off
   connectorDisconnect: (cap) => disconnectConnector(cap, {
     path: join(HOME_DIR, "config.json"), cfg, reload: reloadConnectors,
@@ -661,6 +662,7 @@ async function shutdown() {
   shuttingDown = true;
   bus.stopping = true; // GET /status stopping: true — 새로 뜬 앱이 이 데몬이 곧 사라질 걸 안다
   stopCalendar();
+  agyWarm.reset(); // 미리 띄운 agy 가 남지 않게
   try { focus.checkpoint(); } catch { /* 꺼지는 중 */ }
   await canvas.flush().catch(() => {});
   bus.close();
