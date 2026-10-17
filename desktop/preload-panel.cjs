@@ -10,14 +10,14 @@ const on = (channel) => (cb) => {
 contextBridge.exposeInMainWorld('cy', {
   onConnection: on('connection'),
   onDashboard: on('dashboard'),
-  onSisa: on('sisa'), // 설정 창 등에서 AI·연결을 끊으면 새 저장 모양(publicView)
+  onSisa: on('sisa'), // AI·연결을 끊으면 새 저장 모양(publicView)
   onSection: on('section'),
   onChat: on('chat'),
   onCharacter: on('character'),
   // 사용자 캐릭터·고친 대사(GET /characters 받아 둔 것) · 바뀜 알림
   getCharacters: () => ipcRenderer.invoke('characters-get'),
   onCharacters: on('characters'),
-  localAsk: (id) => ipcRenderer.invoke('local-ask', String(id)), // 정해진 답 응원·춤 → 캐릭터 영상(POST /local/ask) // 설정 창에서 캐릭터를 바꿈 → { id }
+  localAsk: (id) => ipcRenderer.invoke('local-ask', String(id)), // 정해진 답 응원·춤 → 캐릭터 영상(POST /local/ask)
   getCharacter: () => ipcRenderer.invoke('get-character'), // 지금 캐릭터 id(데몬 state.character, 모르면 'shisa')
   getDashboard: () => ipcRenderer.invoke('get-dashboard'),
   briefingNow: () => ipcRenderer.invoke('briefing-now'),
@@ -30,7 +30,6 @@ contextBridge.exposeInMainWorld('cy', {
   directiveFrom: (ids) => ipcRenderer.invoke('directive-from', Array.isArray(ids) ? ids.map(String) : []), // 지시자 목록 저장
   researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
   refreshSources: () => ipcRenderer.invoke('refresh-sources'), // ↻: 슬랙·메일 지금 다시 읽고 할 일 반영
-  openSettings: () => ipcRenderer.send('open-settings'), // ⚙ 설정 창(모델·브리핑 출처·연결 상태)
   todoDone: (id) => ipcRenderer.invoke('todo-done', String(id)),
   todoAdd: (body) => ipcRenderer.invoke('todo-add', body),
   todoEdit: (id, patch) => ipcRenderer.invoke('todo-edit', String(id), patch),
@@ -131,5 +130,41 @@ contextBridge.exposeInMainWorld('cy', {
   focusGet: () => ipcRenderer.invoke('focus-get'),
   focusCmd: (cmd) => ipcRenderer.invoke('focus-cmd', String(cmd)),
   focusStats: (from, to) => ipcRenderer.invoke('focus-stats', String(from), String(to)),
+  // 설정 화면(renderer/settings.js)용: panel 의 cy.* 이름과 겹치지 않게 cy.settings 아래에 둔다. 메인이 패널에서 온 요청만 받는다.
+  settings: {
+    getSettings: () => ipcRenderer.invoke('settings-get'), // → { ok, data: GET /settings }
+    // patch = { models?: { quick|general|code|light: id }, briefing?: { exclude: [...] } } → { ok, status, data }
+    saveSettings: (patch) => ipcRenderer.invoke('settings-put', patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
+    getConnections: () => ipcRenderer.invoke('connections-get'),
+    checkConnection: (id) => ipcRenderer.invoke('connections-check', id == null ? null : String(id)), // id: net|claude|services|gh|local, 없으면 전부
+    // 행동 지침: 목록 · 추가 { text, scope? } · 고치기(id, { text?, scope?, active? }) · 지우기(id) → { ok, status, data }
+    getGuidelines: () => ipcRenderer.invoke('guidelines-get'),
+    addGuideline: (g) => ipcRenderer.invoke('guidelines-add', g && typeof g === 'object' ? JSON.parse(JSON.stringify(g)) : null),
+    editGuideline: (id, patch) => ipcRenderer.invoke('guidelines-edit', String(id), patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
+    deleteGuideline: (id) => ipcRenderer.invoke('guidelines-delete', String(id)),
+    getCaps: () => ipcRenderer.invoke('settings-caps'), // { claude, codex } — 이 컴퓨터에 Claude Code·Codex 가 있나
+    // [연결 해제]: 앱의 AI 저장(publicView, 키 없음) · AI 끊기(id) · 커넥터 끊기(cap) · 안내 명령 복사
+    getSisa: () => ipcRenderer.invoke('settings-sisa'),
+    disconnectBrain: (id) => ipcRenderer.invoke('settings-brain-disconnect', String(id || '')),
+    disconnectConnector: (cap) => ipcRenderer.invoke('settings-connector-disconnect', String(cap || '')),
+    // 캘린더 여러 개: 목록 { ok, items: [{ id, kind, title, label }] }(주소는 없음) · 하나 빼기(id) → { ok, items, note?, error? }
+    getCalendars: () => ipcRenderer.invoke('settings-calendars'),
+    removeCalendar: (id) => ipcRenderer.invoke('settings-calendar-remove', String(id || '')),
+    copyText: (text) => ipcRenderer.invoke('settings-copy', String(text || '')),
+    openDoc: (doc) => ipcRenderer.send('settings-open-doc', String(doc)), // docs/connect/*.md — 설치 화면에 없는 연결(메일·이슈)의 안내를 GitHub 에서
+    getAppPrefs: () => ipcRenderer.invoke('settings-app-get'), // { version, openAtLogin: { available, on, hint }, updateCheck, showInDock(맥) }
+    setAppPrefs: (patch) => ipcRenderer.invoke('settings-app-set', patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
+    startTour: () => ipcRenderer.send('settings-tour'), // 사용법 다시 보기(캐릭터 말풍선)
+    // 캐릭터: 목록(GET /characters) · 만들기 { name, from?, lines?, frame? } · 고치기(id, { name?, lines?, frame? }) · 기본값으로(id) · 지우기(id)
+    // · 그림 올리기(id, 칸, 이름, 종류, 바이트) · 그림 빼기(id, 칸) → { ok, status, data }
+    getCharacters: () => ipcRenderer.invoke('characters-list'),
+    createCharacter: (body) => ipcRenderer.invoke('characters-create', body && typeof body === 'object' ? JSON.parse(JSON.stringify(body)) : null),
+    updateCharacter: (id, body) => ipcRenderer.invoke('characters-update', String(id), body && typeof body === 'object' ? JSON.parse(JSON.stringify(body)) : null),
+    resetCharacter: (id) => ipcRenderer.invoke('characters-reset', String(id)),
+    deleteCharacter: (id) => ipcRenderer.invoke('characters-delete', String(id)),
+    putCharacterMedia: (id, slot, name, mime, bytes) => ipcRenderer.invoke('characters-media-put', String(id), String(slot), String(name), String(mime ?? ''), bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)),
+    deleteCharacterMedia: (id, slot) => ipcRenderer.invoke('characters-media-delete', String(id), String(slot)),
+    onCharacters: on('characters'),
+  },
   close: () => ipcRenderer.send('close-panel'),
 });

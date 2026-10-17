@@ -347,7 +347,6 @@ let activeRuns = [];
 let state = { bubblesHidden: false };
 let connected = false;
 let quitting = false;
-let settingsUi = null; // 설정 창(src/settings-window.js) — setupIPC 에서 만든다
 
 // 이 컴퓨터의 Claude Code·Codex(src/caps.js). Claude Code 가 없으면(Gemini·GPT 키·로컬) 코드 고치기·작업 세션은
 // 메뉴·버튼에서 빼고, 그래도 닿는 길(단축키 등)에서는 쉬운 말로 안내한다
@@ -623,6 +622,11 @@ function showPanel(section, id) {
   showOnCurrentSpace(panel, app); // 다른 데스크탑에 열려 있던 패널도 지금 데스크탑으로(#88)
 }
 
+// 말풍선·다른 창이 말한 섹션 이름으로 패널 열기. 예전 「모델」 탭은 설정의 AI 칸으로
+function openPanelAt(section) {
+  showPanel(normalizeSection(section), section === 'models' ? 'ai' : undefined);
+}
+
 // 세션 창 "원래 화면 열기": 패널을 (없으면 만들어) 앞으로 + 그 대화·할 일·제안으로
 function showOrigin(origin) {
   const o = cleanOrigin(origin);
@@ -811,7 +815,7 @@ function onSSE({ event, data }) {
     send('focus', payload);
     sendPanel('focus', payload);
   }
-  else if (event === 'open_panel') showPanel(normalizeSection(payload?.section));
+  else if (event === 'open_panel') openPanelAt(payload?.section);
   else if (event === 'status') { lastStatus = normStatus(payload?.status); pushBrain(); }
 }
 
@@ -925,7 +929,7 @@ function menuTemplate() {
       open: () => showPanel(null),
       session: openSessionMenu,
       briefing: triggerBriefing,
-      settings: () => settingsUi?.show(),
+      settings: () => showPanel('settings'),
       tour: startTour,
       toggleBubbles: () => {
         state.bubblesHidden = !state.bubblesHidden;
@@ -998,10 +1002,10 @@ function createAppMenu() {
         { label: '작업 세션 열기', accelerator: 'CmdOrCtrl+Shift+S', click: openSessionMenu },
         { label: '도움 보내기', accelerator: 'CmdOrCtrl+Shift+D', registerAccelerator: false, click: () => showDebugWindow() },
         { label: '캐릭터 보이기·숨기기', click: toggleCharacter },
-        { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => settingsUi?.show() },
+        { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => showPanel('settings') },
         { type: 'separator' },
         // ⌘W: 패널만 숨긴다(role: close 는 오버레이까지 닫아버림)
-        { label: '창 닫기', accelerator: 'CmdOrCtrl+W', click: () => { if (panel?.isFocused()) panel.hide(); else if (sessionWin?.isFocused()) sessionWin.close(); else if (settingsUi?.window?.isFocused()) settingsUi.window.close(); } },
+        { label: '창 닫기', accelerator: 'CmdOrCtrl+W', click: () => { if (panel?.isFocused()) panel.hide(); else if (sessionWin?.isFocused()) sessionWin.close(); } },
         ...(DEBUG ? [{ role: 'toggleDevTools' }, { role: 'reload' }] : []),
       ],
     },
@@ -1022,7 +1026,6 @@ function onAppActivated() {
   if (focused && focused === win) return; // 오버레이 입력창 쓰는 중
   if (focused && focused === sessionWin) return; // 작업 세션 창을 보는 중
   if (focused && focused === debugWin) return; // 도움 보내기 창
-  if (focused && focused === settingsUi?.window) return; // 설정 창을 보는 중
   if (panel && panel.isVisible() && focused === panel) return; // 이미 앞
   showPanel(null);
 }
@@ -1067,8 +1070,6 @@ function loadCharacters() {
     send('characters', r.data);
     sendPanel('characters', r.data);
     sendSession('characters', r.data);
-    const sw = settingsUi?.window;
-    if (sw && !sw.isDestroyed()) sw.webContents.send('characters', r.data);
     onCharacter(wantChar ?? charId, true);
   })().finally(() => { charactersLoading = null; });
   return charactersLoading;
@@ -1235,10 +1236,10 @@ function endDrag() {
 const fromOurs = (e) => e.sender === win?.webContents || e.sender === panel?.webContents || e.sender === sessionWin?.webContents;
 const fromDebug = (e) => e.sender === debugWin?.webContents;
 function setupIPC() {
-  // 설정 창: 모델·브리핑 출처·연결 상태(트레이 "설정…", 패널 ⚙, ⌘,)
-  settingsUi = setupSettings({
-    BrowserWindow, ipcMain, shell, request, fromOurs, debug: DEBUG,
-    openPanel: (section) => showPanel(section, section === 'setup' ? 'extras' : undefined), // 설정 창의 연결하기·설치 안내는 「더 연결하기」로(마친 사람의 끝 요약이 아니라)
+  // 패널의 설정 화면용 IPC(모델·브리핑 출처·연결 상태…): 패널에서 온 요청만 받는다. 열기는 트레이 "설정…", 앱 메뉴 ⌘,
+  setupSettings({
+    ipcMain, shell, request,
+    fromPanel: (e) => !!panel && !panel.isDestroyed() && e.sender === panel.webContents,
     startTour: () => startTour(),
     caps: () => refreshCaps(false),
     sisa: () => sisaPublic(readSisa()),
@@ -1249,8 +1250,6 @@ function setupIPC() {
     copyText: (text) => { clipboard.writeText(text); return { ok: true }; },
     appPrefs,
     upload: (method, pathname, name, mime, bytes) => uploadBytes(method, pathname, name, mime, bytes),
-    preload: path.join(__dirname, 'preload-settings.cjs'),
-    html: path.join(__dirname, 'renderer', 'settings.html'),
   });
   ipcMain.on('set-interactive', (_e, on) => {
     if (!win) return;
@@ -1489,7 +1488,7 @@ function setupIPC() {
 
   ipcMain.handle('get-character', (e) => (fromOurs(e) ? charId : null));
   // 사용자 캐릭터·고친 대사 목록(GET /characters 를 받아 둔 것). 아직 없으면 null — 받으면 'characters' 로 알린다
-  ipcMain.handle('characters-get', (e) => (fromOurs(e) || settingsUi?.isSender(e) ? charactersData : null));
+  ipcMain.handle('characters-get', (e) => (fromOurs(e) ? charactersData : null));
 
   // ---- 작업 세션 ----
   ipcMain.on('open-session', (e, runId, toolUseId) => { if (fromOurs(e)) showSession(okRunId(runId) ? runId : pickRun(lastState, activeRuns), okRunId(runId) ? toolUseId : null); });
@@ -1594,7 +1593,7 @@ function setupIPC() {
   ipcMain.handle('session-import', (e, sid) => (fromOurs(e) && okSessionId(sid) ? post('/runs/import', { sessionId: sid }) : denied()));
   // ↻ 새로고침: 터미널에서 이어 간 대화 불러오기
   ipcMain.handle('session-sync', (e, id) => (fromOurs(e) && okRunId(id) ? post(`/runs/${id}/sync`) : denied()));
-  ipcMain.on('open-panel', (e, section) => { if (fromOurs(e)) showPanel(normalizeSection(section)); });
+  ipcMain.on('open-panel', (e, section) => { if (fromOurs(e)) openPanelAt(section); });
   ipcMain.on('open-origin', (e, origin) => { if (fromOurs(e)) showOrigin(origin); });
   // 세션 창 → 원래 대화로 이어 말하기(새 채팅 run 은 그 run 에 연결)
   ipcMain.handle('session-chat', (e, body) => {

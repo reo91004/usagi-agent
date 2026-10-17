@@ -3,12 +3,20 @@ import { isSafeLink } from './bubbles.js';
 import { shapeRules } from './todo-rules.js';
 import { PRIORITIES } from './todos.js';
 
-export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'today', 'chat', 'models'];
-export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '프로젝트', todos: '할 일', today: '오늘 할 일', chat: '채팅', models: '모델' };
+export const SECTIONS = ['overview', 'projects', 'todos', 'today', 'chat', 'setup', 'settings'];
+export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '프로젝트', todos: '할 일', today: '오늘 할 일', chat: '채팅', settings: '설정' };
 
-// 모르는 섹션은 null. 예전 말풍선 open.section=scrum 은 오늘 표로
+// 사이드바 두 묶음: 자주 쓰는 화면(위) · 설정(맨 아래). 설치는 위쪽 단추로 연다
+export const NAV_BOTTOM = ['settings'];
+export function navGroups(sections) {
+  const main = sections.filter((s) => s !== 'setup' && !NAV_BOTTOM.includes(s));
+  return { main, bottom: sections.filter((s) => NAV_BOTTOM.includes(s)) };
+}
+
+// 모르는 섹션은 null. 예전 말풍선 open.section=scrum 은 오늘 표로, 모델 탭은 설정으로(AI 칸)
 export function normalizeSection(s) {
   if (s === 'scrum') return 'today';
+  if (s === 'models') return 'settings';
   return SECTIONS.includes(s) ? s : null;
 }
 
