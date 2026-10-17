@@ -453,6 +453,18 @@ test("새 Slack DM·멘션 → 바로 할 일: 새 것만 한 번 묻고, 말풍
   assert.equal(tasks.length, 1);
 });
 
+test("지시자 채널 글만 새로 오면(DM·멘션 없음) 그래도 한 번 알린다", async () => {
+  const s = setup({ ok: true }, { think: async () => { throw new Error("모델을 부르면 안 됨"); } });
+  (s.agent as any).cfg.directiveFrom = ["UPROF"];
+  s.store.db.exec("CREATE TABLE IF NOT EXISTS slack_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  s.store.upsertNode("channel:C7", "channel", "#랩", {});
+  s.store.upsertNode("message:C7:3.3", "message", "x", { channel: "C7", ts: "3.3", text: "이번 주 금요일까지 실험 결과 표 올려 주세요", author: "UPROF", authorName: "교수님", isDM: false, mentionsMe: false, fromMe: false }, new Date(Date.now() - 60e3).toISOString());
+  assert.equal(await s.agent.slackTodosNow(), 0);
+  assert.match(s.bubbles.at(-1).text, /^교수님님 지시가 왔어요: 이번 주 금요일까지/);
+  assert.equal(await s.agent.slackTodosNow(), 0); // 한 번만
+  assert.equal(s.bubbles.filter((b: any) => /지시가 왔어요/.test(b.text)).length, 1);
+});
+
 test("지시자(directiveFrom)의 DM·멘션은 바로 할 일로 넣지 않고 알림만, [할 일로]·[괜찮아요]로 정한다", async () => {
   const tasks: string[] = [];
   const s = setup({ ok: true }, {

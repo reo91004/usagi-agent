@@ -110,7 +110,9 @@ export function parseTmux(lines: string[][]): TmuxSession[] {
 
 // 공용 계정(jobDirs): 내 폴더 = 결과 폴더를 품은 폴더(…/reo/.usagi-agent/jobs → …/reo). 그 아래에서 연 세션만 남긴다. 개인 계정(기본 폴더)이면 거르지 않는다
 export function mineOnly(sessions: TmuxSession[], dir: string, home: string): TmuxSession[] {
-  if (dir === REMOTE_DIR || !home) return sessions;
+  // 공용 계정 모양(<내 폴더>/.usagi-agent/jobs)일 때만 거른다. 개인 계정에서 jobDirs 를 따로 정한 경우는 다 내 것
+  if (dir === REMOTE_DIR || !/\/\.usagi-agent\/jobs\/?$/.test(dir)) return sessions;
+  if (!home && dir.startsWith("~/")) return []; // 공용인데 내 폴더를 못 알아냄 → 남의 세션을 보이지 않는다
   const mine = (dir.startsWith("~/") ? home + dir.slice(1) : dir).replace(/\/\.usagi-agent\/jobs\/?$/, "");
   return sessions.filter((s) => s.path === mine || s.path.startsWith(`${mine}/`));
 }

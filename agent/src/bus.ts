@@ -594,7 +594,7 @@ export class Bus {
         if (!h.jobForget) return json(res, 503, { error: "research unavailable" });
         const body = await readJson(req);
         for (const k of Object.keys(body)) if (k !== "id") throw new BadRequest(`unknown key: ${k}`);
-        if (typeof body.id !== "string" || !/^job:[\w.:-]{1,200}$/.test(body.id)) throw new BadRequest("id 를 확인해 주세요");
+        if (typeof body.id !== "string" || !/^job:[\w.:@-]{1,200}$/.test(body.id)) throw new BadRequest("id 를 확인해 주세요");
         return h.jobForget(body.id) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no job record" });
       }
       // 긴 작업 끝: { name, seconds, code(null = 모름) } → 캐릭터 말풍선
