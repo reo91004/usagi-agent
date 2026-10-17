@@ -181,6 +181,11 @@ test("syncRemoteSessions: 거른 파일(프로그램 세션)은 판정을 기록
   await syncRemoteSessions("g", { run, fetch, root });
   assert.equal(seen.length, 2);
   assert.ok(seen[1].includes("auto.jsonl") && !seen[1].includes("h.jsonl"));
+  writeFileSync(join(root, "g", ".judged.json"), "{깨짐"); // 깨진 기록은 처음부터 다시 판정(동기화는 멈추지 않는다)
+  await syncRemoteSessions("g", { run, fetch, root });
+  assert.equal(seen.length, 3);
+  await syncRemoteSessions("g", { run, fetch, root, mine: "~/reo" }); // 공용 계정 내 폴더가 바뀌면 다시 판정
+  assert.equal(seen.length, 4);
 });
 
 test("syncRemoteSessions: 공용 계정 이름이 이상하면 ssh 전에 멈춘다", async () => {

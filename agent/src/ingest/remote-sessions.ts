@@ -122,7 +122,9 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
   const all = parseList(await run(["--", host, listCmd()], 30e3));
   // 판정: 맥에 이미 있으면 받기로 한 파일, JUDGED 에 있으면 거른 파일(그때 크기의 2배 넘게 자라면 다시 본다 — 공용 계정에서 홈에서 시작해 내 폴더로 옮겨 오는 세션)
   const judgedPath = join(base, JUDGED);
-  const judged: Record<string, number> = existsSync(judgedPath) ? JSON.parse(readFileSync(judgedPath, "utf8")) : {};
+  // 깨졌거나 공용 계정 내 폴더(mine)가 바뀌었으면 처음부터 다시 판정한다
+  let judged: Record<string, number> = {};
+  try { const j = JSON.parse(readFileSync(judgedPath, "utf8")); if (j?.mine === (mine ?? null) && j.files && typeof j.files === "object") judged = j.files; } catch { /* 없거나 깨짐 */ }
   const fresh = all.filter((f) => !existsSync(join(base, f.rel)) && !(f.rel in judged && f.size <= 2 * judged[f.rel]));
   const wanted = new Set<string>();
   for (let i = 0; i < fresh.length; i += BATCH) {
@@ -132,7 +134,7 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
   const nextJudged: Record<string, number> = {};
   for (const f of all) if (!wanted.has(f.rel) && f.rel in judged) nextJudged[f.rel] = judged[f.rel];
   for (const f of fresh) if (!wanted.has(f.rel)) nextJudged[f.rel] = f.size;
-  if (fresh.length || Object.keys(judged).length !== Object.keys(nextJudged).length) { mkdirSync(base, { recursive: true, mode: 0o700 }); writeFileSync(judgedPath, JSON.stringify(nextJudged)); }
+  if (fresh.length || Object.keys(judged).length !== Object.keys(nextJudged).length || !existsSync(judgedPath)) { mkdirSync(base, { recursive: true, mode: 0o700 }); writeFileSync(judgedPath, JSON.stringify({ mine: mine ?? null, files: nextJudged })); }
   const files = all.filter((f) => !(f.rel in nextJudged));
   const keep = new Set<string>();
   const todo: FetchItem[] = [];
