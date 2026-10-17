@@ -68,6 +68,19 @@ const dropBins = (dir) => {
   }
 };
 dropBins(path.join(AGENT, 'node_modules'));
+// 앱 용량 줄이기: 런타임에 아무도 불러오지 않는 패키지(Agent SDK 의 선택적 피어·타입 전용 라이브러리)와,
+// Node 가 node_modules 에선 읽지 않는 타입·소스맵·문서·TS 원본. 라이선스 파일은 남긴다. undici 는 Slack 소켓 모드가 불러서 남긴다
+for (const n of ['@anthropic-ai/sdk', 'json-schema-to-ts', '@babel/runtime', 'ts-algebra', 'standardwebhooks', '@stablelib', 'fast-sha256', '@types', 'undici-types']) {
+  fs.rmSync(path.join(AGENT, 'node_modules', n), { recursive: true, force: true });
+}
+const pruneFiles = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) pruneFiles(p);
+    else if (!/^licen[cs]e/i.test(e.name) && /(\.d\.[cm]?ts|\.map|\.md|\.markdown|(?<!\.d)\.[cm]?ts)$/i.test(e.name)) fs.rmSync(p);
+  }
+};
+pruneFiles(path.join(AGENT, 'node_modules'));
 const links = execFileSync('find', [AGENT, '-type', 'l'], { encoding: 'utf8' }).trim();
 if (links) throw new Error(`데몬 폴더에 심볼릭 링크가 남았어요(서명이 깨져요):\n${links}`);
 // 다른 플랫폼용 바이너리가 섞여 들어오면 뺀다
@@ -140,6 +153,11 @@ const paths = await packager({
 const APP = path.join(paths[0], `${APP_NAME}.app`);
 for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run', 'Contents/Resources/bin/usagi-eventkit']) {
   if (!fs.existsSync(path.join(APP, need))) throw new Error(`앱 번들에 ${need} 가 없어요`);
+}
+
+// Electron 언어 파일(220개 가까이)은 한국어·영어만 남긴다. 다른 언어 맥에서는 Electron 기본(영어)으로 보인다
+for (const res of [path.join(APP, 'Contents', 'Frameworks', 'Electron Framework.framework', 'Versions', 'A', 'Resources'), path.join(APP, 'Contents', 'Resources')]) {
+  for (const d of fs.readdirSync(res)) if (d.endsWith('.lproj') && !/^(en|ko)([_-].*)?\.lproj$/i.test(d)) fs.rmSync(path.join(res, d), { recursive: true, force: true });
 }
 
 // packager 가 CFBundleDisplayName 을 실행 파일 이름(usagi)으로 덮어써서 서명 전에 다시 쓴다(Spotlight·Launchpad 이름)
