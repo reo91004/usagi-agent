@@ -82,6 +82,10 @@ test("pullJobs: 끝난 것(D)은 읽고 지우고, 도는 것(R)은 두되 끊�
 test("parseJobDone·parseRunning: 덧붙는 칸은 믿지 않는 입력 — 이상한 칸만 빼고, 파일은 8개까지", () => {
   const j = parseJobDone({ name: "a", seconds: 1, code: 0, id: "../x", cwd: "  /h/e\nx ", cmd: 3, start: -1, files: ["a", 2, "", ...Array(20).fill("f")] });
   assert.deepEqual(j, { name: "a", seconds: 1, code: 0, cwd: "/h/e x", files: ["a", "f", "f", "f", "f", "f", "f", "f"] });
+  // 명령·이름(-n 없으면 명령 전체)의 비밀값은 저장 전에 가린다
+  const secret = parseJobDone({ name: "python t.py --hf-token hf_abcdefgh", seconds: 1, code: 0, cmd: "WANDB_API_KEY=abcd1234ef python t.py --token xyz123456 --api-key=k1234567" });
+  assert.equal(secret!.cmd, "WANDB_API_KEY=«redacted» python t.py --token «redacted» --api-key=«redacted»");
+  assert.equal(secret!.name, "python t.py --hf-token «redacted»");
   assert.equal(parseRunning({ name: "a", id: "1", start: 1.5 }, "h", true), null);
   assert.equal(parseRunning({ name: "", id: "1", start: 1 }, "h", true), null);
 });

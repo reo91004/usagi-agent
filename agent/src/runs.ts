@@ -149,7 +149,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, // JWT
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
 ];
-const SECRET_KV = /((?:password|passwd|secret|token|api[_-]?key|authorization|bearer)["']?\s*[:=]\s*["']?(?:Bearer\s+)?|Bearer\s+)([^\s"',}]{6,})/gi;
+const SECRET_KV = /((?:password|passwd|secret|token|api[_-]?key|authorization|bearer)["']?\s*[:=]\s*["']?(?:Bearer\s+)?|--[\w-]*(?:password|passwd|secret|token|api[_-]?key)\s+|Bearer\s+)([^\s"',}]{6,})/gi;
 export function redact(s: string): string {
   let out = s;
   for (const p of SECRET_PATTERNS) out = out.replace(p, "«redacted»");
