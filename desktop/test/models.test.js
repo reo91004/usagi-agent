@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizeSisa, connectedProviders, activeProvider, brainOf, publicView, withKey, withCli, withSkip, withModels, withVoice, isModelId,
+  normalizeSisa, connectedProviders, activeProvider, publicView, withKey, withCli, withSkip, withModels, withVoice, isModelId,
 } from '../src/sisa-store.js';
 import { SISA_BASE } from '../src/persona.js';
 import { CANNED_DEFAULTS } from '../src/canned.js';
@@ -13,7 +13,7 @@ const KEY = 'AIzaSyExampleExampleExample';
 test('예전 저장 모양(provider + apiKey)도 읽는다', () => {
   const d = normalizeSisa({ provider: 'gemini', apiKey: KEY, persona: 'p' });
   assert.deepEqual(connectedProviders(d), ['gemini']);
-  assert.equal(brainOf(d).key, KEY);
+  assert.equal(publicView(d).hasKey, true);
 });
 
 test('AI를 여러 개 연결해 두고 하나를 채팅에 쓴다', () => {
@@ -22,9 +22,8 @@ test('AI를 여러 개 연결해 두고 하나를 채팅에 쓴다', () => {
   assert.deepEqual(connectedProviders(d), ['gemini', 'claudecode']);
   assert.equal(activeProvider(d), 'claudecode');
   const next = withModels(d, { chat: { provider: 'gemini', model: 'gemini-2.5-flash' } });
-  assert.equal(brainOf(next).provider, 'gemini');
-  assert.equal(brainOf(next).model, 'gemini-2.5-flash');
-  assert.equal(brainOf(withModels(next, { chat: { provider: 'gemini', model: 'default' } })).model, '');
+  assert.equal(publicView(next).provider, 'gemini');
+  assert.equal(publicView(next).chatModels.gemini, 'gemini-2.5-flash');
 });
 
 test('연결 안 된 AI나 이상한 모델 이름은 거절한다', () => {
@@ -38,7 +37,6 @@ test('연결 안 된 AI나 이상한 모델 이름은 거절한다', () => {
 
 test('안 쓰기로 하면 채팅 AI가 없다. 연결은 남는다', () => {
   const d = withSkip(withKey({}, 'claude', 'sk-ant-abcdefghij'));
-  assert.equal(brainOf(d), null);
   assert.equal(publicView(d).hasKey, false);
   assert.deepEqual(publicView(d).connected, ['claude']);
 });

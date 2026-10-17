@@ -234,19 +234,9 @@ export const SETUP_STEPS = [
   },
 ];
 
-const STEP_IDS = new Set(SETUP_STEPS.map((s) => s.id));
-
-export function stepById(id) {
-  return SETUP_STEPS.find((s) => s.id === id) ?? SETUP_STEPS[0];
-}
-
 export function stepForCap(cap) {
   const step = SETUP_STEPS.find((s) => s.cap === cap);
   return step ? step.id : 'welcome';
-}
-
-export function isSetupStep(id) {
-  return STEP_IDS.has(id);
 }
 
 // 처음 설치: Slack·캘린더가 둘 다 아직 준비가 안 됐을 때만 마법사를 연다.
@@ -256,10 +246,4 @@ export function needsSetup(connectors) {
   const want = ['slack', 'calendar'];
   const rows = connectors.filter((c) => c && want.includes(c.cap));
   return rows.length === want.length && rows.every((c) => c.ready !== true);
-}
-
-export function readyCaps(connectors) {
-  const set = new Set();
-  for (const c of connectors ?? []) if (c && c.ready === true && typeof c.cap === 'string') set.add(c.cap);
-  return set;
 }

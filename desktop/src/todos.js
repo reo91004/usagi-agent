@@ -36,17 +36,6 @@ export function clampPriority(p) {
   return Number.isFinite(n) ? Math.min(4, Math.max(1, n)) : 2;
 }
 
-// 상세 편집(링크·메모) 저장 시 바뀐 필드만. 오류면 { error }
-export function detailPatch(todo, draft) {
-  const link = cleanLink(draft.link);
-  if (link === undefined) return { error: '링크는 http(s) 또는 slack 주소만 돼요' };
-  const note = cleanNote(draft.note);
-  const patch = {};
-  if (link !== (todo.linkRaw || null)) patch.link = link;
-  if (note !== (todo.note || null)) patch.note = note;
-  return { patch };
-}
-
 // 새 할 일 입력 → POST /todos 본문. 제목이 없으면 null
 export function newTodoBody(title, priority) {
   const t = cleanTitle(title);

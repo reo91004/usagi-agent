@@ -125,7 +125,7 @@ test('stopped: 끝난 것으로 치고(바쁨 해제) 답 메시지는 안 붙�
 });
 
 test('대기 중(queued): 기다리는 말은 queued, thinking 이 오면 돌기 시작 — 늦게 온 queued 는 무시', async () => {
-  const { queuedIds, isRunning, localState, runningIds, stopTargets, sendButton } = await import('../src/chat.js');
+  const { queuedIds, isRunning, localState, stopTargets, sendButton } = await import('../src/chat.js');
   const A = '11111111-1111-4111-8111-111111111111', B = '22222222-2222-4222-8222-222222222222';
   let s = run([ev({ chatId: A, threadId: 't', status: 'thinking' }), ev({ chatId: A, threadId: 't', status: 'step', step: 'git.log' }), ev({ chatId: B, threadId: 't', status: 'queued' })]);
   // POST 응답(accepted)이 queued 보다 늦게 와도 대기 중은 그대로
@@ -135,7 +135,6 @@ test('대기 중(queued): 기다리는 말은 queued, thinking 이 오면 돌기
   assert.equal(localState(s, A), 'running');
   assert.equal(localState(s, null), 'sending');
   assert.equal(localState(s, 'gone'), 'done');
-  assert.deepEqual(runningIds(s, 't'), [A]);
   assert.equal(latestStep(s, 't'), 'git.log', '기다리는 말은 진행 표시에서 뺀다');
   assert.ok(isBusy(s, 't') && isRunning(s, 't'));
   assert.deepEqual(stopTargets(s, 't'), [A, B], '멈추기는 기다리는 것까지');

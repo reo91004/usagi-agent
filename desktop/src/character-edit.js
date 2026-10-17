@@ -102,8 +102,6 @@ export function diffLines(base, edited) {
   for (const [p, v] of Object.entries(b)) if (JSON.stringify(a[p]) !== JSON.stringify(v)) out[p] = v;
   return unflattenLines(out);
 }
-// 고친 칸 수(배지·「기본값으로」)
-export const changedCount = (base, edited) => Object.keys(flattenLines(diffLines(base, edited))).length;
 
 // ---- 그림 칸 ----
 const SLOT_LABEL = { eyes_open: '눈 뜬 모습', eyes_closed: '눈 감은 모습', cheer: '응원', dance: '춤', study: '집중', plan: '일정 알림' };

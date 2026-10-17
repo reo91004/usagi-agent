@@ -70,17 +70,6 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
 
 export const sameView = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-// 뇌 없이 더블클릭했을 때 말풍선(누르면 설치 단계로)
-export function noBrainBubble(view) {
-  const login = view?.provider === 'claude-code' && view?.known;
-  const text = login
-    ? 'Claude Code 로그인이 아직이에요. 로그인하면 저랑 얘기할 수 있어요'
-    : view?.local
-      ? '지금은 AI 없이 쓰는 중이라 정해진 말만 할 수 있어요. 설정에서 뇌(AI)를 연결하면 무엇이든 물어볼 수 있어요'
-      : '자유롭게 얘기하려면 뇌(AI)를 연결해 주세요. AI 없이도 할 일과 회의 알림은 그대로 돼요';
-  return { id: 'local-no-brain', text, kind: 'info', ttlMs: 9000, open: { section: 'setup', id: 'brain' }, openLabel: '연결하기' };
-}
-
 // 입력창 자리에 보일 연결 안내 카드
 export function connectCard(view) {
   return {

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clickTarget, pickRun, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl, readOnlyReason,
-  initialTranscript, addEvents, hasGap, buildItems, toolsSummary, shortTool, diffLines,
+  initialTranscript, addEvents, buildItems, toolsSummary, shortTool, diffLines,
   isAtBottom, initialScroll, scrollReducer, composerKey, cleanMessage, okRunId, kindIcon,
   composerMode, awaitingFollowUp, isRoutine, groupRuns, routineHeader, shortWhen, lineage, pickInitial, cleanTask,
 } from '../src/session.js';
@@ -65,16 +65,13 @@ test('입력 가능 여부·읽기 전용 안내', () => {
   assert.match(readOnlyReason(run({ interactive: false })), /마무리/);
 });
 
-test('기록 모델: seq 정렬·중복 제거·빈틈 감지', () => {
+test('기록 모델: seq 정렬·중복 제거', () => {
   let t = initialTranscript('r1');
   t = addEvents(t, [{ seq: 2, type: 'assistant', text: 'b' }, { seq: 1, type: 'user', text: 'a' }]);
   assert.deepEqual(t.events.map((e) => e.seq), [1, 2]);
   assert.equal(t.lastSeq, 2);
   const same = addEvents(t, [{ seq: 2, type: 'assistant', text: 'dup' }]);
   assert.equal(same, t);
-  assert.equal(hasGap(t), false);
-  assert.equal(hasGap(addEvents(t, [{ seq: 4, type: 'assistant' }])), true);
-  assert.equal(hasGap(addEvents(initialTranscript(), [{ seq: 3, type: 'assistant' }])), true);
 });
 
 test('화면 줄: tool_use+결과 한 줄, 이어지는 도구는 한 묶음, assistant 조각 합치기, thinking 없음', () => {

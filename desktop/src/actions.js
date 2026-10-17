@@ -283,12 +283,6 @@ export function actionButtons(a, local = null) {
   ];
 }
 
-// 말풍선 한 줄(오버레이): 물음까지
-export function bubbleText(a) {
-  const v = cardView(a);
-  return v.question ? `${v.head} — ${v.question}` : `${v.status ?? ''} — ${v.head}`;
-}
-
 // 확인/취소 결과(IPC 응답) → 다음 카드 + 오류
 export function decideResult(a, decision, r) {
   if (r?.ok && r.data?.action) return { action: normalizeAction(r.data.action) ?? a, error: null };

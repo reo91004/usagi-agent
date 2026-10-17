@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   redact, createRing, attachConsole, formatLogLine, formatHeader, shapeConnectorsSafe,
-  assembleBundle, compactQrPayload, pickErrorLines, tailText, collectLogFiles,
+  assembleBundle, compactQrPayload, pickErrorLines, collectLogFiles,
   debugFileName, SPEECH, QR_MAX_BYTES, utf8Bytes,
 } from '../src/debug-share.js';
 import { encode } from '../renderer/vendor/qr.js';
@@ -148,14 +148,6 @@ test('QR 요약은 용량을 넘기면 줄을 줄인다', () => {
 test('오류 줄만 고른다', () => {
   const t = ['ok hello', '[warn] a', '[error] b', 'load failed 3', 'just info'].join('\n');
   assert.deepEqual(pickErrorLines(t, 10), ['[warn] a', '[error] b', 'load failed 3']);
-});
-
-test('꼬리만 남긴다', () => {
-  const s = 'AAAA\n' + 'b'.repeat(50);
-  assert.equal(tailText(s, 1000), s);
-  const t = tailText(s, 20);
-  assert.match(t, /생략/);
-  assert.equal(t.includes('AAAA'), false);
 });
 
 test('로그 폴더: 없으면 안내, 있으면 꼬리만', () => {
