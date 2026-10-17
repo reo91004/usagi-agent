@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import { Bus } from "./bus.ts";
-import { AGY_ALLOW, agyPaths, ensureAgyMcp, mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
+import { AGY_ALLOW, agyPaths, ensureAgyMcp, mcpHandler, mcpToken, mcpUrl, openGate, type GateConnect, type GateDecide } from "./mcp-http.ts";
 import { agyExec, codexExec, setAgyMcpHome, setCliMcpUrl, type ExecFileLike } from "./providers.ts";
 
 test("mcpToken: 64자리 hex 를 권한 600 으로 한 번 만들고 다시 쓴다", () => {
@@ -103,5 +103,47 @@ test("codex·agy: mcp 실행(채팅)만 우사기 도구를 붙이고 안내를 
   } finally {
     setCliMcpUrl(undefined);
     setAgyMcpHome(undefined);
+  }
+});
+
+test("#65 문지기: 열쇠·서버가 맞아야 붙고, 닫히거나 끊기면 허용이 나와도 진짜 서버에 넘기지 않는다", async () => {
+  const bus = new Bus();
+  const token = "9".repeat(64);
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", mcp: mcpHandler(token, () => []) });
+  const port = (bus.server!.address() as any).port as number;
+  const calls: unknown[] = [];
+  let closed = 0;
+  const connect = (async () => ({
+    listTools: async () => ({ tools: [{ name: "send_email", inputSchema: { type: "object" } }] }),
+    callTool: async (p: unknown) => { calls.push(p); return { content: [{ type: "text", text: "sent" }] }; },
+    close: async () => { closed++; },
+  })) as unknown as GateConnect;
+  // 결정: 멈춤 신호가 오면 그때 "허용"을 돌려준다(허용이 늦게 나와도 넘기지 않는지)
+  let seen: AbortSignal | undefined;
+  const decide: GateDecide = (_t, _a, signal) => { seen = signal; return new Promise((r) => signal.addEventListener("abort", () => r({ allow: true }), { once: true })); };
+  const gate = openGate([{ name: "gmail", caps: ["메일"], tools: ["search_emails"], def: { command: "x", args: [], env: {} } }], decide, connect);
+  const base = mcpUrl(port, token);
+  const status = (url: string) => fetch(url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }).then((r) => r.status);
+  try {
+    assert.equal(await status(`${base}/${"0".repeat(64)}/gmail`), 404); // 모르는 열쇠
+    assert.equal(await status(`${base}/${gate.key}/other`), 404); // 이 실행에 없는 서버
+    assert.equal(await status(`${base}/${gate.key}`), 404);
+    assert.equal(await status(`http://127.0.0.1:${port}/mcp/${"8".repeat(64)}/${gate.key}/gmail`), 403); // 토큰이 틀리면
+    const client = new Client({ name: "t", version: "1" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/${gate.key}/gmail`)));
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["send_email"]);
+    const p = client.callTool({ name: "send_email", arguments: { to: "a@b" } });
+    for (let k = 0; k < 200 && !seen; k++) await new Promise((r) => setTimeout(r, 5));
+    gate.close(); // 실행이 끝남 → 기다리던 결정에 멈춤 신호
+    const r = await p;
+    assert.equal(r.isError, true);
+    assert.equal(calls.length, 0);
+    assert.equal(seen?.aborted, true);
+    assert.equal(closed, 1); // 띄운 서버도 닫는다
+    assert.equal(await status(`${base}/${gate.key}/gmail`), 404);
+    await client.close();
+  } finally {
+    gate.close();
+    bus.close();
   }
 });

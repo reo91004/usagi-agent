@@ -20,6 +20,7 @@ import { registeredMcpServerNames } from "./mcp.ts";
 import { sessionsAllowed } from "./onboarding.ts";
 import { CONNECTORS, brainAllowedTools, mcpTool, type Connectors } from "./connectors.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
+import type { GateDecide } from "./mcp-http.ts";
 import { CODE_TOOLS, isCodeReadCall, insideRoots } from "./code-read.ts";
 import { loadInstructions } from "./instructions.ts";
 import { profileContext } from "./profile.ts";
@@ -316,7 +317,7 @@ export async function ask<T>(
 
 export const TEXT_SCHEMA = { type: "object", additionalProperties: false, required: ["reply"], properties: { reply: { type: "string", description: "사용자에게 보낼 답(마크다운)" } } } as const;
 
-// local·gemini·openai·genspark·codex·agy: SDK 없이 JSON만(codex·agy 채팅은 MCP 도구 — 맥락 도구 + 사용자 MCP 읽기). 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
+// local·gemini·openai·genspark·codex·agy: SDK 없이 JSON만(codex·agy 채팅은 MCP 도구 — 맥락 도구 + 사용자 MCP, Codex 는 쓰기도 승인 카드로). 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
 async function askOther<T>(provider: string, cfg: Config, prompt: string, schema: unknown, onStep: ((s: string) => void) | undefined, opts: AskOpts, spec: AskRun): Promise<T> {
   // genspark: 실제 모델은 GET /models 목록을 받은 뒤 정한다(providers.ts gensparkJson) — 기록엔 고른 이름이나 "genspark"
   const model = provider === "local" ? "local" : provider === "codex" || provider === "agy" ? provider : provider === "genspark" ? ((opts.model ?? "").trim() || "genspark") : provider === "anthropic" ? resolveAnthropicModel(cfg.models?.general, opts.model) : resolveHttpModel(provider as "gemini" | "openai", cfg.models?.general, opts.model);
@@ -329,14 +330,29 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
       return localThought(facts.now ?? new Date(), facts.open ?? [], facts.done ?? []) as T;
     }
     const system = withCharacter(opts.system); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
-    // 채팅이면 맥락 도구 + 사용자 MCP 연결(읽기 도구만 — cli-mcp.ts). Codex·agy 만 도구를 받는다
-    const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}) } : {};
+    // 채팅이면 맥락 도구 + 사용자 MCP 연결(cli-mcp.ts). Codex·agy 만 도구를 받는다 — agy 는 읽기 도구만, Codex 는 문지기(codexGate)를 거쳐 쓰기도
+    const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}), ...(provider === "codex" ? { gate: codexGate(cfg, opts, run, onStep) } : {}) } : {};
     if (schema === null) {
       const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
     return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
   });
+}
+
+// Codex 채팅이 사용자 MCP 도구를 부를 때(mcp-http.ts openGate): Claude Code 뇌의 canUseTool 과 같은 브로커 판정 —
+// 읽기·[항상 허용]은 바로, 쓰기는 이 대화에 승인 카드를 띄우고 기다린다(거부·10분·대화 멈춤 → 거부). 브로커가 없으면 사용자 MCP 를 안 붙인다
+function codexGate(cfg: Config, opts: AskOpts, run: RunHandle, onStep?: (s: string) => void): GateDecide | undefined {
+  const broker = opts.interactive?.broker ?? getBroker();
+  if (!broker || !opts.interactive) return undefined;
+  const origin = withRunOrigin(opts.interactive.origin, { id: run.id, origin: currentRunContext()?.origin });
+  const brainDir = join(HOME_DIR, "brain");
+  const pctx = { roots: cfg.repoRoots, brainDir, cwd: brainDir, port: cfg.port };
+  const steps = permWaitSteps(origin.via, onStep);
+  return async (toolName, args, signal) => {
+    const r = await broker.decide(toolName, args, origin, pctx, opts.abort ? AbortSignal.any([signal, opts.abort.signal]) : signal, steps.onWait);
+    return r.behavior === "allow" ? { allow: true } : { deny: r.message };
+  };
 }
 
 // 백그라운드 에이전트 run(bg-agents.ts): 세션 창·대화 속 카드가 서브에이전트와 같은 모양으로 보이게
