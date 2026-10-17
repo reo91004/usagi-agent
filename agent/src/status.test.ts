@@ -66,7 +66,7 @@ test("뇌 바꾸기는 데몬을 다시 켜지 않아도 바로: PUT /settings b
     const r = await fetch(`${base}/settings`, { method: "PUT", headers: { "x-cy-agent": "1", "content-type": "application/json" }, body: JSON.stringify({ brain: { provider: "gemini", keys: { gemini: "AIza-test-key-123456" }, model: "gemini-2.5-pro" } }) });
     assert.equal(r.status, 200);
     const body = await r.json();
-    assert.deepEqual(body.settings.brain, { provider: "gemini", model: "gemini-2.5-pro", keys: { gemini: true, openai: false, anthropic: false, genspark: false } });
+    assert.deepEqual(body.settings.brain, { provider: "gemini", model: "gemini-2.5-pro", fallback: [], keys: { gemini: true, openai: false, anthropic: false, genspark: false } });
     assert.equal(JSON.stringify(body).includes("AIza"), false, "키는 돌려주지 않는다");
     const st = await (await fetch(`${base}/status`)).json();
     assert.deepEqual([st.brain.provider, st.chat], ["gemini", true]);

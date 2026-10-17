@@ -1,4 +1,5 @@
 // 데몬 엔트리포인트: 버스 + Slack + 주기 작업(세션·Slack 수집, 프로필 학습, 브리핑)
+import { BRAIN_LABEL, onBrainSwitch } from "./brain-fallback.ts";
 import { installFileLog, stallLag } from "./log.ts";
 import { loadConfig } from "./config.ts";
 import { DEFAULT_TODAY_REMINDER } from "./daily-plan.ts";
@@ -54,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
-import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
+import { BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
 import { ctxTools } from "./ctx-tools.ts";
 import { briefingHours } from "./calendar.ts";
@@ -190,6 +191,11 @@ function pushStatus() {
   if (cfg.brain.provider === "claude-code" && connections.claudeLoggedIn() === undefined) void probeClaude();
   bus.statusChanged(status());
 }
+onBrainSwitch(({ from, to, reason }) => { // 한도·인증으로 다음 뇌로 넘어갈 때 한 번
+  const why = reason instanceof BrainLimitError ? "사용량을 다 써서" : "연결이 안 돼서";
+  bus.bubble({ id: `brain-switch:${from}`, kind: "info", ttlMs: 15e3, text: `${BRAIN_LABEL[from] ?? from} ${why} ${BRAIN_LABEL[to] ?? to} 로 이어서 할게요` });
+  pushStatus();
+});
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 

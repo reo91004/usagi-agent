@@ -7,7 +7,7 @@
 import type { Config } from "./config.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, commandOnPath, creditFailText, type KeyProvider } from "./providers.ts";
 import { CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
-import { BRAIN_LABEL } from "./connections.ts";
+import { BRAIN_LABEL, activeBrain, brainCooldowns } from "./brain-fallback.ts";
 import { NEEDS_CODER, featureBrain, withMcpBrain, type FeatureBrain } from "./feature-brain.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
 import { WAIT_SETUP } from "./onboarding.ts";
@@ -18,6 +18,9 @@ export type BrainStatus = {
   ready: boolean | null; // null = 아직 모름(Claude Code 로그인 확인 전)
   local: boolean;        // 로컬 뇌(모델 없음) — 정해진 말·할 일 읽기만
   detail: string;
+  // brain.fallback 을 쓰거나 한도로 쉬는 뇌가 있을 때만: 지금 실제로 쓰는 뇌 · 쉬는 뇌와 다시 쓸 수 있는 시각(ms)
+  active?: string;
+  cooling?: { provider: string; until: number }[];
 };
 export type Features = {
   // 끝난 할 일 판정·할 일 진행 확인·지식그래프·프로필 학습. by = 돌리는 뇌(null = 안 돎)
@@ -67,6 +70,7 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요"
     : `${KEY_LABEL[provider] ?? label} API 키가 없어요`;
   const local = provider === "local";
+  const cooling = Object.entries(brainCooldowns()).map(([p, until]) => ({ provider: p, until }));
   const conns = cfg.connectors ?? CONNECTORS;
   const st = withMcpBrain(cfg, connectorStatus(conns, deps.hasServer), () => deps.cliServers?.() ?? cliMcpServers(conns).map((s) => s.name));
   const codex = commandOnPath("codex", env);
@@ -80,7 +84,7 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
   const cliBrain = provider === "codex" || provider === "agy";
   const mcp = provider === "claude-code" || cliBrain;
   return {
-    brain: { provider, label, ready, local, detail },
+    brain: { provider, label, ready, local, detail, ...(cooling.length || cfg.brain?.fallback?.length ? { active: activeBrain(cfg), cooling } : {}) },
     chat: local ? false : ready,
     coder: { claude: claude ?? null, codex, agy },
     features: { background, mcp, code: provider === "codex" ? codex : provider === "agy" ? agy : claude ?? null },
