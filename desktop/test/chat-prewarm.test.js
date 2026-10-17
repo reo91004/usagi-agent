@@ -30,9 +30,9 @@ test('맥은 창 애니메이션을 꺼 둔다 — 입력창을 닫는 win.blur(
   const calls = [];
   const run = buildHandler(args, {
     process: { platform: 'darwin' },
-    systemPreferences: { setUserDefault: (...a) => calls.push(a) },
+    systemPreferences: { setUserDefault: (...a) => calls.push(a), subscribeWorkspaceNotification: (...a) => calls.push(a[0]) },
     session: { defaultSession: { setSpellCheckerEnabled() { throw new Error('stop'); } } },
   });
   assert.throws(run, /stop/);
-  assert.deepEqual(calls, [['NSAutomaticWindowAnimationsEnabled', 'boolean', false]]);
+  assert.deepEqual(calls, [['NSAutomaticWindowAnimationsEnabled', 'boolean', false], 'NSWorkspaceActiveSpaceDidChangeNotification']);
 });
