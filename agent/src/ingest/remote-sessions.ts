@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "../config.ts";
-import { okJobHost, runSsh, sshArgs, type RunSsh } from "../jobs.ts";
+import { okJobDir, okJobHost, runSsh, sshArgs, type RunSsh } from "../jobs.ts";
 
 export const SINCE_DAYS = 14; // ingestSessions 기본 창과 같다
 export const REMOTE_ROOT = join(HOME_DIR, "remote-sessions");
@@ -25,8 +25,13 @@ export const sessionDirs = (cfg: Pick<Config, "claudeProjectsDir" | "codexSessio
   ...cfg.sessionHosts.map((host) => ({ ...remoteSessionDirs(host, root), host })),
 ];
 
-// 「크기 상대경로」 한 줄씩(POSIX find·wc 만). 폴더가 없으면 빈 출력
-const LIST_CMD = `cd && find .claude/projects .codex/sessions -type f -name '*.jsonl' -mtime -${SINCE_DAYS} -exec wc -c {} + 2>/dev/null; true`;
+// 「크기 상대경로」 한 줄씩(POSIX find·grep·wc 만). 폴더가 없으면 빈 출력.
+// mine(공용 계정의 내 폴더, jobs.ts sharedMineDir): 기록 안에 cwd 가 내 폴더나 그 아래인 파일만 — 남의 세션은 이 맥으로 받지 않는다.
+//   cwd 는 앞쪽에 없을 수 있어(긴 제목 줄, 홈에서 시작해 옮겨 간 세션) 파일 전체를 보되 grep -l 은 첫 일치에서 멈춘다. mine 은 okJobDir 를 지난 글자뿐이라 따옴표로 넣는다
+const FIND = `find .claude/projects .codex/sessions -type f -name '*.jsonl' -mtime -${SINCE_DAYS}`;
+export const listCmd = (mine?: string) => !mine
+  ? `cd && ${FIND} -exec wc -c {} + 2>/dev/null; true`
+  : `cd && M=${mine.startsWith("~/") ? `"$HOME"/'${mine.slice(2)}'` : `'${mine}'`} && ${FIND} -exec grep -lF -e "\\"cwd\\":\\"$M\\"" -e "\\"cwd\\":\\"$M/" {} + 2>/dev/null | while IFS= read -r f; do wc -c "$f"; done; true`;
 const SAFE_REL = /^\.(claude\/projects|codex\/sessions)\/[A-Za-z0-9_.\/-]+\.jsonl$/;
 
 export type RemoteFile = { rel: string; size: number };
@@ -100,11 +105,13 @@ function* walk(dir: string): Generator<string> {
 }
 
 // 한 서버의 기록을 맞춘다. 반환: 새로 받거나 늘어난 파일 수. 연결이 끊기면 던진다(다음 차례에 이어서 받는다)
-export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fetch?: FetchBatch; root?: string } = {}): Promise<number> {
+// mine: 공용 계정이면 내 폴더(listCmd)
+export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fetch?: FetchBatch; root?: string; mine?: string } = {}): Promise<number> {
   if (!okJobHost(host)) throw new Error(`sessionHosts 이름이 이상해요: ${host}`);
-  const { run = runSsh, fetch = fetchBatch, root = REMOTE_ROOT } = deps;
+  const { run = runSsh, fetch = fetchBatch, root = REMOTE_ROOT, mine } = deps;
+  if (mine !== undefined && !okJobDir(mine)) throw new Error(`jobDirs 경로가 이상해요: ${mine}`);
   const base = join(root, host);
-  const files = parseList(await run(["--", host, LIST_CMD], 30e3));
+  const files = parseList(await run(["--", host, listCmd(mine)], 30e3));
   const keep = new Set<string>();
   const todo: FetchItem[] = [];
   for (const f of files) {

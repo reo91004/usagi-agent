@@ -40,7 +40,7 @@ import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
-import { hostBackoff, jobBubble, jobNodeId, jobProps, pullJobs, tmuxSeen, type JobDone, type RunningJob } from "./jobs.ts";
+import { hostBackoff, jobBubble, jobNodeId, jobProps, pullJobs, sharedMineDir, tmuxSeen, type JobDone, type RunningJob } from "./jobs.ts";
 import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
@@ -625,7 +625,7 @@ async function pollSessionHosts() {
     for (const host of cfg.sessionHosts) {
       if (!sessionBackoff.due(host)) continue;
       try {
-        got += await syncRemoteSessions(host);
+        got += await syncRemoteSessions(host, { mine: sharedMineDir(cfg.jobDirs[host]) }); // 공용 계정은 내 폴더 세션만
         sessionBackoff.ok(host);
         if (sessionHostDown.delete(host)) console.log(`[sessions] ${host} 다시 연결됨`);
       } catch (e: any) {

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostBackoff } from "./jobs.ts";
-import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, parseTmux, mineOnly, pullJobs, type RunSsh } from "./jobs.ts";
+import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, parseTmux, mineOnly, sharedMineDir, pullJobs, type RunSsh } from "./jobs.ts";
 import { setCharacter } from "./characters.ts";
 import { loadConfig } from "./config.ts";
 import { Bus } from "./bus.ts";
@@ -271,4 +271,12 @@ test("hostBackoff: 실패마다 간격이 두 배(상한 30분), 성공하면 �
   assert.ok(b.due("other"));
   b.fail("h"); b.ok("h");
   assert.ok(b.due("h"));
+});
+
+test("sharedMineDir: <내 폴더>/.usagi-agent/jobs 모양만 공용 계정", () => {
+  assert.equal(sharedMineDir("~/reo/.usagi-agent/jobs"), "~/reo");
+  assert.equal(sharedMineDir("/data/reo/.usagi-agent/jobs/"), "/data/reo");
+  assert.equal(sharedMineDir("~/.usagi-agent/jobs"), undefined); // 기본 폴더 = 개인 계정
+  assert.equal(sharedMineDir("~/exp/jobs"), undefined);
+  assert.equal(sharedMineDir(undefined), undefined);
 });
