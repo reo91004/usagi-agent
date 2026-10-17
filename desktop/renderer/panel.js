@@ -33,6 +33,7 @@ import { normalizePermissionRules, ruleUsage, withoutPending } from '../src/perm
 import { normAgents, agentStrip, agentCard, canStopAgent, placeAgents, agentsSig, normSessions, sessionCard, placeSessions, sessionsSig, sessionsPlaceSig } from '../src/agents.js';
 import { characterAssets, okCharacter, appName, START_CHARACTER } from '../src/character.js';
 import { applyCharacters } from '../src/character-registry.js';
+import { createNodeCache, pendingShape, planRender, createPoller } from '../src/render-sched.js';
 import { who, whoId, setWho, onWho } from './who.js';
 import { normWorktrees, worktreeCard, openTarget, placeWorktrees, worktreesSig, worktreesPlaceSig } from '../src/worktrees.js';
 
@@ -138,17 +139,18 @@ let keyNote = ''; // 키는 맞지만 알릴 말(Genspark 무료 플랜 → 크�
 let gskFound = false; // gsk login 한 Genspark 키가 이 맥에 있나
 let afterConnect = ''; // 'claudecode'·'codexcli': 그 도구 연결을 마치면 시사의 AI로 쓴다
 let setupCalendars = []; // 연결된 캘린더(main calendar-list: 가린 이름만, 주소 없음)
-// 이 Mac 의 캘린더·미리알림 상태(GET /apple/status). 허락 창을 기다리는 동안(pending)만 2초마다 다시 묻는다
+// 이 Mac 의 캘린더·미리알림 상태(GET /apple/status). 설치 화면이 보이는 동안 허락 창을 기다리면(pending) 2초,
+// 데몬이 안 닿으면 10초 간격으로 다시 묻고, 화면을 떠나거나 창이 숨겨지면 멈춘다
 let setupApple = null;
-let appleTimer = null;
-async function loadApple() {
+const panelShown = () => document.visibilityState !== 'hidden';
+const appleWatch = createPoller(async () => {
   let r;
   try { r = await cy.appleStatus(); } catch { r = null; }
   const next = r?.ok ? r.data : setupApple; // 데몬이 다시 켜지는 중이면 예전 값 그대로
-  clearTimeout(appleTimer);
-  if (next?.pending || !r?.ok) appleTimer = setTimeout(loadApple, 2000);
   if (JSON.stringify(next) !== JSON.stringify(setupApple)) { setupApple = next; setupKey = ''; if (section === 'setup') renderSetupView(false); }
-}
+  return r?.ok ? next : null;
+}, (res) => (section !== 'setup' || !panelShown() ? null : res === null ? 10_000 : res?.pending ? 2000 : null));
+function loadApple() { appleWatch.stop(); appleWatch.start(); }
 let setupSlotError = null; // 저장하려다 막힌 칸 값({ id, value, text }, 예: 이미 연결된 캘린더)
 let cannedOpen = false; // 채팅: AI가 있을 때 ＋ 로 연 정해진 답 버튼 줄(renderChatLock)
 let sisa = { provider: '', hasKey: false, persona: '', canned: {}, done: {}, connected: [], chatModels: {}, codeModel: 'default' };
@@ -258,13 +260,14 @@ function showSettingsTab(t) {
   for (const b of $('set-tabs').children) b.setAttribute('aria-selected', String(b.dataset.tab === settingsTab));
   for (const p of $('sec-settings').querySelectorAll('.set-pane')) p.hidden = p.dataset.tab !== settingsTab;
   if (settingsTab === 'ai') loadSisa();
+  settingsMod?.tabShown(settingsTab);
 }
 for (const b of $('set-tabs').children) b.addEventListener('click', () => showSettingsTab(b.dataset.tab));
 async function enterSettings() {
   showSettingsTab(settingsTab);
   if (settingsMod) { settingsMod.refresh(); return; }
   settingsMod = await import('./settings.js'); // 처음 불러올 때 스스로 데몬에서 읽어 온다
-  settingsMod.setNav({ setup: () => openSetup('extras'), aiTab: () => showSettingsTab('ai') });
+  settingsMod.setNav({ setup: () => openSetup('extras'), aiTab: () => showSettingsTab('ai'), connectionsChanged: loadSoon });
 }
 
 function goto(s) {
@@ -280,6 +283,8 @@ function goto(s) {
   $('content').classList.toggle('chat-on', section === 'chat');
   $('content').classList.toggle('setup-on', section === 'setup'); // 설치: 버튼 줄은 맨 아래 고정, 내용만 스크롤
   $('title').textContent = SECTION_LABELS[section];
+  if (section !== 'setup') { appleWatch.stop(); stopLoginWatch(); }
+  if (dirtySecs.has(section)) renderAll(); // 숨어 있는 동안 밀린 그리기
   if (section === 'setup') {
     renderSetupView(true);
     loadSetupSettings();
@@ -287,6 +292,7 @@ function goto(s) {
   }
   if (section === 'settings') enterSettings();
   if (section === 'chat') {
+    flushChat();
     scrollChat(true);
     renderChatLock();
     afterThreadsChanged(); // 보고 있는 대화는 읽음
@@ -341,6 +347,9 @@ let loadTimer = null;
 const loadSoon = () => { clearTimeout(loadTimer); loadTimer = setTimeout(load, 250); };
 
 
+// 구역별 그리기: 보이는 구역만 지금 그리고 나머지는 dirtySecs 에 두었다가 들어갈 때(goto)·창이 다시 보일 때 그린다
+const SECTION_RENDERERS = { overview: () => renderOverview(), research: () => renderResearch(), projects: () => renderProjects(), todos: () => renderTodos(), settings: () => renderSettingsConnectors() };
+const dirtySecs = new Set();
 function renderAll() {
   const todos = raw ? overlayTodos(raw.todos, pendingOps) : null;
   vm = shapeDashboard(raw ? { ...raw, todos, projects: overlayHidden(raw.projects, hidePending) } : null, Date.now());
@@ -351,11 +360,9 @@ function renderAll() {
   renderNav();
   maybeOpenSetup();
   renderSetupView(false);
-  renderOverview();
-  renderSettingsConnectors();
-  renderResearch();
-  renderProjects();
-  renderTodos(); // 할 일 화면(맨 위 「오늘」 묶음 포함)
+  const plan = planRender(Object.keys(SECTION_RENDERERS), section, !panelShown());
+  for (const s of plan.dirty) dirtySecs.add(s);
+  for (const s of plan.now) { dirtySecs.delete(s); SECTION_RENDERERS[s](); } // 할 일 화면은 맨 위 「오늘」 묶음까지
   renderBadges();
   renderThreadHead(); // 할 일 대화의 할 일 칩
 }
@@ -394,6 +401,7 @@ function meetingRow(m) {
 const PROPOSAL_LABEL = { pending: '대기', approved: '승인', held: '보류', running: '진행 중', done: '완료', failed: '실패' };
 const PROPOSAL_CHIP = { pending: 'accent', running: 'warn', done: 'ok', failed: 'err' };
 
+const briefMd = createNodeCache(); // 브리핑 마크다운은 글이 같으면 다시 파싱하지 않는다
 function renderOverview() {
   const { stats, briefing, today, proposals, meetings } = vm;
   const el = $('sec-overview');
@@ -428,7 +436,7 @@ function renderOverview() {
     briefing
       ? h('div.card', null,
         h('div.row.briefing-head', null, h('span.chip.accent', { text: `${briefing.time} · ${briefing.rel}` }), briefing.bubble ? h('span.muted', { text: briefing.bubble }) : null),
-        md(h('div'), briefing.md || briefing.bubble))
+        briefMd.get('briefing', briefing.md || briefing.bubble, () => md(h('div'), briefing.md || briefing.bubble)))
       : h('div.card.empty', { text: '아직 브리핑이 없어요.' }),
     proposals.length ? h('h2', { text: '제안' }) : null,
     proposals.length
@@ -440,6 +448,7 @@ function renderOverview() {
       : null,
     permissionsSection(),
   ].filter((c) => c != null && c !== false));
+  briefMd.end();
 }
 
 // ---- 연구 카드(#40) — 실험 서버·연구 노트를 연결했을 때만 개요 맨 위에. 설정 토글 없이 연결이 곧 켜짐 ----
@@ -671,6 +680,7 @@ function connectorActions(c) {
           clearTimeout(connNoteTimer);
           connNoteTimer = setTimeout(() => { connNote = ''; renderAll(); }, 20_000);
           loadSoon();
+          settingsMod?.refreshRows(); // 위쪽 연결 상태 줄도 함께
         }
         return r;
       },
@@ -719,7 +729,31 @@ async function copySetup(text, btn) {
 }
 
 let agentLoginState = { loggedIn: false, installed: null };
-let loginTimer = null;
+// 로그인 안내 화면이 보이는 동안만, 이전 확인이 끝난 2초 뒤에 다시 확인한다(로그인되면·화면을 떠나면·창이 숨겨지면 멈춤)
+let loginWatchFor = ''; // 지금 확인 중인(또는 로그인을 확인한) 도구
+let loginDone = false;
+const loginWatch = createPoller(async () => {
+  const who = loginWatchFor;
+  let r = { loggedIn: false, installed: false };
+  try { r = (await cy.agentLogin(who)) || r; } catch { /* 확인 실패는 로그인 전으로 둔다 */ }
+  if (who !== loginWatchFor) return null; // 그 사이 다른 도구로 바뀜
+  const next = {
+    loggedIn: !!r.loggedIn,
+    installed: typeof r.installed === 'boolean' ? r.installed : agentLoginState.installed,
+  };
+  if (next.loggedIn) loginDone = true;
+  if (next.loggedIn !== agentLoginState.loggedIn || next.installed !== agentLoginState.installed) {
+    agentLoginState = next;
+    setupKey = '';
+    renderSetupView(false);
+  }
+  return next.loggedIn;
+}, (loggedIn) => (loggedIn || !panelShown() ? null : 2000));
+function stopLoginWatch() {
+  loginWatch.stop();
+  loginWatchFor = '';
+  loginDone = false;
+}
 
 function codingAgent() {
   if (setupPhase === 'connect' && (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy')) return setupLink;
@@ -727,26 +761,12 @@ function codingAgent() {
 }
 
 function watchAgentLogin() {
-  clearInterval(loginTimer);
-  loginTimer = null;
   const who = codingAgent();
-  if (section !== 'setup' || !who) return;
-  const step = agentSteps(who)[setupCursor];
-  if (step?.gate !== 'login') return;
-  const tick = async () => {
-    let r = { loggedIn: false, installed: false };
-    try { r = (await cy.agentLogin(who)) || r; } catch { /* 확인 실패는 로그인 전으로 둔다 */ }
-    const next = {
-      loggedIn: !!r.loggedIn,
-      installed: typeof r.installed === 'boolean' ? r.installed : agentLoginState.installed,
-    };
-    if (next.loggedIn === agentLoginState.loggedIn && next.installed === agentLoginState.installed) return;
-    agentLoginState = next;
-    setupKey = '';
-    renderSetupView(false);
-  };
-  tick();
-  loginTimer = setInterval(tick, 2000);
+  const step = who && section === 'setup' ? agentSteps(who)[setupCursor] : null;
+  if (step?.gate !== 'login') { stopLoginWatch(); return; }
+  if (!panelShown()) { loginWatch.stop(); return; } // 창이 다시 보이면 renderSetupView 가 이어 간다
+  if (who !== loginWatchFor) { loginWatch.stop(); loginWatchFor = who; loginDone = false; }
+  if (!loginDone) loginWatch.start();
 }
 
 function keyFail(error) {
@@ -781,8 +801,7 @@ function extrasDone() {
 
 function renderSetupView(resetScroll) {
   if (section !== 'setup') {
-    clearInterval(loginTimer);
-    loginTimer = null;
+    stopLoginWatch();
     return;
   }
   clampSetupCursor();
@@ -2174,12 +2193,25 @@ function onActionEvent(p) {
   if (before !== threadActions) renderChat();
 }
 
-function dispatchChat(action) {
+// progress: thinking/step 이벤트 — 대화 상태의 모양이 그대로면 「답하는 중」 글만 고치고 끝낸다.
+// view=false: 다른 대화의 이벤트라 이 대화 화면은 그대로
+function dispatchChat(action, { view = true, progress = false } = {}) {
+  const shape = pendingShape(chat);
   chat = chatReducer(chat, action);
   if (chat.replies.length) chat = chatReducer(chat, { type: 'consumed' }); // 패널은 대화 목록으로 다 보여줌
-  renderChat();
+  if (progress && view && pendingShape(chat) === shape && patchTyping()) return;
+  if (view) renderChat();
   renderThreadList();
   renderBadges();
+}
+
+// 진행 표시(「답하는 중」 글)만 고친다. 그 자리가 없으면 false
+function patchTyping() {
+  if (!chatShown()) { chatDirty = true; return true; }
+  const span = chatLog.querySelector('.typing > span');
+  if (!span || !selectedId || !isRunning(chat, selectedId)) return false;
+  span.textContent = busyLabel(chat, selectedId);
+  return true;
 }
 
 async function loadThreads() {
@@ -2215,7 +2247,7 @@ async function loadArchived() {
 // 목록이 바뀐 뒤: 선택한 스레드가 바뀌었으면(새 답·시스템 줄) 말을 다시, 읽음 처리, 그리기
 function afterThreadsChanged() {
   const cur = currentThread();
-  if (selectedId && cur && cur.updated !== loadedUpdated) loadMessages();
+  if (selectedId && cur && cur.updated !== loadedUpdated) loadMessages({ ifStale: true });
   if (cur && section === 'chat' && document.visibilityState !== 'hidden') {
     const next = markSeen(seen, cur);
     if (next !== seen) { seen = next; saveSeen(); }
@@ -2225,16 +2257,49 @@ function afterThreadsChanged() {
   renderBadges();
 }
 
-async function loadMessages(opts = {}) {
+// 보낸 말의 미리보기 blob: 주소 해제 — next(남는 말들)와 입력창 칩이 아직 쓰는 주소는 남긴다
+function releaseBlobs(prev, next) {
+  const keep = new Set(tray.items().map((a) => a.localUrl));
+  for (const m of next) for (const a of m.attachments ?? []) keep.add(a.localUrl);
+  for (const m of prev) for (const a of m.attachments ?? []) if (a.localUrl?.startsWith('blob:') && !keep.has(a.localUrl)) { URL.revokeObjectURL(a.localUrl); keep.add(a.localUrl); }
+}
+
+// 같은 스레드의 최신 말 조회는 하나만 돈다. 도는 동안 온 요청은 끝난 뒤 한 번만 더(ifStale: 그때도 목록보다 뒤처졌을 때만)
+let msgJob = null; // { id, again: null | 'stale' | 'force', promise }
+function loadMessages(opts = {}) {
+  if (opts.older) return loadMessagesNow(selectedId, opts);
   const id = selectedId;
-  if (!id) return;
+  if (!id) return undefined;
+  if (msgJob?.id === id) {
+    msgJob.again = opts.ifStale ? msgJob.again ?? 'stale' : 'force';
+    return msgJob.promise;
+  }
+  const job = { id, again: null };
+  msgJob = job;
+  job.promise = (async () => {
+    try {
+      for (;;) {
+        job.again = null;
+        await loadMessagesNow(id);
+        const cur = currentThread();
+        if (id !== selectedId || !(job.again === 'force' || (job.again === 'stale' && cur && cur.updated !== loadedUpdated))) break;
+      }
+    } finally { if (msgJob === job) msgJob = null; }
+  })();
+  return job.promise;
+}
+
+async function loadMessagesNow(id, opts = {}) {
+  if (!id || id !== selectedId) return;
   const seq = ++msgSeq;
   const before = opts.older ? messages.find((m) => m.n != null)?.n : undefined;
   let r;
   try { r = await cy.chatThreadMessages(id, before); } catch { r = { ok: false }; }
   if (seq !== msgSeq || id !== selectedId) return;
   if (r?.ok && Array.isArray(r.data?.messages)) {
+    const prev = messages;
     messages = mergeMessages(messages, r.data.messages, { older: !!opts.older });
+    releaseBlobs(prev, messages);
     if (Array.isArray(r.data.actions)) for (const a of r.data.actions) threadActions = upsertAction(threadActions, a);
     moreAbove = !!r.data.more;
     if (r.data.thread) {
@@ -2257,6 +2322,7 @@ function selectThread(id, opts = {}) {
   selectedId = id ?? null;
   store.set('thread', selectedId ?? '');
   if (prevId !== selectedId || opts.reload) {
+    releaseBlobs(messages, []);
     messages = [];
     threadActions = [];
     moreAbove = false;
@@ -2329,6 +2395,7 @@ function visibleOrder() {
 }
 
 function renderThreadList() {
+  if (!chatShown()) { chatDirty = true; return; }
   const busy = busyThreads(chat);
   const list = filterThreads(allThreads(), thQuery);
   const kids = [];
@@ -2818,7 +2885,18 @@ function renderAgents() {
   chatAgentsEl.replaceChildren(...rows);
 }
 
+// 채팅 화면이 안 보이면(다른 구역·창 숨김) 그리지 않고 표시만 해 두었다가 보일 때 한 번 그린다
+let chatDirty = false;
+const chatShown = () => section === 'chat' && panelShown();
+const mdCache = createNodeCache(); // 안 바뀐 답의 마크다운 DOM 재사용(진행 이벤트마다 다시 파싱하지 않게)
+function flushChat() {
+  if (!chatDirty || !chatShown()) return;
+  chatDirty = false;
+  renderChat();
+  renderThreadList();
+}
 function renderChat(opts = {}) {
+  if (!chatShown()) { chatDirty = true; return; }
   const stick = nearBottom();
   const prevHeight = chatLog.scrollHeight, prevTop = chatLog.scrollTop;
   const items = [];
@@ -2882,7 +2960,7 @@ function renderChat(opts = {}) {
     pushApprovals(items, cards.before); // 답을 만드는 동안 난 승인 → 답 위
     items.push(h('div.msg-row.assistant', null,
       h(`div.msg.assistant${m.error ? '.error' : ''}`, null,
-        md(h('div'), m.text),
+        mdCache.get(`${selectedId}|${Number.isInteger(m.n) ? m.n : `${m.at}|${m.clientId ?? ''}`}`, m.text, () => md(h('div'), m.text)),
         m.show ? h('button.go', { type: 'button', text: `${SECTION_LABELS[m.show]} 보기`, onclick: () => goto(m.show) }) : null),
       metaEl(m)));
     for (const a of cards.after) items.push(actionCard(a));
@@ -2903,6 +2981,7 @@ function renderChat(opts = {}) {
   else if (cannedTyping) items.push(h('div.typing', null, h('i'), h('i'), h('i'), h('span', { text: '입력 중' })));
   for (const p of queued) items.push(queuedRow(p, target?.kind === 'queued' && target.chatId === p.chatId));
   chatLog.replaceChildren(...items);
+  mdCache.end();
   renderChatLock();
   renderSendButton();
   if (opts.keepScroll) chatLog.scrollTop = prevTop + (chatLog.scrollHeight - prevHeight);
@@ -3169,8 +3248,8 @@ function onChatEvent(ev) {
     if (Number.isInteger(ev.n)) { messages = dropFrom(messages, ev.n); loadMessages(); }
     else if (typeof ev.text === 'string') messages = messages.map((m) => (m.local && m.chatId === ev.chatId ? { ...m, text: ev.text } : m));
   }
-  dispatchChat({ type: 'event', ev });
   const tid = typeof ev?.threadId === 'string' ? ev.threadId : null;
+  dispatchChat({ type: 'event', ev }, { view: !(tid && tid !== selectedId), progress: ev?.status === 'thinking' || ev?.status === 'step' });
   if (!tid || !['done', 'error', 'stopped'].includes(ev.status)) return; // stopped: "답을 멈췄어요" 시스템 줄을 다시 불러온다
   if (tid === selectedId) {
     if (ev.status === 'error') { messages = appendLocal(messages, { role: 'assistant', text: ev.text || '답을 못 만들었어요.', at: new Date().toISOString(), error: true }); renderChat(); }
@@ -3324,8 +3403,22 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// 상대 시각은 1분마다 다시 그림 (오늘 할 일 입력·채팅 입력은 건드리지 않음)
-setInterval(() => { if (raw) renderAll(); }, 60_000);
+// 상대 시각은 1분마다 보이는 구역만 다시 그림(날짜가 바뀌면 할 일 묶음도 그때 다시 나뉨). 창이 숨겨진 동안은 건너뛰고 보일 때 한 번
+let timeStale = false;
+setInterval(() => {
+  if (!raw) return;
+  if (!panelShown()) { timeStale = true; return; }
+  renderAll();
+}, 60_000);
+// 창이 숨겨지면 주기 확인을 멈추고, 다시 보이면 밀린 그리기·확인을 이어 간다(focus 는 visibilitychange 가 없는 경우의 대비)
+function onPanelVisibility() {
+  if (!panelShown()) { appleWatch.stop(); loginWatch.stop(); return; }
+  if (raw && (timeStale || dirtySecs.has(section))) { timeStale = false; renderAll(); }
+  if (section === 'chat') { flushChat(); afterThreadsChanged(); }
+  if (section === 'setup') { renderSetupView(false); if (setupApple?.pending) loadApple(); }
+}
+document.addEventListener('visibilitychange', onPanelVisibility);
+window.addEventListener('focus', onPanelVisibility);
 
 function applySisa(v) {
   sisa = {

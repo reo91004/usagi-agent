@@ -90,7 +90,7 @@ export const AI_PROVIDERS = [
 export const BRAIN_CHOICES = [
   { id: 'claudecode', agent: 'claude', title: 'Claude Code', blurb: '이 맥에 로그인된 Claude Code 로 이야기해요. 키가 필요 없고, 코드 고치기·작업 세션도 돼요.' },
   { id: 'codexcli', agent: 'codex', title: 'Codex', blurb: '이 맥에 로그인된 Codex 로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프·코드 고치기도 Codex 로 돌아요. Claude Code 안에서 로그인한 연결(Slack 공식·Jira 등)은 Claude Code 뇌일 때만 읽혀요.' },
-  { id: 'agycli', agent: 'agy', title: 'Antigravity (agy)', blurb: '이 맥에 로그인된 Antigravity CLI(agy)로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 agy 로 돌아요. 모델은 패널의 [모델] 탭에서 고를 수 있어요. 코드 고치기도 agy 로 해요. Claude Code 안에서 로그인한 연결(Slack 공식·Jira 등)은 Claude Code 뇌일 때만 읽혀요.' },
+  { id: 'agycli', agent: 'agy', title: 'Antigravity (agy)', blurb: '이 맥에 로그인된 Antigravity CLI(agy)로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 agy 로 돌아요. 모델은 설정 › AI 에서 고를 수 있어요. 코드 고치기도 agy 로 해요. Claude Code 안에서 로그인한 연결(Slack 공식·Jira 등)은 Claude Code 뇌일 때만 읽혀요.' },
   { id: 'gemini', title: 'Gemini 키', blurb: '구글 AI 키를 붙여 넣어요. 카드 없이 무료로 만들 수 있어요.' },
   { id: 'openai', title: 'OpenAI(GPT) 키', blurb: 'OpenAI 플랫폼 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'claude', title: 'Claude API 키', blurb: 'Anthropic 콘솔 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
