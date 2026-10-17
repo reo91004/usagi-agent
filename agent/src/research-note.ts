@@ -91,7 +91,7 @@ export async function collectDay(
   for (const e of store.ledger({ day, limit: 500 }).reverse()) {
     if (e.action === "done") done.set(e.todoId, e.title);
     else if (e.action === "reopened") done.delete(e.todoId);
-    else if (e.action === "added") added.set(e.todoId, e.title);
+    else if (e.action === "added" && !e.todoId.startsWith("reminder:")) added.set(e.todoId, e.title); // 미리알림에서 가져온 것은 그날 생긴 일이 아니다
     else if (e.action === "trashed" || e.action === "purged") added.delete(e.todoId);
   }
   for (const id of done.keys()) added.delete(id);

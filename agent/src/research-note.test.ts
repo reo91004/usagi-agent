@@ -47,6 +47,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   led.run(at("09:50"), "t4", "생겼다 끝낸 일", "done");
   led.run(at("09:55"), "t5", "생겼다 지운 일", "added");
   led.run(at("09:56"), "t5", "생겼다 지운 일", "trashed");
+  led.run(at("09:57"), "reminder:r1", "미리알림에서 가져온 생일", "added");
   const git = async (now: Date) => {
     assert.equal(now.toISOString(), at("12:00"));
     return [{ path: "/r/app", name: "app", commitsToday: [

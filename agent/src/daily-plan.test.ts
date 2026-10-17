@@ -38,6 +38,16 @@ test("오늘 할 일 = 할 일에 날을 단 것: 추가·고르기·토글·우
   assert.match(p.applyOps([{ op: "toggle", id: "nope" }]).errors[0], /못 찾았어요/);
 });
 
+test("오늘 할 일 add 제목이 열린 할 일과 같으면 새로 만들지 않고 그것을 오늘로", () => {
+  const store = new Store(":memory:");
+  const p = new DailyPlanService(store, { now: WED });
+  const t = store.addTodo({ title: "설계  이어서 진행", priority: 3 }, "briefing");
+  const r = p.applyOps([{ op: "add", title: "설계 이어서 진행", priority: 2 }]);
+  assert.deepEqual(r.errors, []);
+  assert.equal(store.openTodos().length, 1);
+  assert.deepEqual(r.plan.items.map((x) => [x.id, x.priority]), [[t.id, 2]]);
+});
+
 test("예전 따로 있던 표의 오늘 줄은 할 일로 옮겨진다(지난 날 줄은 그대로)", () => {
   const store = new Store(":memory:");
   store.db.exec("CREATE TABLE daily_plan (date TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, sort REAL NOT NULL, PRIMARY KEY (date, id))");
