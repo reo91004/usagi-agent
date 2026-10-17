@@ -57,14 +57,6 @@ export function activeProvider(data) {
   return connectedProviders(d).includes(d.provider) ? d.provider : '';
 }
 
-export function brainOf(data) {
-  const d = normalizeSisa(data);
-  const provider = activeProvider(d);
-  if (!provider) return null;
-  const model = d.chatModels[provider];
-  return { provider, key: d.keys[provider] ?? '', model: model && model !== 'default' ? model : '' };
-}
-
 export function publicView(data, defaultPersona = '') {
   const d = normalizeSisa(data);
   const provider = activeProvider(d);

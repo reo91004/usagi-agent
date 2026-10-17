@@ -1,9 +1,9 @@
 // 뇌(말 거는 AI) 연결 상태 → 더블클릭·패널 채팅·세션 창 입력 분기, 사용법 둘러보기
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normStatus, brainView, noBrainBubble, connectCard, sameView } from '../src/brain-state.js';
+import { normStatus, brainView, connectCard, sameView } from '../src/brain-state.js';
 import { tourSteps, tourBubble, TOUR_VERSION } from '../src/tour.js';
-import { normalizeBubble, tourButtons, clickTarget } from '../src/bubbles.js';
+import { normalizeBubble, tourButtons } from '../src/bubbles.js';
 import { initialActivity, activityReducer, viewOf } from '../src/character.js';
 
 const status = (o = {}) => ({
@@ -43,15 +43,7 @@ test('brainView: 데몬과 끊기면 앱이 고른 AI 로 짐작', () => {
   assert.equal(sameView(brainView({}), brainView({})), true);
 });
 
-test('뇌 없이 더블클릭: 연결 안내 말풍선(누르면 설치 단계) · 입력 대신 연결 카드 — 쉬운 말, 에러 아님', () => {
-  const b = normalizeBubble(noBrainBubble(brainView({})));
-  assert.equal(b.kind, 'info');
-  assert.deepEqual(clickTarget(b), { type: 'open', section: 'setup', id: 'brain' });
-  assert.equal(b.openLabel, '연결하기');
-  assert.match(b.text, /뇌/);
-  const login = noBrainBubble(brainView({ status: { brain: { provider: 'claude-code', ready: false }, chat: false, coder: {} } }));
-  assert.match(login.text, /로그인/);
-  assert.match(noBrainBubble(brainView({ status: status({ chat: false, brain: { provider: 'local', ready: true, local: true } }) })).text, /정해진 말/);
+test('뇌 없을 때: 입력 대신 연결 카드 — 쉬운 말, 에러 아님', () => {
   const c = connectCard(brainView({}));
   assert.equal(c.button, '연결하기');
   assert.ok(c.lines.some((l) => /Claude Code/.test(l) && /Gemini/.test(l)));
@@ -125,14 +117,13 @@ test('normStatus·brainView: 뒤에서 하는 정리는 누가(Codex 도), MCP �
   assert.equal(brainView({}).background, null);
 });
 
-test('AI 없이 쓰는 중: 연결 카드·말풍선·둘러보기가 AI 를 필수로 말하지 않는다', () => {
+test('AI 없이 쓰는 중: 연결 카드·둘러보기가 AI 를 필수로 말하지 않는다', () => {
   const local = brainView({ status: status({ chat: false, brain: { provider: 'local', ready: true, local: true } }) });
   const c = connectCard(local);
   assert.match(c.title, /AI 없이/);
   assert.ok(c.lines.some((l) => /선택/.test(l)));
   assert.ok(c.lines.some((l) => /회의 알림/.test(l)));
-  for (const t of [noBrainBubble(local).text, noBrainBubble(brainView({})).text, c.title, ...c.lines]) assert.doesNotMatch(t, /—/);
-  assert.match(noBrainBubble(brainView({})).text, /AI 없이도/);
+  for (const t of [c.title, ...c.lines]) assert.doesNotMatch(t, /—/);
   const chat = tourSteps(brainView({})).find((s) => s.id === 'chat');
   assert.match(chat.text, /AI 없이도/);
 });

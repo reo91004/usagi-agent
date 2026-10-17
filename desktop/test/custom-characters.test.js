@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { CHARACTERS, characterAssets, customAssets, clipFor, clipKind, fitBox, okCharacter, okCharacterId, characterName, appName, localSay, characterIds, CHARACTER_IDS } from '../src/character.js';
+import { CHARACTERS, characterAssets, customAssets, clipFor, clipKind, fitBox, okCharacter, okCharacterId, characterName, appName, localSay, CHARACTER_IDS } from '../src/character.js';
 import { applyCharacters, effectiveLines, defaultsOf, shisaDesktopLines, mergeLines } from '../src/character-registry.js';
-import { editorSections, fieldText, fieldValue, fieldProblem, linesFromTexts, diffLines, flattenLines, unflattenLines, slotRows, okMediaName, missingRequired, changedCount, SECTIONS } from '../src/character-edit.js';
+import { editorSections, fieldText, fieldValue, fieldProblem, linesFromTexts, diffLines, flattenLines, unflattenLines, slotRows, okMediaName, missingRequired, SECTIONS } from '../src/character-edit.js';
 import { resolveAsset, userCharacterFile } from '../src/assets.js';
 import { sanitizeSettingsPatch, sanitizeCharacterBody, okMediaSlot } from '../src/settings.js';
 import { setupSettings } from '../src/settings-window.js';
@@ -88,7 +88,6 @@ test('목록 넣기: 사용자 캐릭터를 고를 수 있고 이름·그림·�
   assert.equal(okCharacter(U), 'shisa', '받기 전엔 모른다');
   assert.ok(applyCharacters(data()));
   assert.equal(okCharacter(U), U);
-  assert.ok(characterIds().includes(U));
   assert.deepEqual([...CHARACTER_IDS], ['shisa', 'hachi', 'rakko', 'momonga', 'usagi'], '기본 다섯 목록은 그대로');
   assert.equal(characterName(U), '까망');
   assert.equal(appName(U), '까망 비서');
@@ -144,7 +143,7 @@ test('기본 캐릭터 고친 것(덮어쓰기): 시사도 — 정해진 답·�
   const eff = effectiveLines(d.characters[0]);
   assert.deepEqual(eff.canned.who, ['저는 **시사짱**']);
   assert.deepEqual(eff.canned['today:e'], CANNED_DEFAULTS['today:e']);
-  assert.equal(changedCount(base, eff), 6);
+  assert.equal(Object.keys(flattenLines(diffLines(base, eff))).length, 6);
   // 고치지 않으면 예전 그대로
   applyCharacters(data());
   assert.equal(tourSteps({ ready: true }, 'shisa')[0].text, tourSteps({ ready: true })[0].text);

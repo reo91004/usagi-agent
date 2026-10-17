@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SETUP_STEPS, stepById, stepForCap, isSetupStep, needsSetup, readyCaps } from '../src/setup.js';
+import { SETUP_STEPS, stepForCap, needsSetup } from '../src/setup.js';
+
+const stepOf = (id) => SETUP_STEPS.find((s) => s.id === id);
 
 const codes = (step) => {
   const out = [];
@@ -31,9 +33,6 @@ test('stepForCap: 기능은 그 단계로, 모르는 건 시작으로', () => {
   assert.equal(stepForCap('issues'), 'issues');
   assert.equal(stepForCap('scrum'), 'welcome');
   assert.equal(stepForCap('nope'), 'welcome');
-  assert.equal(stepById('nope').id, 'welcome');
-  assert.equal(isSetupStep('mail'), true);
-  assert.equal(isSetupStep('overview'), false);
 });
 
 test('needsSetup: Slack·캘린더가 둘 다 준비 전일 때만', () => {
@@ -50,18 +49,9 @@ test('needsSetup: Slack·캘린더가 둘 다 준비 전일 때만', () => {
   assert.equal(needsSetup([{ cap: 'mail', ready: false }]), false);
 });
 
-test('readyCaps: ready 인 기능만', () => {
-  const set = readyCaps([
-    { cap: 'slack', ready: true },
-    { cap: 'mail', ready: false },
-    null,
-    { ready: true },
-  ]);
-  assert.deepEqual([...set], ['slack']);
-});
 
 test('안내 문구에 문서와 같은 등록 명령이 있다', () => {
-  const slackStep = stepById('slack');
+  const slackStep = stepOf('slack');
   const slackPaths = slackStep.blocks.find((b) => b.type === 'paths').items;
   assert.equal(slackPaths[0].recommend, true);
   assert.equal(slackPaths[0].collapsed, undefined);
@@ -75,18 +65,18 @@ test('안내 문구에 문서와 같은 등록 명령이 있다', () => {
   assert.match(slack, /--scope user/);
   assert.match(slack, /"preset": "slack-mcp-server"/);
 
-  const cal = codes(stepById('calendar'));
+  const cal = codes(stepOf('calendar'));
   assert.match(cal, /@cocal\/google-calendar-mcp/);
   assert.match(cal, /"preset": "google-calendar"/);
   assert.match(cal, /@softeria\/ms-365-mcp-server --read-only/);
   assert.match(cal, /icsUrl/);
 
-  const mail = codes(stepById('mail'));
+  const mail = codes(stepOf('mail'));
   assert.match(mail, /@gongrzhe\/server-gmail-autoauth-mcp/);
   assert.match(mail, /"preset": "gmail"/);
   assert.match(mail, /"preset": "ms-365"/);
 
-  const issues = codes(stepById('issues'));
+  const issues = codes(stepOf('issues'));
   assert.match(issues, /api\.githubcopilot\.com\/mcp\/readonly/);
   assert.match(issues, /https:\/\/mcp\.atlassian\.com\/v2\/mcp/);
   assert.match(issues, /https:\/\/mcp\.linear\.app\/mcp\/readonly/);

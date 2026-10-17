@@ -234,11 +234,6 @@ export function addEvents(t, events) {
   const list = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
   return { ...t, events: list, lastSeq: list[list.length - 1].seq };
 }
-// 중간에 빠진 seq 가 있으면(SSE 끊김) 다시 받아야 한다
-export function hasGap(t) {
-  for (let i = 0; i < t.events.length; i++) if (t.events[i].seq !== (t.events[0].seq + i)) return true;
-  return t.events.length > 0 && t.events[0].seq !== 1;
-}
 
 // 이벤트 → 화면 줄. tool_use 와 그 결과는 한 줄로, 이어지는 도구 줄은 한 묶음(tools)으로.
 // 서브에이전트 안 이벤트(parent = 그 Agent tool_use 의 toolUseId)는 맨 위 줄이 아니라 그 Agent 도구의 sub 에 들어간다:

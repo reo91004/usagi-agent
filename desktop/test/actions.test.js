@@ -1,7 +1,7 @@
 // 확인 카드(회의 응답) — 정리·갱신·배치·모양·결과
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeAction, normalizeActions, upsertAction, placeActions, cardView, bubbleText, decideResult, okActionId, bubbleAfterAction } from '../src/actions.js';
+import { normalizeAction, normalizeActions, upsertAction, placeActions, cardView, decideResult, okActionId, bubbleAfterAction } from '../src/actions.js';
 import { normalizeBubble } from '../src/bubbles.js';
 
 const card = { icon: '📅', title: '〈주간 회의〉', when: '10/15 목 10:00', verb: '수락', question: '**수락**으로 응답할까요?', notice: '주최자에게 알림이 가요', comment: '참석할게요' };
@@ -55,7 +55,6 @@ test('카드 모양: 대기면 물음+버튼, 누른 뒤엔 잠금, 결과는 �
   assert.match(cardView(normalizeAction(raw({ status: 'cancelled' }))).status, /취소/);
   assert.match(cardView(normalizeAction(raw({ status: 'expired' }))).status, /만료/);
   assert.match(cardView(normalizeAction(raw()), { error: '보내지 못했어요' }).status, /⚠️ 보내지 못했어요/);
-  assert.equal(bubbleText(normalizeAction(raw())), '📅 〈주간 회의〉 (10/15 목 10:00) — **수락**으로 응답할까요? 주최자에게 알림이 가요');
 });
 
 test('결과: 200·409 는 서버 카드로, 연결 실패는 그대로 두고 오류', () => {

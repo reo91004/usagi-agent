@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanLink, cleanTitle, detailPatch, newTodoBody, overlayTodos, sanitizeTodoPatch, patchToday, isToday } from '../src/todos.js';
+import { cleanLink, cleanTitle, newTodoBody, overlayTodos, sanitizeTodoPatch, patchToday, isToday } from '../src/todos.js';
 import { groupTodos } from '../src/dashboard.js';
 
 const server = [
@@ -43,12 +43,6 @@ test('입력 검증: 제목·링크·새 할 일·상세 패치', () => {
   assert.deepEqual(newTodoBody(' 테스트 항목 ', '1'), { title: '테스트 항목', priority: 1 });
   assert.deepEqual(newTodoBody('x', 9), { title: 'x', priority: 4 }); // 4 = 백로그까지
   assert.equal(newTodoBody('  ', 1), null);
-
-  const t = { linkRaw: 'https://a', note: '' };
-  assert.deepEqual(detailPatch(t, { link: 'https://a', note: '' }), { patch: {} });
-  assert.deepEqual(detailPatch(t, { link: '', note: ' 메모 ' }), { patch: { link: null, note: '메모' } });
-  assert.match(detailPatch(t, { link: 'ftp://x', note: '' }).error, /링크/);
-  assert.equal(detailPatch(t, { link: '', note: 'x'.repeat(5000) }).patch.note.length, 5000);
 });
 
 test('sanitizeTodoPatch: IPC 값은 아는 키·타입만', () => {

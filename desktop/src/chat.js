@@ -288,11 +288,6 @@ export function sentLabel(queuedAt, sentAt) {
   return { status: `대기 ${dur} 뒤 보냄`, title: `${hm(q)}에 줄 서서 앞 답이 끝난 ${hm(s)}에 보냈어요` };
 }
 
-// 지금 보내기 대신 쓸 멈출 대상(옛 데몬 — /now 가 없을 때): 그 스레드에서 돌고 있는 것만(기다리는 건 그대로)
-export function runningIds(state, threadId) {
-  return inThread(state, threadId).filter((id) => !state.pending[id].queued && CHAT_ID.test(id));
-}
-
 // 진행 중인 것 중 가장 최근 step (없으면 null) — 기다리는 것은 빼고
 export function latestStep(state, threadId) {
   const ids = inThread(state, threadId).filter((id) => !state.pending[id].queued);

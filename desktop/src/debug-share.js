@@ -187,16 +187,6 @@ export function formatHeader(meta = {}) {
   return lines.join('\n');
 }
 
-export function tailText(text, maxBytes = LOG_FILE_TAIL) {
-  const raw = String(text ?? '');
-  const buf = Buffer.from(raw, 'utf8');
-  if (buf.length <= maxBytes) return raw;
-  let slice = buf.subarray(buf.length - maxBytes).toString('utf8');
-  const nl = slice.indexOf('\n');
-  if (nl !== -1) slice = slice.slice(nl + 1);
-  return `(앞 ${buf.length - maxBytes}바이트 생략)\n${slice}`;
-}
-
 function readTailFile(full, size, maxBytes, io) {
   if (size <= maxBytes) return io.readFileSync(full, 'utf8');
   const start = size - maxBytes;
