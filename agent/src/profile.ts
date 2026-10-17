@@ -7,6 +7,7 @@
 // - 30일 넘게 재확인이 없으면 30일마다 −0.1 (decayedAt으로 중복 감쇠 방지)
 // - 증거는 데이터일 뿐 — 지시문 꼴(명령형, "이전 지시 무시" 등)의 사실은 버린다
 // - forgetFact로 지운 사실은 다시 배워도 되살리지 않는다
+import { NOT_MUTED, mutedIds, mutedJson } from "./ingest/slack.ts";
 import { query as sdkQuery } from "./claude-sdk.ts";
 import { trackQuery, withRun } from "./runs.ts";
 import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
@@ -366,6 +367,7 @@ function gatherFeedback(store: Store, g: Gathered, budget: number) {
 
 function gather(cfg: Config, store: Store, budget: number, now: Date, lookbackDays: number): Gathered {
   const g: Gathered = { items: [], commit: [] };
+  const muted = mutedIds(store);
   const fallback = new Date(now.getTime() - lookbackDays * DAY).toISOString();
   const self = cfg.slackUserId;
   // 사용자 본인에게 직접 오는 신호(피드백·대화)를 먼저, 예산도 넉넉히
@@ -383,6 +385,7 @@ function gather(cfg: Config, store: Store, budget: number, now: Date, lookbackDa
   });
   gatherNodes(store, g, "message", budget * 0.15, fallback, (m) => {
     if (!self) return undefined; // 내가 누군지 모르면 메시지는 판단 못 한다
+    if (muted.has(String((m.props as any).channel))) return undefined; // 설정에서 끈 Slack 채널
     const raw = JSON.stringify(m.props);
     const edges = store.db.prepare("SELECT src, dst FROM edges WHERE src = ? OR dst = ?").all(m.id, m.id) as any[];
     const involves = raw.includes(self) || edges.some((e) => String(e.src).includes(self) || String(e.dst).includes(self));
@@ -633,11 +636,11 @@ export function profileContext(
   // (예전 OR 조인은 인덱스를 못 타서 Slack 전체 수집 뒤 27초 걸렸다 — 채팅마다 데몬이 멈춤)
   const people = (store.db.prepare(`
     SELECT p.id, p.label, count(*) AS c FROM (
-      SELECT e.dst AS pid FROM nodes m JOIN edges e ON e.src = m.id WHERE m.kind = 'message' AND m.updated >= ?
+      SELECT e.dst AS pid FROM nodes m JOIN edges e ON e.src = m.id WHERE m.kind = 'message' AND m.updated >= ? AND ${NOT_MUTED}
       UNION ALL
-      SELECT e.src AS pid FROM nodes m JOIN edges e ON e.dst = m.id WHERE m.kind = 'message' AND m.updated >= ?
+      SELECT e.src AS pid FROM nodes m JOIN edges e ON e.dst = m.id WHERE m.kind = 'message' AND m.updated >= ? AND ${NOT_MUTED}
     ) x JOIN nodes p ON p.id = x.pid AND p.kind = 'person'
-    GROUP BY p.id ORDER BY c DESC LIMIT 8`).all(since30, since30) as any[])
+    GROUP BY p.id ORDER BY c DESC LIMIT 8`).all(since30, mutedJson(store), since30, mutedJson(store)) as any[])
     .filter((p) => !self || !(p.id === self || p.id.endsWith(`:${self}`)))
     .slice(0, 5);
 

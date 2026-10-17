@@ -69,6 +69,7 @@ export type SettingsView = {
   // 설치 마법사를 마쳤나 · 이 맥의 Claude Code·Codex 작업 기록을 읽나(onboarding.ts)
   onboarded: boolean;
   readSessions: boolean;
+  slackMuted: string[];
   configPath: string;
 };
 export type BrainKey = "gemini" | "openai" | "anthropic" | "genspark";
@@ -87,6 +88,7 @@ export type SettingsPatch = {
   calendarAlert?: CalendarAlertConfig;
   character?: CharacterId;
   directiveFrom?: string[];
+  slackMuted?: string[];
 };
 const MODEL_ID = /^[A-Za-z0-9._:/-]{1,100}$/;
 export type PutResult = { ok: true; settings: SettingsView; applied: "live"; restartNeeded: false; note?: string } | { ok: false; status: 400 | 409 | 500; error: string };
@@ -99,11 +101,15 @@ export class ConfigFileError extends Error {}
 export function validatePatch(body: unknown, cfg: Pick<Config, "models">): SettingsPatch {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsError("json object required");
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
+  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
   const out: SettingsPatch = {};
   if (b.directiveFrom !== undefined) {
     if (!Array.isArray(b.directiveFrom) || b.directiveFrom.length > 20 || !b.directiveFrom.every((x) => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("directiveFrom: Slack 사용자 id(U…) 목록, 20개까지");
     out.directiveFrom = [...new Set(b.directiveFrom as string[])];
+  }
+  if (b.slackMuted !== undefined) {
+    if (!Array.isArray(b.slackMuted) || b.slackMuted.length > 2000 || !b.slackMuted.every((x) => typeof x === "string" && /^[CG][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("slackMuted: Slack 채널 id(C… G…) 목록, 2000개까지");
+    out.slackMuted = [...new Set(b.slackMuted as string[])];
   }
   if (b.models !== undefined) {
     if (!b.models || typeof b.models !== "object" || Array.isArray(b.models)) throw new SettingsError("models must be an object");
@@ -262,6 +268,7 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): void {
   }
   if (patch.autoMerge) next.autoMerge = patch.autoMerge; // 빈 목록도 그대로 쓴다(씨앗으로 돌아가지 않게)
   if (patch.directiveFrom) next.directiveFrom = patch.directiveFrom;
+  if (patch.slackMuted) next.slackMuted = patch.slackMuted;
   if (patch.brain) {
     const br = { ...obj(cur.brain) };
     if (patch.brain.provider) br.provider = patch.brain.provider;
@@ -369,6 +376,7 @@ export class Settings {
       repoRoots: [...(c.repoRoots ?? [])],
       onboarded: c.onboarded !== false,
       readSessions: c.readSessions !== false,
+      slackMuted: [...(c.slackMuted ?? [])],
       configPath: this.path,
     };
   }
@@ -390,6 +398,7 @@ export class Settings {
     }
     if (patch.autoMerge) this.cfg.autoMerge = [...patch.autoMerge];
     if (patch.directiveFrom) this.cfg.directiveFrom = [...patch.directiveFrom];
+    if (patch.slackMuted) this.cfg.slackMuted = [...patch.slackMuted]; // main 의 onChange 가 DB 로 옮긴다 — 다음 읽기부터
     if (patch.brain) {
       const b = { ...this.cfg.brain };
       if (patch.brain.provider) b.provider = patch.brain.provider;

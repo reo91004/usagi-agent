@@ -12,7 +12,7 @@ import { profileContext } from "./profile.ts";
 import { kgContext, kgFind, kgSearch, type KgHit } from "./kg/context.ts";
 import { normKey } from "./kg/merge.ts";
 import { ENTITY_TYPES } from "./kg/extract.ts";
-import { attentionSince, formatAttention } from "./ingest/slack.ts";
+import { attentionSince, formatAttention, mutedJson, NOT_MUTED } from "./ingest/slack.ts";
 import { listRules, rulesContext } from "./todo-rules.ts";
 import { MEMORY_DAYS, memoryLine, removedRecently } from "./todo-ledger.ts";
 import { meetingsContext } from "./actions.ts";
@@ -247,7 +247,7 @@ export function ctxHandlers(cfg: Config, store: Store, deps: CtxDeps = {}) {
       const since = new Date(now().getTime() - days * 86400e3).toISOString();
       const rows = store.db.prepare(`SELECT c.type AS type, c.name AS name, COUNT(n.id) AS n, MAX(n.updated) AS last
         FROM slack_convs c LEFT JOIN nodes n ON n.kind = 'message' AND n.updated >= ? AND json_extract(n.props, '$.channel') = c.id
-        WHERE c.type IN ('public', 'private') GROUP BY c.id ORDER BY last IS NULL, last DESC, c.name LIMIT 80`).all(since) as { type: string; name: string | null; n: number; last: string | null }[];
+        WHERE c.type IN ('public', 'private') AND c.id NOT IN (SELECT value FROM json_each(?)) GROUP BY c.id ORDER BY last IS NULL, last DESC, c.name LIMIT 80`).all(since, mutedJson(store)) as { type: string; name: string | null; n: number; last: string | null }[];
       const lines = rows.map((r) => `- #${r.name ?? "?"}${r.type === "private" ? " (비공개)" : ""} · 최근 ${days}일 ${r.n}개${r.last ? ` · 마지막 ${fmtTime(r.last)}` : ""}`);
       return out(`내가 들어가 있는 Slack 채널 (최근 ${days}일 수집분, 최근 활동순)`, lines.length ? `${lines.join("\n")}\n(글은 slack_channel_messages(channel) 로. 처음 연결하면 채널을 돌아가며 채우는 중이라 0개인 채널이 있을 수 있다)` : "(없음 — Slack 이 api 모드로 연결돼 있어야 한다)");
     }),
@@ -259,8 +259,8 @@ export function ctxHandlers(cfg: Config, store: Store, deps: CtxDeps = {}) {
       const hours = Math.min(Math.max(a.hours ?? 48, 1), 24 * 14);
       const limit = Math.min(Math.max(a.limit ?? 40, 1), 100);
       const since = new Date(now().getTime() - hours * 3600e3).toISOString();
-      const rows = store.db.prepare(`SELECT label, props, updated FROM nodes WHERE kind = 'message' AND updated >= ? AND json_extract(props, '$.channel') = ? ORDER BY updated DESC LIMIT ?`)
-        .all(since, conv.id, limit) as { label: string; props: string; updated: string }[];
+      const rows = store.db.prepare(`SELECT label, props, updated FROM nodes WHERE kind = 'message' AND updated >= ? AND json_extract(props, '$.channel') = ? AND ${NOT_MUTED} ORDER BY updated DESC LIMIT ?`)
+        .all(since, conv.id, mutedJson(store), limit) as { label: string; props: string; updated: string }[];
       const lines = rows.reverse().map((r) => {
         const p = JSON.parse(r.props) as { text?: string; authorName?: string; author?: string };
         return `- [${fmtTime(r.updated)}] ${p.authorName ?? p.author ?? "?"}: ${clip(p.text ?? r.label, 400)}`;

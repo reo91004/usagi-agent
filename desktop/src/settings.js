@@ -31,7 +31,7 @@ export function autoMergeNext(list, slug, add) {
 export function sanitizeSettingsPatch(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const out = {};
-  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character') return null;
+  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character' && k !== 'slackMuted') return null;
   // 캐릭터(src/character.js 의 id)
   if (p.character !== undefined) {
     if (!okCharacterId(p.character)) return null; // 기본 다섯 또는 사용자 캐릭터 모양(있는지는 데몬이)
@@ -67,6 +67,11 @@ export function sanitizeSettingsPatch(p) {
     }
     if (!Object.keys(ph).length || Object.keys(ph).length > 100) return null;
     out.phrases = ph;
+  }
+  // 알림을 끈 Slack 채널 id: 목록 통째로(빈 목록 = 전부 다시 받음)
+  if (p.slackMuted !== undefined) {
+    if (!Array.isArray(p.slackMuted) || p.slackMuted.length > 2000 || !p.slackMuted.every((x) => typeof x === 'string' && /^[CG][A-Z0-9]{2,20}$/.test(x))) return null;
+    out.slackMuted = [...new Set(p.slackMuted)];
   }
   // 자동 머지 레포: 목록 통째로(빈 목록 = 전부 뺌)
   if (p.autoMerge !== undefined) {

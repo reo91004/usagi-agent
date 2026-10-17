@@ -8,7 +8,7 @@
 // - 레이트리밋 친화: 한 턴에 batchSize개만 병렬, 사이클 사이 쉬는 건 호출 쪽(KgBackfill)이 정한다. 레이트리밋 응답은 SlackRun이 한 번 재시도.
 import type { Config } from "../config.ts";
 import type { Store } from "../store.ts";
-import { SlackIngester, SlackRun, isPermanentSlackError, mentions, type SlackIngestCounts, type SlackIngestDeps } from "./slack.ts";
+import { SlackIngester, SlackRun, mutedIds, mutedJson, isPermanentSlackError, mentions, type SlackIngestCounts, type SlackIngestDeps } from "./slack.ts";
 
 const DEEP = `
 CREATE TABLE IF NOT EXISTS slack_deep (key TEXT PRIMARY KEY, latest TEXT, done INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0,
@@ -94,8 +94,9 @@ export class SlackDeepBackfill {
   pending(shard?: Shard): { convs: number; threads: number; searches: number } {
     const convs = (this.store.db.prepare(`SELECT c.id FROM slack_convs c LEFT JOIN slack_deep d ON d.key = c.id
       WHERE coalesce(d.done, 0) = 0 AND c.next_sync != '9999' ${this.convFilter()}`).all() as any[]).filter((r) => mine(shard, r.id)).length;
+    const muted = mutedIds(this.store);
     const threads = (this.store.db.prepare("SELECT channel, thread_ts FROM slack_deep_threads WHERE done = 0").all() as any[])
-      .filter((r) => mine(shard, `${r.channel}:${r.thread_ts}`)).length;
+      .filter((r) => !muted.has(r.channel) && mine(shard, `${r.channel}:${r.thread_ts}`)).length;
     const searches = !shard || shard.i === 0 ? [MINE, MENTIONS].filter((k) => !this.state(k)?.done).length : 0;
     return { convs, threads, searches };
   }
@@ -136,7 +137,7 @@ export class SlackDeepBackfill {
   }
 
   convFilter(): string {
-    return this.opts.channelHistory ? "" : "AND c.type IN ('im', 'mpim')";
+    return `AND c.id NOT IN (SELECT value FROM json_each('${mutedJson(this.store)}')) ${this.opts.channelHistory ? "" : "AND c.type IN ('im', 'mpim')"}`;
   }
 
   // 한 사이클. 끝났으면 done=true. 레이트리밋·오류가 있어도 받은 만큼은 기록하고 상태를 전진시킨다.
@@ -266,7 +267,7 @@ class SlackDeepRun extends SlackRun {
 
   private deepThreads() {
     const rows = (this.store.db.prepare("SELECT channel, thread_ts FROM slack_deep_threads WHERE done = 0 ORDER BY thread_ts DESC").all() as any[])
-      .filter((r) => mine(this.shard, `${r.channel}:${r.thread_ts}`)).slice(0, this.deep.opts.threadsPerCycle);
+      .filter((r) => !this.muted.has(r.channel) && mine(this.shard, `${r.channel}:${r.thread_ts}`)).slice(0, this.deep.opts.threadsPerCycle);
     for (const r of rows) this.deepReplies(r.channel, r.thread_ts);
   }
 
@@ -335,8 +336,8 @@ class SlackSurveyRun extends SlackRun {
       for (const m of d?.matches ?? []) this.mineSample.push({ ts: m.ts, thread: /[?&]thread_ts=([\d.]+)/.exec(m.permalink ?? "")?.[1] });
     });
     total(`<@${this.me}>${after}`, (n) => (this.totals.mentions = n));
-    const chans = this.store.db.prepare("SELECT id FROM slack_convs WHERE type IN ('public', 'private') AND next_sync != '9999' ORDER BY id")
-      .all() as any[];
+    const chans = this.store.db.prepare("SELECT id FROM slack_convs WHERE type IN ('public', 'private') AND next_sync != '9999' AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY id")
+      .all(mutedJson(this.store)) as any[];
     // 고르게 뽑아 세 본다
     const stride = Math.max(1, chans.length / this.deep.opts.channelProbes);
     for (let i = 0; i < chans.length && this.totals.channelsProbed < this.deep.opts.channelProbes; i += stride) {

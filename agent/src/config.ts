@@ -26,6 +26,8 @@ export type Config = {
   slackUserId?: string; // DM 받을 내 Slack user id (U…)
   // 지시를 줄 사람(Slack 사용자 id, directives.ts). 이 사람들의 DM·멘션은 자동 할 일 대신 지시사항 카드로
   directiveFrom: string[];
+  // 알림·수집에서 뺄 Slack 채널 id(설정 화면 Slack 칸에서 끈 채널). 그 채널의 글은 읽지도, 할 일·브리핑·반응·지시사항·지식그래프에 쓰지도 않는다(나를 멘션한 글도)
+  slackMuted: string[];
   briefingIntervalMin: number;
   ingestIntervalMin: number;
   slackIngestIntervalMin: number;
@@ -342,6 +344,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     slackAppToken: env.SLACK_APP_TOKEN ?? (f.slackAppToken as string),
     slackUserId: env.SLACK_USER_ID ?? (f.slackUserId as string),
     directiveFrom: Array.isArray(f.directiveFrom) ? [...new Set((f.directiveFrom as unknown[]).filter((x): x is string => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x)))].slice(0, 20) : [],
+    slackMuted: Array.isArray(f.slackMuted) ? [...new Set((f.slackMuted as unknown[]).filter((x): x is string => typeof x === "string" && /^[CG][A-Z0-9]{2,20}$/.test(x)))].slice(0, 2000) : [],
     briefingIntervalMin: minutesOf("briefingIntervalMin", f.briefingIntervalMin, 60, notes),
     ingestIntervalMin: minutesOf("ingestIntervalMin", f.ingestIntervalMin, 10, notes),
     slackIngestIntervalMin: minutesOf("slackIngestIntervalMin", f.slackIngestIntervalMin, 5, notes),
