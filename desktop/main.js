@@ -35,6 +35,7 @@ import { personaFor } from './src/persona.js';
 import { okCharacter, characterName, appName, START_CHARACTER } from './src/character.js';
 import { applyCharacters } from './src/character-registry.js';
 import { normStatus, brainView, sameView } from './src/brain-state.js';
+import { menuTemplate as buildMenuTemplate } from './src/menu.js';
 import { isAskId } from './src/quick-ask.js';
 import { isFocusCmd, DAY_RE, doingTodos } from './src/focus.js';
 import { tourSteps, tourBubble, TOUR_VERSION } from './src/tour.js';
@@ -900,27 +901,40 @@ async function triggerBriefing() {
 }
 
 // ---- 트레이/메뉴 ----
+// 맥 SF Symbols 아이콘. 이름을 못 찾아 빈 그림이면 아이콘 없이 간다
+const menuIcons = new Map();
+function menuIcon(symbol) {
+  if (process.platform !== 'darwin') return undefined;
+  if (!menuIcons.has(symbol)) {
+    let img;
+    try { img = nativeImage.createFromNamedImage(symbol); } catch { /* 이 Electron 이 못 읽는 이름 */ }
+    const icon = img && !img.isEmpty() ? img.resize({ width: 16, height: 16 }) : undefined;
+    icon?.setTemplateImage(true); // 줄이면 템플릿 표시가 빠져 다크 모드 메뉴에서 검게 보인다 — 메뉴 글자색을 따르게
+    menuIcons.set(symbol, icon);
+  }
+  return menuIcons.get(symbol);
+}
+
+// 트레이 메뉴와 캐릭터 오른쪽 클릭 메뉴가 같은 템플릿(src/menu.js)을 쓴다
 function menuTemplate() {
-  return [
-    { label: '패널 열기', click: () => showPanel(null) },
-    ...(coder() ? [{ label: '작업 세션 열기', click: openSessionMenu }] : []),
-    { label: '지금 브리핑', click: triggerBriefing },
-    { label: '설정…', click: () => settingsUi?.show() },
-    { label: '사용법 다시 보기', click: startTour },
-    { type: 'separator' },
+  return buildMenuTemplate(
+    { name: who(), connected, brainLabel: brainNow().label, coder: coder(), bubblesHidden: !!state.bubblesHidden },
     {
-      label: state.bubblesHidden ? '말풍선 보이기' : '말풍선 숨기기',
-      click: () => {
+      open: () => showPanel(null),
+      session: openSessionMenu,
+      briefing: triggerBriefing,
+      settings: () => settingsUi?.show(),
+      tour: startTour,
+      toggleBubbles: () => {
         state.bubblesHidden = !state.bubblesHidden;
         saveState();
         send('visibility', { hidden: state.bubblesHidden });
         rebuildTrayMenu();
       },
+      quit: () => app.quit(),
     },
-    { label: connected ? `${who()} 켜짐` : `${who()} 꺼짐`, enabled: false },
-    { type: 'separator' },
-    { label: '종료', click: () => app.quit() },
-  ];
+    menuIcon,
+  );
 }
 
 function rebuildTrayMenu() {
@@ -1079,14 +1093,21 @@ function setupAppActivation() {
 }
 
 // 맥에서 setFocusable 을 바꾸면 창이 처음 위치로 돌아간다. 바꾸기 전 자리를 붙잡아 둔다.
+let dragEpoch = 0; // 드래그 시작·끝마다 +1 (keepOverlayPos 가 낡은 자리를 알아보는 표)
 function keepOverlayPos(fn) {
   if (!win || win.isDestroyed()) return fn();
   const { x, y } = win.getBounds();
+  const epoch = dragEpoch;
   const out = fn();
   const pin = () => {
     if (!win || win.isDestroyed()) return;
     const b = win.getBounds();
-    if (b.x !== x || b.y !== y) win.setBounds({ ...b, x, y });
+    // 드래그 중엔 붙잡아 둔 옛 자리가 아니라 커서를 따라간 자리로 돌려놓는다(옛 자리로 가면 한 프레임 튄다)
+    // 드래그가 시작·끝난 뒤엔 붙잡은 자리가 낡았으니 건드리지 않는다
+    if (!drag && epoch !== dragEpoch) return;
+    const c = drag && screen.getCursorScreenPoint();
+    const t = drag ? { x: c.x - drag.offX, y: c.y - drag.offY } : { x, y };
+    if (b.x !== t.x || b.y !== t.y) win.setBounds({ ...b, ...t });
   };
   pin();
   setImmediate(pin);
@@ -1189,6 +1210,7 @@ function endDrag() {
   if (!drag) return;
   clearInterval(drag.timer);
   drag = null;
+  dragEpoch++;
   if (!win) return;
   const [x, y] = win.getPosition();
   // 화면 위쪽에 놓았으면 뒤집어서 말풍선이 캐릭터 아래로 가게(geometry.js dropPlacement)
@@ -1236,6 +1258,7 @@ function setupIPC() {
     const c = screen.getCursorScreenPoint();
     const [wx, wy] = win.getPosition();
     drag = { offX: c.x - wx, offY: c.y - wy };
+    dragEpoch++;
     drag.started = Date.now();
     drag.timer = setInterval(() => {
       if (!win || !drag) return;
@@ -1254,14 +1277,7 @@ function setupIPC() {
     if (!win) return;
     endDrag(); // 오른쪽 클릭 전에 시작된 드래그가 있으면 끝낸다
     quietActivation(1500); // 메뉴가 앱을 활성화해도 패널을 띄우지 않음
-    Menu.buildFromTemplate([
-      { label: '패널 열기', click: () => showPanel(null) },
-      ...(coder() ? [{ label: '작업 세션 열기', click: openSessionMenu }] : []),
-      { label: '지금 브리핑', click: triggerBriefing },
-      { label: '사용법 다시 보기', click: startTour },
-      { type: 'separator' },
-      { label: `${who()} 끄기`, click: () => app.quit() },
-    ]).popup({ window: win });
+    Menu.buildFromTemplate(menuTemplate()).popup({ window: win });
   });
 
   ipcMain.on('open-link', (e, url) => {
