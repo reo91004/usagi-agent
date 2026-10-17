@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -104,6 +105,20 @@ function gateServer(g: Gate, s: CliMcpServer, closed: AbortSignal): Server {
   return server;
 }
 
+// ── Codex·agy 채팅의 백그라운드 에이전트(agent_start) ─────────────────────────
+// Claude Code 뇌의 Agent 도구에 해당한다. 어느 대화가 불렀는지는 MCP 연결로는 알 수 없어(agy 는 전역 설정 하나) 채팅 실행 하나 동안만 유효한
+// 열쇠(프롬프트로 알려 준다)를 도구 인자로 받는다. 열쇠가 없거나 끝난 실행의 것이면 거절 — 브리핑 같은 뒤에서 도는 실행은 열쇠가 없어 못 띄운다.
+// 띄운 뒤는 Claude 뇌와 같은 길(broker.onBackgroundAgent → bg-agents.ts → runCliAgent). 시작 자체에 승인 카드는 없다(Agent 도구와 같다):
+// 일은 자기 워크트리 샌드박스 안에서만 하고 커밋만 남기며, 머지는 사용자 승인이다
+const tickets = new Map<string, (a: { description: string; prompt: string }) => string>();
+export function openAgentTicket(start: (a: { description: string; prompt: string }) => string): { key: string; close(): void } {
+  const key = randomBytes(16).toString("hex");
+  tickets.set(key, start);
+  return { key, close: () => void tickets.delete(key) };
+}
+const agentStartText = (a: { key: string; description: string; prompt: string }) => tickets.get(a.key)?.(a) ?? "이 실행에서는 백그라운드 에이전트를 띄울 수 없어요(열쇠가 없거나 끝났어요). 사용자의 채팅에서만 쓸 수 있어요.";
+export const agentStartGuide = (key: string) => `- 사용자가 「뒤에서 따로 해 줘」처럼 오래 걸리는 코드 작업을 맡기면 ${MCP_NAME} 의 agent_start 도구(key: ${key})를 부른다. 자기 워크트리에서 돌고 결과는 끝나면 이 대화에 따로 올라온다 — 시작했다고만 짧게 답하고 결과를 기다리거나 짐작하지 마라. 이 도구가 아닌 방법으로 코드를 고치지 마라.`;
+
 // 버스(bus.ts)가 /mcp/<토큰>[/<열쇠>/<서버>] 요청을 넘긴다. tools 는 요청마다 새로(설정·DB 를 그때 읽는다)
 export function mcpHandler(token: string, tools: () => SdkMcpToolDefinition<any>[]) {
   return async (req: IncomingMessage, res: ServerResponse, given: string): Promise<void> => {
@@ -130,6 +145,10 @@ export function mcpHandler(token: string, tools: () => SdkMcpToolDefinition<any>
       for (const t of tools()) {
         ctx.registerTool(t.name, { description: t.description, inputSchema: t.inputSchema, ...(t.annotations ? { annotations: t.annotations } : {}) }, ((args: unknown, extra: unknown) => t.handler(args as any, extra)) as any);
       }
+      ctx.registerTool("agent_start", {
+        description: "오래 걸리는 코드 작업을 백그라운드 에이전트로 띄운다(자기 워크트리, 결과는 이 대화에 올라온다). key 는 프롬프트에 적힌 이 대화의 열쇠.",
+        inputSchema: { key: z.string(), description: z.string().describe("한 줄 제목"), prompt: z.string().describe("에이전트에게 줄 완결된 지시(대상 레포의 절대경로 포함)") },
+      }, async (a) => ({ content: [{ type: "text" as const, text: agentStartText(a) }] }));
       server = ctx;
     }
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

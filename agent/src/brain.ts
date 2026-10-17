@@ -22,7 +22,8 @@ import { registeredMcpServerNames } from "./mcp.ts";
 import { sessionsAllowed } from "./onboarding.ts";
 import { CONNECTORS, brainAllowedTools, mcpTool, type Connectors } from "./connectors.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
-import type { GateDecide } from "./mcp-http.ts";
+import { agentStartGuide, openAgentTicket, type GateDecide } from "./mcp-http.ts";
+import { randomUUID } from "node:crypto";
 import { CODE_TOOLS, isCodeReadCall, insideRoots } from "./code-read.ts";
 import { loadInstructions } from "./instructions.ts";
 import { profileContext } from "./profile.ts";
@@ -355,7 +356,10 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
       const facts = opts.facts ?? {};
       return localThought(facts.now ?? new Date(), facts.open ?? [], facts.done ?? []) as T;
     }
-    const system = withCharacter(opts.system); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
+    // codex·agy 채팅: 백그라운드 에이전트 열쇠(mcp-http.ts agent_start) — 이 실행이 끝나면 닫는다
+    const ticket = cliAgentTicket(provider, cfg, opts, run.id);
+    const system = withCharacter(opts.system) + (ticket ? `\n${agentStartGuide(ticket.key)}` : ""); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
+    try {
     // 채팅이면 맥락 도구 + 사용자 MCP 연결(cli-mcp.ts). Codex·agy 만 도구를 받는다 — agy 는 읽기 도구만, Codex 는 문지기(codexGate)를 거쳐 쓰기도
     // API 키 뇌의 채팅: 읽기 전용 맥락 도구(ctxApiTools). 캐릭터 말 걸기(quick)는 도구 없이
     const apiTools = opts.interactive && opts.ctx && !opts.quick && API_TOOL_PROVIDERS.includes(provider)
@@ -367,7 +371,17 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
       return String(out?.reply ?? "") as T;
     }
     return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    } finally { ticket?.close(); }
   });
+}
+
+// Claude 뇌의 Agent 호출과 같은 길(broker.onBackgroundAgent)로 백그라운드 에이전트를 띄우는 열쇠. 대화·브로커가 없거나 캐릭터 말 걸기·패널 채팅이 아니면 없다
+function cliAgentTicket(provider: string, cfg: Config, opts: AskOpts, runId: string) {
+  const broker = opts.interactive?.broker ?? getBroker();
+  const origin = opts.interactive?.origin;
+  if ((provider !== "codex" && provider !== "agy") || !broker?.onBackgroundAgent || !origin?.threadId || (origin.via !== "chat" && origin.via !== "hover")) return undefined;
+  const sink = broker.onBackgroundAgent;
+  return openAgentTicket((a) => sink({ toolUseId: `cli-${randomUUID()}`, input: a, cwd: askCwd(cfg, opts), origin: withRunOrigin(origin, { id: runId, origin: currentRunContext()?.origin }) }) ?? "백그라운드로 못 띄웠어요");
 }
 
 // Codex 채팅이 사용자 MCP 도구를 부를 때(mcp-http.ts openGate): Claude Code 뇌의 canUseTool 과 같은 브로커 판정 —
