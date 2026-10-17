@@ -482,12 +482,13 @@ export class Agent {
     try { since = (db.prepare("SELECT value FROM slack_meta WHERE key = 'quickTodoAt'").get() as any)?.value; } catch { return 0; } // 슬랙 수집 전(표 없음)
     since ||= new Date(Date.now() - 3 * 3600e3).toISOString();
     const all = attentionSince(this.store, since, { limit: 50 }).filter((i) => i.at > since);
-    if (!all.length) return 0;
-    const newest = all.reduce((m, i) => (i.at > m ? i.at : m), since);
-    // 지시자(directiveFrom)의 DM·멘션은 할 일로 바로 넣지 않고 지시사항 카드로(directives.ts). 새로 왔다고 한 번 알린다
+    // 지시자(directiveFrom)의 DM·멘션·채널 글은 할 일로 바로 넣지 않고 지시사항 카드로(directives.ts). 새로 왔다고 한 번 알린다
+    // 채널 글 지시는 attentionSince(DM·멘션)에 없으니 DM·멘션이 하나도 없어도 먼저 본다
     const from = new Set(this.cfg.directiveFrom ?? []);
+    const fresh = from.size ? directivesSince(this.store, [...from], since, { state: "open", limit: 10 }).filter((d) => d.at > since) : [];
+    if (!all.length && !fresh.length) return 0;
+    const newest = [...all, ...fresh].reduce((m, i) => (i.at > m ? i.at : m), since);
     const items = all.filter((i) => !from.has(i.author));
-    const fresh = directivesSince(this.store, [...from], since, { state: "open", limit: 10 }).filter((d) => d.at > since);
     if (fresh.length) {
       const d = fresh[0];
       this.bus.bubble({ kind: "todo", ttlMs: 10 * 60e3, text: `${d.authorName}님 지시가 ${fresh.length > 1 ? `${fresh.length}개 ` : ""}왔어요: ${d.text.replace(/\s+/g, " ").slice(0, 60)}`, open: { section: "overview" } });

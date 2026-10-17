@@ -1649,7 +1649,7 @@ function setupIPC() {
     if (!fromOurs(e) || !['calendar', 'reminders'].includes(kind)) return denied();
     return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${kind === 'calendar' ? 'Calendars' : 'Reminders'}`).then(() => ({ ok: true }), () => ({ ok: false }));
   });
-  ipcMain.handle('research-job-forget', (e, id) => (fromOurs(e) && typeof id === 'string' && /^job:[\w.:-]{1,200}$/.test(id) ? post('/research/jobs/forget', { id }) : denied()));
+  ipcMain.handle('research-job-forget', (e, id) => (fromOurs(e) && typeof id === 'string' && /^job:[\w.:@-]{1,200}$/.test(id) ? post('/research/jobs/forget', { id }) : denied()));
   ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
   ipcMain.handle('research-note-open', async (e, day) => {
     if (!fromOurs(e) || typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return denied();
@@ -1733,8 +1733,9 @@ function setupIPC() {
     const app = process.platform === 'darwin' ? codeApp() : 'code';
     if (!app) return { ok: false, error: 'VS Code 를 찾지 못했어요. 설치하면 바로 열 수 있어요' };
     if (local) {
-      const args = process.platform === 'darwin' ? ['-a', app, dir] : [dir];
-      return new Promise((done) => execFile(process.platform === 'darwin' ? 'open' : 'code', args, (err) => done(err ? { ok: false, error: 'VS Code 를 열지 못했어요' } : { ok: true })));
+      // 윈도우의 code 는 code.cmd 라 셸 없이 못 부른다 → vscode://file 주소로
+      if (process.platform !== 'darwin') return shell.openExternal(`vscode://file${pathToFileURL(dir).pathname}`).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
+      return new Promise((done) => execFile('open', ['-a', app, dir], (err) => done(err ? { ok: false, error: 'VS Code 를 열지 못했어요' } : { ok: true })));
     }
     const url = remoteUrl(host || pick, dir, sshHosts());
     if (!url) return { ok: false, error: host || pick ? `~/.ssh/config 에서 서버 ${host || pick} 를 찾지 못했어요` : '어느 서버의 폴더인지 몰라요' };

@@ -244,6 +244,8 @@ test("parseTmux·mineOnly: 세션별로 합치고 셸만 있으면 쉬는 중, �
     ["sibling", "vim", "/home/user/reo2/exp"], ["idle", null, "/home/user/reo/x"]]);
   assert.deepEqual(mineOnly(all, "~/reo/.usagi-agent/jobs", "/home/user").map((s) => s.name), ["claude", "train", "idle"]); // reo2·other 는 내 폴더 밖
   assert.equal(mineOnly(all, "~/.usagi-agent/jobs", "/home/me").length, 5); // 개인 계정은 거르지 않음
+  assert.equal(mineOnly(all, "~/exp/jobs", "/home/me").length, 5); // 개인 계정에서 jobDirs 를 따로 정해도 거르지 않음
+  assert.deepEqual(mineOnly(all, "~/reo/.usagi-agent/jobs", ""), []); // 공용인데 홈을 모르면 아무것도 안 보임
   // 같은 ssh 호출 하나에 H·T 줄이 실려 오고 지우기 호출 말고는 ssh 가 늘지 않는다
   const calls: string[][] = [];
   const run: RunSsh = async (a) => { calls.push(a); return "H\t/home/user\nT\tclaude\t1791532244\t1792224999\tclaude\t/home/user/reo/dp\nT\tother\t1\t2\tpython\t/home/user/o\n"; };
