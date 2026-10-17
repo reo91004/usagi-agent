@@ -344,10 +344,10 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
     // 채팅이면 맥락 도구 + 사용자 MCP 연결(cli-mcp.ts). Codex·agy 만 도구를 받는다 — agy 는 읽기 도구만, Codex 는 문지기(codexGate)를 거쳐 쓰기도
     const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}), ...(provider === "codex" ? { gate: codexGate(cfg, opts, run, onStep) } : {}) } : {};
     if (schema === null) {
-      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...opts.deps }) as { reply?: string };
+      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
-    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, quick: opts.quick, blocks: opts.blocks, ...tools, ...(opts.abort ? { signal: opts.abort.signal } : {}), ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
   });
 }
 
