@@ -1,4 +1,4 @@
-// 일정 알림 설정(config.json calendarAlert · 설정 창 「일정 알림」): 일정 몇 분 전에 춤 + 말풍선으로 알릴지.
+// 일정 알림 설정(config.json calendarAlert · 설정 「일정 알림」): 일정 몇 분 전에 춤 + 말풍선으로 알릴지.
 // minutesBefore: 알릴 때들(양의 정수 분, 몇 개든·얼마든, 예: 1440 = 하루 전. 큰 것부터 정렬·중복 제거). [10] = 10분 전 한 번(기본), [15, 5] = 15분 전·5분 전 두 번, [] = 알림 끔.
 // 끄더라도 일정은 그대로 가져온다(브리핑·대시보드에 쓴다). 바꾸면 바로 반영(PUT /settings, 데몬 재시작 불필요).
 export type CalendarAlertConfig = { minutesBefore: number[] };

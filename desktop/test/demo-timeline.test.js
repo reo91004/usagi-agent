@@ -24,7 +24,7 @@ test('--from: 번호·id·앞부분, 잘못되면 오류', () => {
   assert.equal(resolveFrom('1'), 0);
   assert.equal(resolveFrom(String(BEATS.length)), BEATS.length - 1);
   assert.equal(resolveFrom('merge'), BEATS.findIndex((b) => b.id === 'merge'));
-  assert.equal(resolveFrom('today'), BEATS.findIndex((b) => b.id === 'today'));
+  assert.equal(resolveFrom('focus'), BEATS.findIndex((b) => b.id === 'focus'));
   assert.throws(() => resolveFrom('0'), /1–/);
   assert.throws(() => resolveFrom('zzz'), /그런 장면이 없어/);
 });

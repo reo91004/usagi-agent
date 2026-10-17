@@ -1,4 +1,4 @@
-// 설정 창 「행동 지침」 — 사용자가 정한 비서의 말투·답 모양·일하는 법(데몬 agent/src/guidelines.ts).
+// 설정 「행동 지침」 — 사용자가 정한 비서의 말투·답 모양·일하는 법(데몬 agent/src/guidelines.ts).
 // 순수 로직(IPC 인자 거르기·목록 다듬기) + 그리기(document 를 받아서 — 시험은 가짜 DOM).
 // 데몬 GET/POST /guidelines · PUT/DELETE /guidelines/:id (docs/contract.md "행동 지침").
 

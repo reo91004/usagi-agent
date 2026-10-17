@@ -23,7 +23,7 @@ const closedImg = document.getElementById('char-closed');
 
 // ---- 캐릭터 그림: 눈 뜬 그림(cy-asset://app/character/, ~/.cy-agent/assets) → 예전 character.png → 번들 png → svg ----
 // 눈 감은 그림까지 있으면 깜빡임을 켠다. 두 장 다 미리 디코드해 두고 보이기만 바꿔서 깜빡임(로딩) 없음.
-// 고른 캐릭터(데몬 state.character — 설정 창에서 바꾼다)마다 그림·영상 자리가 다르다(src/character.js characterAssets)
+// 고른 캐릭터(데몬 state.character — 설정에서 바꾼다)마다 그림·영상 자리가 다르다(src/character.js characterAssets)
 // 켤 때 데몬 state 가 오기 전에도 지난번 캐릭터로 그린다(시사가 잠깐 보였다 바뀌지 않게)
 const CHAR_KEY = 'cy-character';
 const savedCharacter = () => { try { return localStorage.getItem(CHAR_KEY); } catch { return null; } };

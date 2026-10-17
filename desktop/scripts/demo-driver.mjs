@@ -19,14 +19,13 @@ export const BEATS = [
   { id: 'new-todos', title: '새 할 일 스티커 → 눌러서 패널 할 일', est: 18 },
   { id: 'overview', title: '패널 — 개요·프로젝트·숨기기', est: 30 },
   { id: 'todos', title: '할 일 — 펼침·제목·설명 고치기·규칙·끌기·완료', est: 70 },
-  { id: 'today', title: '오늘 할 일 — 표에 적기·체크·저장', est: 22 },
   { id: 'focus', title: '집중하기 — 공부 영상·머리 위 집중 시간·일시정지', est: 26 },
   { id: 'focus-stats', title: '오늘 집중 — 주 막대·월 잔디·날짜 눌러 총·최대 연속', est: 30 },
   { id: 'chat', title: '채팅 — 단계 → 표·콜아웃·색 답 → 프로젝트로', est: 36 },
   { id: 'hover', title: '더블클릭 채팅 — 입력창·생각 중·패널에서 보기', est: 26 },
   { id: 'run', title: '스스로 작업 — 공부 영상·진행 보고·작업 세션 창', est: 44 },
   { id: 'merge', title: '머지 승인 — 추가질문 → ✓ → 머지 완료', est: 30 },
-  { id: 'settings', title: '설정 창 — 모델·브리핑 출처·문구·연결 상태', est: 16 },
+  { id: 'settings', title: '설정 — 패널 설정 탭들 훑기', est: 16 },
   { id: 'meeting', title: '일정 10분 전 · 춤', est: 14 },
   { id: 'day', title: '하루 진행 — 절반·제안 승인·오류·여유·다 끝', est: 34 },
   { id: 'outro', title: '마무리 — 작별·연결 끊김·다시 연결', est: 24 },
@@ -43,7 +42,7 @@ export const TIMING = {
   typing: { msPerChar: 85, jitter: 25, space: 30 },   // 글자당 ~85–110ms
   mouse: { perPx: 1.3, min: 320, max: 950, settle: 220 },
   beats: {
-    idle: 1, nobrain: 1, setup: 1, tour: 1, briefing: 1, 'new-todos': 1, overview: 1, todos: 1, today: 1, focus: 1, 'focus-stats': 1,
+    idle: 1, nobrain: 1, setup: 1, tour: 1, briefing: 1, 'new-todos': 1, overview: 1, todos: 1, focus: 1, 'focus-stats': 1,
     chat: 1, hover: 1, run: 1, merge: 1, settings: 1, meeting: 1, day: 1, outro: 1,
   },
 };
@@ -436,7 +435,7 @@ export class Director {
   async attach(kind, { timeout = 15000 } = {}) {
     const cur = this.pages[kind];
     if (cur && !cur.closed) return cur;
-    const file = { overlay: 'index.html', panel: 'panel.html', session: 'session.html', settings: 'settings.html' }[kind];
+    const file = { overlay: 'index.html', panel: 'panel.html', session: 'session.html' }[kind];
     const end = Date.now() + timeout;
     for (;;) {
       const list = await fetch(`${this.cdp}/json/list`).then((r) => r.json()).catch(() => []);
@@ -444,7 +443,7 @@ export class Director {
       if (t) {
         const p = await new Page(kind, t, this.pace).open();
         await p.eval('0').catch(() => {}); // 도우미(문구 바꾸기 포함) 바로 설치
-        p.pos = { overlay: { x: 320, y: 300 }, panel: { x: 720, y: 600 }, session: { x: 860, y: 640 }, settings: { x: 600, y: 600 } }[kind];
+        p.pos = { overlay: { x: 320, y: 300 }, panel: { x: 720, y: 600 }, session: { x: 860, y: 640 } }[kind];
         this.pages[kind] = p;
         return p;
       }
@@ -455,7 +454,6 @@ export class Director {
   overlay() { return this.attach('overlay'); }
   panel() { return this.attach('panel'); }
   session() { return this.attach('session'); }
-  settings() { return this.attach('settings'); }
   has(kind) { return !!this.pages[kind] && !this.pages[kind].closed; }
   isShown(kind) { return this.has(kind) && this.shownWin[kind] !== false; }
 
@@ -509,7 +507,7 @@ export class Director {
       entry.files.overlay = `${base}-overlay.png`;
       entry.leak = [];
       for (const [k, p] of Object.entries(this.pages)) if (!p.closed && (await p.eval('__demo.leaks()').catch(() => false))) entry.leak.push(k);
-      for (const k of ['settings', 'session', 'panel']) {
+      for (const k of ['session', 'panel']) {
         if (!this.isShown(k)) continue;
         await this.pages[k].screenshot(`${base}-${k}.png`);
         entry.files.main = `${base}-${k}.png`;
@@ -797,26 +795,6 @@ const SCENES = {
     await pn.scrollTop('#content');
   },
 
-  async today(d) {
-    const pn = await d.ensurePanel('today');
-    await pn.click('#nav button[data-section="today"]');
-    await pn.scrollTop('#content');
-    d.cue('오늘 할 일: 할 일 중 오늘로 고른 것, 같은 우선순위 묶음');
-    await d.hold('panel');
-    d.cue('오늘 할 일 추가(P1)');
-    await pn.click('#today-add-input');
-    await pn.type('리뷰 코멘트 반영');
-    await pn.eval(`(() => { const s = document.querySelector('#sec-today select.prio'); s.value = '1'; s.dispatchEvent(new Event('change')); })()`);
-    await pn.click('#sec-today .todo-add button.primary');
-    await d.wait(800);
-    await d.snap('today-edit');
-    d.cue('체크해서 끝냄');
-    await pn.click({ sel: '#sec-today .todo.row input.check', index: 0 });
-    await d.wait(600);
-    await d.hold('panel');
-    await pn.scrollTop('#content');
-  },
-
   // 집중하기: 할 일 탭 [▶ 집중하기] → 캐릭터가 공부 영상, 머리 위에 집중 시간·일시정지·그만하기
   async focus(d) {
     await d.clearAll();
@@ -930,12 +908,12 @@ const SCENES = {
     await d.hold('panel');
     await pn.eval(`(() => { const l = document.getElementById('chat-log'); l.scrollTo({ top: l.scrollHeight, behavior: 'smooth' }); })()`);
     await d.wait(3500);
-    d.cue('"프로젝트 현황 보여줘" → show 로 프로젝트 탭');
+    d.cue('"프로젝트 현황 보여줘" → show 로 작업 폴더 탭');
     await pn.click('#chat-input');
     await pn.type('프로젝트 현황 보여줘');
     await d.wait(500);
     await pn.key('Enter');
-    await pn.waitFor(`!document.getElementById('sec-projects').hidden`, { timeout: 30000, label: '프로젝트 탭으로' });
+    await pn.waitFor(`!document.getElementById('sec-projects').hidden`, { timeout: 30000, label: '작업 폴더 탭으로' });
     await d.snap('chat-show-projects');
     await d.wait(5000);
   },
@@ -1064,19 +1042,17 @@ const SCENES = {
     await d.wait(7000);
   },
 
-  // ⚙ 설정 창 — 모델·브리핑 출처·자동 머지·문구·지침·연결 상태, 「사용법 다시 보기」
+  // 패널 「설정」 — 안쪽 탭(#set-tabs)을 차례로 훑는다
   async settings(d) {
-    const pn = await d.ensurePanel('overview');
-    d.cue('⚙ → 설정 창');
-    await pn.eval('cy.openSettings()');
-    const st = await d.settings();
-    d.shownWin.settings = true;
-    await st.waitFor(`document.querySelector('#models .row, #models > *')`, { timeout: 8000, label: '설정 창' }).catch(() => {});
-    await d.wait(2000);
+    const pn = await d.ensurePanel('settings');
+    await pn.click('#nav button[data-section="settings"]');
+    await pn.scrollTop('#content');
+    for (const tab of ['ai', 'char', 'conn']) {
+      await pn.click(`#set-tabs [data-tab="${tab}"]`);
+      await d.wait(1200);
+    }
     await d.snap('settings');
     await d.hold('panel');
-    await st.eval('window.close()').catch(() => {});
-    d.shownWin.settings = false;
   },
 
   async meeting(d) {

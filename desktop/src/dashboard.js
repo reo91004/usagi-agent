@@ -13,7 +13,7 @@ export function navGroups(sections) {
   return { main, bottom: sections.filter((s) => NAV_BOTTOM.includes(s)) };
 }
 
-// 모르는 섹션은 null. 「오늘 할 일」은 할 일에 합쳤다(예전 저장 상태·말풍선 open.section=scrum 도 할 일로). 모델 탭은 설정으로(AI 칸)
+// 모르는 섹션은 null. 「오늘 할 일」은 할 일에 합쳤다(예전 저장 상태·말풍선 open.section=scrum 도 할 일로). 모델 탭은 설정 › AI 로
 export function normalizeSection(s) {
   if (s === 'scrum' || s === 'today') return 'todos';
   if (s === 'models') return 'settings';
@@ -55,7 +55,7 @@ export function priorityHint(p) {
   return (p === 0 ? TODAY_GROUP : PRIORITIES.find((x) => x.value === p))?.hint ?? '';
 }
 
-// 우선순위 이름: todos.js PRIORITIES(오늘 꼭·이번 주·천천히·언젠가)
+// 우선순위 이름: todos.js PRIORITIES(오늘 꼭·이번 주·나중에·언젠가)
 export function priorityLabel(p) {
   return (p === 0 ? TODAY_GROUP : PRIORITIES.find((x) => x.value === p))?.label ?? '기타';
 }
@@ -117,12 +117,6 @@ export function overlayHidden(projects, pending) {
   if (!Array.isArray(projects)) return projects;
   if (!pending || !pending.size) return projects;
   return projects.map((p) => (p && pending.has(p.path) ? { ...p, hidden: pending.get(p.path) } : p));
-}
-
-// 최근 24시간 안에 손댄 작업 폴더를 "진행 중"으로 본다
-export function isActiveProject(p, now = Date.now()) {
-  const t = toMs(p.lastActive);
-  return p.sessions24h > 0 || p.commitsToday > 0 || (Number.isFinite(t) && now - t < DAY);
 }
 
 // 원격 서버 세션의 경로는 「host:/절대경로」 로 온다(데몬 ingest/sessions.ts). 한 글자 접두(C:\\ 같은 드라이브)는 호스트가 아니다.
@@ -193,10 +187,6 @@ export function shapeMeetings(list, now = Date.now()) {
       link: str(m.link) && isSafeLink(m.link) ? m.link : null, past: Number.isFinite(toMs(m.end)) && toMs(m.end) < now, startMs: toMs(m.start),
     }))
     .sort((x, y) => x.startMs - y.startMs);
-}
-
-export function visibleSections(_vm) {
-  return SECTIONS;
 }
 
 // 연구 카드(#40): 데몬 research(연구 연결이 있을 때만). 작업 한 줄 = 상태 칩 · 이름 @서버 · 시간 글, 채팅에 물어볼 글
@@ -314,10 +304,6 @@ export function shapeDashboard(raw, now = Date.now()) {
   const todayDone = arr(today?.items)
     .filter((it) => it && typeof it === 'object' && str(it.id) && str(it.title) && it.done === true && !openIds.has(it.id))
     .map((it) => ({ id: it.id, title: it.title, source: str(it.source), priority: [1, 2, 3, 4].includes(it.priority) ? it.priority : 2, today: todayDate, auto: false, doneRel: '' }));
-  const todayItems = [
-    ...todayOpen.map((t) => ({ id: t.id, title: t.title, done: false, priority: t.priority })),
-    ...todayDone.map((t) => ({ id: t.id, title: t.title, done: true, priority: t.priority })),
-  ];
 
   return {
     generatedAt: str(r.generatedAt),
@@ -326,10 +312,7 @@ export function shapeDashboard(raw, now = Date.now()) {
       openTodos,
       p1Todos,
       backlogTodos,
-      activeProjects: projects.filter((p) => isActiveProject(p, now)).length,
       pendingProposals: proposals.filter((p) => p.status === 'pending').length,
-      todayOpen: todayOpen.length,
-      todayTotal: todayItems.length,
     },
     briefing: b ? { at: str(b.at), time: clockTime(b.at), rel: relativeTime(b.at, now), bubble: str(b.bubble), md: str(b.replyMd) } : null,
     projects,
@@ -339,8 +322,7 @@ export function shapeDashboard(raw, now = Date.now()) {
     recentDone: shapeRecentDone(r.recentDone, now),
     proposals,
     connectors,
-    notReady: connectors.filter((c) => !c.ready).map((c) => c.cap),
-    today: { date: todayDate, items: todayItems, asked: today?.asked === true },
+    today: { date: todayDate },
     todayDone,
     meetings: shapeMeetings(r.meetings, now),
     research: shapeResearch(r.research, now),

@@ -156,8 +156,8 @@ export const QUICK_LINES = {
   ],
 } as const;
 
-// 화면에 보이는 우선순위 이름(데스크톱 todos.js PRIORITIES 와 같다)
-export const PRIO_LABEL: Record<number, string> = { 1: "오늘 꼭", 2: "이번 주", 3: "천천히", 4: "언젠가" };
+// 화면에 보이는 우선순위 이름(데스크톱 todos.js PRIORITIES 와 같다: 오늘 꼭·이번 주·나중에·언젠가)
+export const PRIO_LABEL: Record<number, string> = { 1: "오늘 꼭", 2: "이번 주", 3: "나중에", 4: "언젠가" };
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (all, k: string) => (k in v ? String(v[k]) : all));
 const quote = (t: string) => `'${cleanTitle(t).slice(0, 30)}'`;
 

@@ -132,7 +132,7 @@ export type BusHandlers = {
   // 확인 후 실행하는 쓰기 동작(actions.ts). 없으면 /actions* 503
   actions?: ActionsApi;
   permissions?: PermissionsApi;
-  // 설정 창(settings.ts): 모델 네 개·브리핑에서 뺄 출처. PUT 은 메모리 cfg 를 바로 바꾸고 config.json 에 합쳐 쓴다. 없으면 503
+  // 설정(settings.ts): 모델 네 개·브리핑에서 뺄 출처. PUT 은 메모리 cfg 를 바로 바꾸고 config.json 에 합쳐 쓴다. 없으면 503
   settings?: SettingsApi;
   // 연결 상태(connections.ts). 없으면 503
   connections?: ConnectionsApi;
@@ -240,11 +240,11 @@ export class Bus {
   state() {
     return { mood: this.mood, ...this.activity.snapshot(), character: characterId() };
   }
-  // 캐릭터를 바꿨다(설정 창) → 앱이 그림을 바로 바꾸게 state 를 다시 보낸다
+  // 캐릭터를 바꿨다(설정) → 앱이 그림을 바로 바꾸게 state 를 다시 보낸다
   characterChanged() {
     this.send("state", this.state());
   }
-  // 캐릭터를 만들거나 고치거나 지웠다 → 앱(오버레이·패널·설정 창)이 GET /characters 를 다시 읽는다
+  // 캐릭터를 만들거나 고치거나 지웠다 → 앱(오버레이·패널·설정)이 GET /characters 를 다시 읽는다
   private charactersRev = 0;
   charactersChanged() {
     this.send("characters", { rev: ++this.charactersRev });

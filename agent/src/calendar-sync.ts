@@ -19,7 +19,6 @@ import { phrase } from "./phrases.ts";
 import { calendarAlertOf } from "./calendar-alert.ts";
 
 export const SYNC_EVERY_MS = 30 * 60e3;   // 30분마다 다시 가져온다
-export const DANCE_MS = 8000;
 
 
 export type CalEvent = {
@@ -101,7 +100,7 @@ export function onlineLabel(link?: string): string | undefined {
   try { return /(^|\.)teams\.(microsoft|live)\.com$/.test(new URL(link).hostname) ? "온라인(Teams)" : "온라인"; } catch { return undefined; }
 }
 
-// 말풍선 한 줄: "일정 10분 전이에요! 〈제목〉 13:00 · 📍 회의실 · 온라인(Teams)". 장소·링크가 없으면 그 부분만 뺀다(문구는 설정 창 meeting_alert).
+// 말풍선 한 줄: "일정 10분 전이에요! 〈제목〉 13:00 · 📍 회의실 · 온라인(Teams)". 장소·링크가 없으면 그 부분만 뺀다(문구는 설정 meeting_alert).
 // mins: 몇 분 전({mins}). 사용자가 고친 문구에 {mins} 가 없으면 그 글 그대로
 export function alertText(m: Meeting, mins = 10): string {
   const where = [m.location ? `📍 ${clip(m.location, LOCATION_MAX)}` : "", onlineLabel(m.link) ?? ""].filter(Boolean).join(" · ");
@@ -367,7 +366,7 @@ export class CalendarSync {
   private onAlert?: CalendarAlert;
   private onSync?: (r: CalendarSyncResult) => void;
 
-  // 설정한 분들(cfg.calendarAlert, 설정 창이 메모리 cfg 를 바로 바꾸니 매번 읽는다)
+  // 설정한 분들(cfg.calendarAlert, 설정이 메모리 cfg 를 바로 바꾸니 매번 읽는다)
   get leads(): number[] { return calendarAlertOf(this.cfg.calendarAlert).minutesBefore; }
 
   // 울릴 게 있으면 울리고(일정·분마다 한 번, DB에 남김), 다음 확인을 예약한다

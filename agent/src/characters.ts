@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 // 고를 수 있는 캐릭터: 시사(기본)·하치와레·랏코·모몽가·우사기 + 사용자가 만든 캐릭터(character-store.ts, ~/.cy-agent/characters/).
 // 캐릭터마다 이름·말투(모델 프롬프트)·말투 양념(voice.ts)·고정 문구 기본값(phrases.ts)·AI 없이 하는 정해진 말(local-mode.ts)이 다르다.
 // 그림·영상은 데스크톱이 같은 id 로 고른다(assets/characters/<id>/, 시사는 예전 그대로 assets/character/, 사용자 캐릭터는 ~/.cy-agent/characters/<id>/).
-// 고르는 곳: 설정 창 「캐릭터」 → PUT /settings { character } → config.json character. 데몬은 setCharacter 로 바로 바꾼다.
-// 사용자가 설정 창 「문구」에서 고친 문구는 캐릭터와 상관없이 그대로 쓴다(phrases.ts).
-// 기본 캐릭터의 대사를 설정 창에서 고친 것(덮어쓰기)과 사용자 캐릭터는 character-store.ts 가 읽어 installCharacters 로 넣는다.
+// 고르는 곳: 설정 「캐릭터」 → PUT /settings { character } → config.json character. 데몬은 setCharacter 로 바로 바꾼다.
+// 사용자가 설정 「문구」에서 고친 문구는 캐릭터와 상관없이 그대로 쓴다(phrases.ts).
+// 기본 캐릭터의 대사를 설정에서 고친 것(덮어쓰기)과 사용자 캐릭터는 character-store.ts 가 읽어 installCharacters 로 넣는다.
 
 export const CHARACTER_IDS = ["shisa", "hachi", "rakko", "momonga", "usagi"] as const;
 export type BuiltinId = (typeof CHARACTER_IDS)[number];
@@ -151,7 +151,7 @@ export function installCharacters(o: { overrides?: Record<string, LinesPatch>; u
 }
 
 let current: CharacterId = DEFAULT_CHARACTER;
-// config.json character(모르는 값이면 시사). 설정 창이 바꾸면 Settings 가 다시 부른다 — 다음 말풍선·답부터 바로
+// config.json character(모르는 값이면 시사). 설정이 바꾸면 Settings 가 다시 부른다 — 다음 말풍선·답부터 바로
 export function setCharacter(id: unknown): CharacterId {
   current = isCharacterId(id) ? id : DEFAULT_CHARACTER;
   return current;

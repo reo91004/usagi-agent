@@ -86,7 +86,7 @@ export function connectCard(view) {
     lines: [
       'AI는 선택이에요. 대화하고 싶으면 **Claude Code**·**Codex**·**Antigravity** 로그인, 또는 **Gemini·OpenAI·Claude API·Genspark 키** 중 하나를 연결하면 돼요.',
       '연결하면: 캐릭터 한 번 클릭으로 말 걸기 · 이 채팅 · 브리핑 요약',
-      '지금도 되는 것: 할 일 보기 · 오늘 할 일 표 · 회의 알림 · 아래 정해진 말',
+      '지금도 되는 것: 할 일 보기 · 할 일의 「오늘」 · 회의 알림 · 아래 정해진 말',
     ],
     button: '연결하기',
     hide: '숨기기',

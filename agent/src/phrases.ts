@@ -1,4 +1,4 @@
-// 고정 문구: 캐릭터가 사건마다 하는 정해진 말(춤·인사·새 할 일·머지·회의 알림…). 설정 창 「문구」에서 고친다.
+// 고정 문구: 캐릭터가 사건마다 하는 정해진 말(춤·인사·새 할 일·머지·회의 알림…). 설정 「문구」에서 고친다.
 // 고친 건 ~/.cy-agent/config.json phrases: { 키: [줄…] } — 비우면 기본값. 여러 줄이면 그중 하나를 무작위로.
 // {title} 같은 자리표시는 그 문구가 받는 것만 쓸 수 있다(모르는 건 저장 때 거절). 오류 글·프로토콜 글은 여기 없다.
 // 기본값은 캐릭터(characters.ts)마다 다르다 — 고친 문구 > 캐릭터 기본 > 아래 default(시사).
@@ -29,7 +29,7 @@ export const PHRASES = [
   { key: "todo_auto_done_many", group: "할 일", label: "할 일 자동 완료(여러 개, {n} = 나머지 수)", vars: ["title", "n"], default: ["'{title}' 외 {n}개 끝난 걸로 처리했어요"] },
   { key: "daily_all", group: "할 일", label: "오늘 할 일 다 끝냄", vars: ["total"], default: ["오늘 할 일 {total}개 다 끝냈어요! 최고예요 🎉 (스이시~사)", "다 했어요! {total}개 전부 끝 🎉 오늘 고생 많으셨어요"] },
   { key: "daily_half", group: "할 일", label: "오늘 할 일 절반 넘김", vars: ["done", "total"], default: ["벌써 절반 했어요! ({done}/{total}) 이 페이스 좋아요 💪 (기쁜 시사)", "반 넘었어요 {done}/{total}! 조금만 더 힘내요"] },
-  { key: "today_ask", group: "할 일", label: "오늘 할 일 알림 — 아직 안 적음", vars: [], default: ["오늘 할 일을 적어 주세요~ 오늘 할 일 탭에 적으면 돼요 (스이시~사)"] },
+  { key: "today_ask", group: "할 일", label: "오늘 할 일 알림 — 아직 안 적음", vars: [], default: ["오늘 할 일을 적어 주세요~ 할 일 화면의 「오늘」에 적으면 돼요 (스이시~사)"] },
   { key: "today_left", group: "할 일", label: "오늘 할 일 알림 — 남은 것", vars: ["open"], default: ["오늘 할 일 {open}개 남았어요. 하나씩 해 봐요 (스이시~사)"] },
   { key: "lots", group: "할 일", label: "할 일이 많을 때(앞부분)", vars: ["n"], default: ["오늘 할 일이 많네요… 급한 것만 {n}개예요.", "으아, 할 일이 많아요… 급한 것만 {n}개예요.", "오늘 좀 바쁘겠어요… 급한 것만 {n}개예요."] },
   { key: "lots_briefing", group: "할 일", label: "할 일이 많을 때 — 브리핑 뒤 꼬리", vars: [], default: ["하나씩 같이 해 봐요 (비장한 시사)"] },
@@ -60,10 +60,10 @@ export const PHRASES = [
 export type PhraseKey = (typeof PHRASES)[number]["key"];
 const DEFS = new Map<string, PhraseDef>(PHRASES.map((p) => [p.key, p]));
 export const phraseDef = (key: string): PhraseDef | undefined => DEFS.get(key);
-// 지금 캐릭터의 기본 줄들(설정 창이 「기본값」으로 보여 주는 것)
+// 지금 캐릭터의 기본 줄들(설정이 「기본값」으로 보여 주는 것)
 export const defaultLines = (key: string): readonly string[] => character().phrases[key] ?? DEFS.get(key)?.default ?? [key];
 
-// 사용자가 고친 것(키 → 줄들). 설정 창이 바꾸면 바로 바뀐다(Settings 가 setPhrases)
+// 사용자가 고친 것(키 → 줄들). 설정이 바꾸면 바로 바뀐다(Settings 가 setPhrases)
 let overrides: Record<string, string[]> = {};
 export function setPhrases(o: Record<string, unknown> | undefined): void {
   const next: Record<string, string[]> = {};

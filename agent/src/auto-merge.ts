@@ -3,13 +3,13 @@
 //
 //   1) 말로 시킨 머지(text): 사용자가 이번 말에서 그 PR 을 머지하라고 했다 — 모델이 merges[].userSaid=true 로 표시하고,
 //      데몬이 사용자 말 글을 다시 본다(textMergeConsent: 머지 동사 · 물음/부정 아님 · 말에 PR 번호가 있으면 그 번호).
-//   2) 자동 머지 레포(auto): 사용자가 「이 레포는 알아서 머지까지 해」라고 정한 레포(cfg.autoMerge, 설정 창에서도 고친다).
+//   2) 자동 머지 레포(auto): 사용자가 「이 레포는 알아서 머지까지 해」라고 정한 레포(cfg.autoMerge, 설정에서도 고친다).
 //      그 레포의 채팅 머지 요청 · cy-agent 수정 run 이 올린 PR 은 ✓ 없이.
 // 둘 다 머지 직전 검사(readyBlock — 실패한 검사·충돌·초안·대기 중 검사·GitHub 가 머지 가능 판정 전)를 통과해야 한다.
 // 못 하면 예전처럼 머지 승인 카드(이유를 붙여서).
 import { mergeBlock, type PrLookup, type PrRef, type PrStatus } from "./merge-request.ts";
 
-// config.json 에 autoMerge 가 없을 때의 값 — 비어 있다(사용자가 말·설정 창으로 직접 넣는다)
+// config.json 에 autoMerge 가 없을 때의 값 — 비어 있다(사용자가 말·설정으로 직접 넣는다)
 export const AUTO_MERGE_SEED: readonly string[] = [];
 export const AUTO_MERGE_MAX = 50;
 const SLUG = /^[\w.-]{1,100}\/[\w.-]{1,100}$/;

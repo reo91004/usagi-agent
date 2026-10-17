@@ -6,7 +6,7 @@ export const TOUR_VERSION = 1;
 
 // view: brain-state.js brainView 결과
 // character: 고른 캐릭터 id — 시사가 아니면 그 캐릭터 말투(character-say.js TOUR_SAY)
-// 시사의 둘러보기 글(lines.json 의 tour 와 같은 모양 — 설정 창에서 고치면 이 위에 덮어쓴다)
+// 시사의 둘러보기 글(lines.json 의 tour 와 같은 모양 — 설정에서 고치면 이 위에 덮어쓴다)
 export const SISA_TOUR = {
   character_ready: '안녕하세요, 시사예요! 저를 **한 번** 누르면 바로 말 걸 수 있고, **두 번** 누르면 패널이 열려요. 오른쪽 클릭은 메뉴, 끌어서 옮길 수도 있어요.',
   character_noai: '안녕하세요, 시사예요! 저를 **한 번** 누르면 바로 답해 주는 질문이 떠요. **두 번** 누르면 패널이 열려요. 뇌(AI)를 연결하면 자유롭게 말을 걸 수도 있어요.',
@@ -14,7 +14,7 @@ export const SISA_TOUR = {
   todos_slack: ', **새로고침**으로 Slack 새로 읽기',
   chat_ready: '채팅에선 길게 이야기하고 파일도 붙일 수 있어요. 대화는 왼쪽 목록에 남아요.',
   chat_noai: 'AI 없이도 할 일은 정해진 말로 알려 드려요. 뇌(AI)를 연결하면 여기서 자유롭게 대화할 수 있어요.',
-  today: '**오늘 할 일** 표예요. 아침마다 적어 달라고 물어볼게요.{cal}',
+  today: '**할 일**의 「오늘」 묶음이에요. 아침마다 적어 달라고 물어볼게요.{cal}',
   today_cal: ' 일정 10분 전엔 춤추며 알려 드려요(설정에서 바꿀 수 있어요).',
   today_nocal: ' 캘린더를 연결하면 일정 전에도 알려 드려요.',
   settings: '사이드바 맨 아래 「설정」에서 연결·문구·AI를 바꿀 수 있어요.{slack_off} 이 안내는 메뉴 「사용법 다시 보기」로 다시 볼 수 있어요.',

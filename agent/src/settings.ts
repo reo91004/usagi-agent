@@ -1,4 +1,4 @@
-// 설정 창(데스크톱 ⚙)이 바꾸는 것: 모델 네 개(빠른 대화·패널 채팅·코딩·경량)·브리핑에서 뺄 출처·고정 문구(phrases.ts)·
+// 설정 화면(데스크톱 패널)이 바꾸는 것: 모델 네 개(빠른 대화·패널 채팅·코딩·경량)·브리핑에서 뺄 출처·고정 문구(phrases.ts)·
 // 자동 머지 레포(auto-merge.ts — 채팅 말로도 고친다: Settings.autoMergeOp).
 // GET /settings 로 보여 주고, PUT /settings 로 메모리의 cfg 를 바로 바꾸고(데몬 재시작 불필요) ~/.cy-agent/config.json 에 합쳐 쓴다.
 // config.json 의 다른 키(토큰·repoRoots…)는 그대로 둔다. 쓰기는 임시 파일 → rename(원자적). 파일이 깨져 있으면 덮어쓰지 않는다.
@@ -324,7 +324,7 @@ export function excludeBriefingSources(base: string, exclude: readonly string[] 
   return out.join("\n");
 }
 
-// 브리핑에서 뺄 출처: 설정 창에서 끈 것 + 작업 기록 읽기를 껐으면 「최근 작업 세션」(onboarding.ts)
+// 브리핑에서 뺄 출처: 설정에서 끈 것 + 작업 기록 읽기를 껐으면 「최근 작업 세션」(onboarding.ts)
 export function briefingExcludeOf(cfg: Pick<Config, "briefing" | "readSessions">): string[] {
   const ex = [...(cfg.briefing?.exclude ?? [])];
   if (cfg.readSessions === false && !ex.includes("sessions")) ex.push("sessions");
@@ -434,7 +434,7 @@ export class Settings {
     return out;
   }
 
-  // 채팅 말로 자동 머지 레포 넣기·빼기(core.ts autoMergeFromModel) — 설정 창과 같은 파일·같은 cfg
+  // 채팅 말로 자동 머지 레포 넣기·빼기(core.ts autoMergeFromModel) — 설정과 같은 파일·같은 cfg
   autoMergeOp(op: "add" | "remove", slug: string): { ok: true; changed: boolean; list: string[] } | { ok: false; error: string } {
     const cur = this.cfg.autoMerge ?? [];
     const has = inAutoMerge(cur, slug);

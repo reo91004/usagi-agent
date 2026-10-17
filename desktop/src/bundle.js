@@ -121,7 +121,7 @@ export function loginItemPlan({ platform = 'darwin', packaged, launchd = false, 
   return { manage: true, reason: 'ok', openAtLogin: pref };
 }
 
-// 설정 창에 보일 한 줄(켜고 끌 수 없을 때 이유)
+// 설정에 보일 한 줄(켜고 끌 수 없을 때 이유)
 export function loginItemHint(reason) {
   if (reason === 'launchd') return '터미널로 설치한 앱은 launchd 가 로그인할 때 켜 줘요. 여기서는 바꾸지 않아요.';
   if (reason === 'dev') return '레포에서 띄운 개발용 실행이라 여기서는 바꾸지 않아요.';

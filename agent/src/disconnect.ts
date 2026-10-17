@@ -1,4 +1,4 @@
-// 연결 해제(커넥터): 패널·설정 창·설치 마법사의 [연결 해제] → POST /connectors/disconnect { cap }.
+// 연결 해제(커넥터): 패널·설정·설치 마법사의 [연결 해제] → POST /connectors/disconnect { cap }.
 // config.json 의 connectors[cap] 을 { mode: "off" } 로 바꾼다(토큰·ICS 주소·서버 이름까지 그 칸을 통째로 지운다). 다른 칸은 그대로.
 // 그다음 메모리 cfg 도 바로 off 로 바꿔서 상태·대시보드·대화가 다음부터 그 연결을 안 쓴다(launchd 아래면 연결 다시 읽기로 데몬도 다시 켠다).
 // Claude Code 에 등록한 MCP 서버(`claude mcp add`)는 지우지 않는다. 화면이 `claude mcp remove <이름>` 을 안내하도록 이름만 돌려준다.

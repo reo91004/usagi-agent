@@ -1,5 +1,5 @@
-// 설정 창의 순수 로직: 모델·브리핑 출처·문구·자동 머지 레포·오늘 할 일 알림·일정 알림 저장 본문 검증, 문구 묶기·검사, 연결 상태 줄 묶기·표시 글.
-// 데몬 GET/PUT /settings, GET /connections, POST /connections/check (docs/contract.md "설정 창").
+// 설정의 순수 로직: 모델·브리핑 출처·문구·자동 머지 레포·오늘 할 일 알림·일정 알림 저장 본문 검증, 문구 묶기·검사, 연결 상태 줄 묶기·표시 글.
+// 데몬 GET/PUT /settings, GET /connections, POST /connections/check (docs/contract.md "설정").
 
 import { okCharacterId, MEDIA_SLOTS } from './character.js';
 
@@ -153,7 +153,7 @@ export function parseTimes(text) {
 // 지금 설정을 한 줄로
 export function reminderSummary(r) {
   const c = cleanReminder(r ?? REMINDER_DEFAULT) ?? REMINDER_DEFAULT;
-  if (c.mode === 'off') return '알리지 않아요. 오늘 할 일 탭은 그대로 쓸 수 있어요.';
+  if (c.mode === 'off') return '알리지 않아요. 할 일 화면의 「오늘」은 그대로 쓸 수 있어요.';
   const parts = ['영업일 아침 첫 실행 때 한 번'];
   if (c.everyHours > 0) parts.push(`그 뒤 ${c.everyHours}시간마다(8시~21시)`);
   if (c.times.length) parts.push(`${c.times.join(', ')}에`);
@@ -284,7 +284,7 @@ export function metaText(row, now = new Date()) {
   return [latencyText(row?.latencyMs), row?.checkedAt ? `${agoText(row.checkedAt, now)} 확인` : ''].filter(Boolean).join(' · ');
 }
 
-// 설정 창 「이 앱」 칸(앱이 state.json 에 두는 값): { openAtLogin?: boolean, updateCheck?: boolean } — 그 밖의 키·모양이면 null
+// 설정 「이 앱」 칸(앱이 state.json 에 두는 값): { openAtLogin?: boolean, updateCheck?: boolean } — 그 밖의 키·모양이면 null
 export function sanitizeAppPrefs(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const keys = Object.keys(p);

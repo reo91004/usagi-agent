@@ -88,7 +88,7 @@ export const CLIENT_ID = /^[\w-]{1,64}$/;
 // 말에 「춤」「댄스」「dance」가 들어 있으면 보내자마자 캐릭터가 춤 영상을 튼다(모델 답을 기다리지 않는다)
 export const DANCE_ASK = /춤|댄스|dance/i;
 export const DANCE_MS = 8000; // 춤 영상 한 바퀴(8초)
-// 춤춰 달라는 말뿐인가(「춤춰조」「춤 좀 춰봐」「댄스 타임!」) — 그러면 모델을 부르지 않고 고정 문구(설정 창 「문구」 dance)로 답한다.
+// 춤춰 달라는 말뿐인가(「춤춰조」「춤 좀 춰봐」「댄스 타임!」) — 그러면 모델을 부르지 않고 고정 문구(설정 「문구」 dance)로 답한다.
 // 춤 말·조르는 말·문장부호·이모지를 걷어 내고 남는 게 없으면 춤뿐
 const DANCE_WORDS = /춤|댄스|dance/gi;
 const DANCE_FILLER = /춰\s*(?:줘|조|봐|볼래|주세요|줄래|라|요)?|추(?:자|어|세요)?|출래|보여\s*줘|좀|한\s*번|한\s*곡|같이|우리|다시|또|타임|time|for\s+me|please|plz|let'?s|시사(?:야|아)?|[ㅋㅎ~!?.,…\s]|\p{Extended_Pictographic}|\uFE0F|\u200D/giu;

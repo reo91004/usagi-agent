@@ -1057,7 +1057,7 @@ function setDockMenu() {
   ]));
 }
 
-// 설정 창에서 캐릭터를 바꿈(데몬 state.character) → 앱 이름·메뉴·트레이·창 제목·패널(아이콘·정해진 말)
+// 설정에서 캐릭터를 바꿈(데몬 state.character) → 앱 이름·메뉴·트레이·창 제목·패널(아이콘·정해진 말)
 // force: 같은 id 라도 이름·그림이 바뀌었을 수 있다(캐릭터 목록을 새로 받음)
 function onCharacter(id, force = false) {
   wantChar = id;
@@ -1492,7 +1492,7 @@ function setupIPC() {
   ipcMain.handle('focus-cmd', (e, cmd) => (fromOurs(e) && isFocusCmd(cmd) ? post(`/focus/${cmd}`) : denied()));
   ipcMain.handle('focus-stats', (e, from, to) => (fromOurs(e) && DAY_RE.test(String(from)) && DAY_RE.test(String(to))
     ? request('GET', `/focus/stats?from=${from}&to=${to}`) : denied()));
-  // 사용법 둘러보기: 캐릭터 말풍선 [다음]/[그만] · 패널(설치 끝 화면) · 설정 창
+  // 사용법 둘러보기: 캐릭터 말풍선 [다음]/[그만] · 패널(설치 끝 화면) · 설정
   ipcMain.on('tour', (e, cmd) => {
     if (e.sender !== win?.webContents) return;
     if (cmd === 'stop') endTour();
@@ -1756,7 +1756,6 @@ function setupIPC() {
     return shell.openExternal(url).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
   });
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기 · 지우기
-  ipcMain.handle('todo-rules', (e) => (fromOurs(e) ? request('GET', '/todo-rules') : denied()));
   ipcMain.handle('todo-rule-edit', (e, id, patch) => {
     const p = sanitizeRulePatch(patch);
     if (!fromOurs(e) || !okRuleId(id) || !p) return denied();
@@ -1813,15 +1812,6 @@ function setupIPC() {
   ipcMain.handle('chat-edit-queued', (e, chatId, text) => (fromOurs(e) && CHAT_ID.test(String(chatId)) && typeof text === 'string' && text.trim() ? post(`/chat/${chatId}/edit`, { text: text.trim() }) : denied()));
   // 대화 목록·만들기·이름·보관·삭제·말
   ipcMain.handle('chat-threads', (e, archived) => (fromOurs(e) ? request('GET', `/chat/threads?limit=200${archived === true ? '&archived=1' : ''}`) : denied()));
-  ipcMain.handle('chat-thread-create', (e, body) => {
-    if (!fromOurs(e)) return denied();
-    const b = body && typeof body === 'object' ? body : {};
-    const out = {};
-    if (typeof b.title === 'string' && b.title.trim()) out.title = b.title.trim();
-    if (['chat', 'todo', 'hover'].includes(b.kind)) out.kind = b.kind;
-    if (typeof b.todoId === 'string' && b.todoId && b.todoId.length <= 500) out.todoId = b.todoId;
-    return post('/chat/threads', out);
-  });
   ipcMain.handle('chat-thread-edit', (e, id, patch) => {
     if (!fromOurs(e) || !okThreadId(id) || !patch || typeof patch !== 'object') return denied();
     const p = {};
@@ -2082,7 +2072,7 @@ async function checkForUpdate() {
   }
 }
 
-// 설정 창 「이 앱」 칸
+// 설정 「이 앱」 칸
 const appPrefs = {
   get() {
     const p = loginPlan();

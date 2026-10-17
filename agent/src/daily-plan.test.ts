@@ -89,7 +89,7 @@ test("알림: 아침(첫 실행·9시 지나 처음) 한 번 → N시간마다 �
   assert.equal(p.remind(auto), null, "9시 전, 앱을 연 게 아니면 아직");
   const first = p.remind(auto, { opened: true });
   assert.equal(first?.kind, "ask");
-  assert.equal(first?.text, "오늘 할 일을 적어 주세요~ 오늘 할 일 탭에 적으면 돼요 (스이시~사)");
+  assert.equal(first?.text, "오늘 할 일을 적어 주세요~ 할 일 화면의 「오늘」에 적으면 돼요 (스이시~사)");
   assert.equal(p.remind(auto, { opened: true }), null, "아침 안내는 한 번");
   p.add("리뷰", 1);
   const longTitle = "긴 제목 ".repeat(500).trim(); // 글자 수 제한 없음(예전엔 300자 넘으면 「제목이 너무 길어요」)

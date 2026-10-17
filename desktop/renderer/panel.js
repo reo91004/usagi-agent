@@ -2,7 +2,7 @@
 import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
-import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, navGroups, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
+import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, navGroups, relativeTime, clockTime } from '../src/dashboard.js';
 import { candidateHosts } from '../src/folders.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
@@ -271,7 +271,7 @@ function goto(s) {
   const prevSection = section;
   if (s === 'models') settingsTab = 'ai'; // 예전 「모델」 탭
   section = normalizeSection(s) ?? section;
-  if (!visibleSections(vm).includes(section)) section = 'overview';
+  if (!SECTIONS.includes(section)) section = 'overview';
   try { localStorage.setItem('section', section); } catch { /* 무시 */ }
   for (const b of navButtons()) b.setAttribute('aria-selected', String(b.dataset.section === section));
   $('open-setup').classList.toggle('on', section === 'setup');
@@ -297,11 +297,9 @@ function goto(s) {
   }
 }
 
-// 연결 안 된 기능의 탭은 숨긴다. 보고 있던 탭이 사라지면 개요로
+// 사이드바에는 SECTIONS 에 있는 탭만 보인다
 function renderNav() {
-  const shown = visibleSections(vm);
-  for (const b of navButtons()) b.hidden = !shown.includes(b.dataset.section);
-  if (!shown.includes(section)) goto('overview');
+  for (const b of navButtons()) b.hidden = !SECTIONS.includes(b.dataset.section);
 }
 
 function renderBadges() {
@@ -357,7 +355,7 @@ function renderAll() {
   renderSettingsConnectors();
   renderResearch();
   renderProjects();
-  renderTodos(); // 할 일 탭과 오늘 할 일 탭(같은 줄·같은 묶음)
+  renderTodos(); // 할 일 화면(맨 위 「오늘」 묶음 포함)
   renderBadges();
   renderThreadHead(); // 할 일 대화의 할 일 칩
 }
@@ -3321,7 +3319,7 @@ document.addEventListener('keydown', (e) => {
     if (next !== selectedId) selectThread(next);
   } else if (e.metaKey && /^[1-5]$/.test(e.key)) {
     e.preventDefault();
-    const shown = navGroups(visibleSections(vm)).main; // 사이드바 위쪽 순서대로
+    const shown = navGroups(SECTIONS).main; // 사이드바 위쪽 순서대로
     if (shown[Number(e.key) - 1]) goto(shown[Number(e.key) - 1]);
   }
 });
