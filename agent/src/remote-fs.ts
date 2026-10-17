@@ -1,25 +1,19 @@
 // ssh 실험 서버 둘러보기(config sshHosts): 물어볼 때만 접속해 폴더 목록·파일 일부·GPU 를 읽는다. 읽기 전용이고 로컬에 쌓지 않는다.
 //   서버에 보내는 명령은 여기서 정해진 모양으로만 만든다(모델은 서버·경로·숫자·이름 조각만 고른다). 경로는 작은따옴표로 감싼다.
 //   비밀 파일(키·토큰·.env 등)은 서버에서 readlink -f 로 실제 경로를 본 뒤 거절한다(심볼릭 링크로 돌아가지 못하게).
-//   연결은 ControlMaster 로 2분 동안 다시 쓴다: 첫 호출만 ~1초, 이어지는 호출은 0.1초 안팎. 주기적으로는 접속하지 않는다.
+//   연결은 jobs.ts sshArgs() 의 ControlMaster 로 5분 동안 다시 쓴다: 첫 호출만 ~1초, 이어지는 호출은 0.1초 안팎. 주기적으로는 접속하지 않는다.
 //   서버는 리눅스라고 본다(GNU find -printf · stat -c · timeout).
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { HOME_DIR, type Config } from "./config.ts";
-import { SSH_OPTS, okJobHost } from "./jobs.ts";
+import type { Config } from "./config.ts";
+import { sshArgs, okJobHost } from "./jobs.ts";
 
 export type RemoteRun = (host: string, script: string, timeoutMs: number) => Promise<string>;
 export type RemoteResult = { ok: boolean; title: string; body: string };
 
 const MAX_BYTES = 256 * 1024; // 서버가 너무 많이 보내면 끊는다(결과는 어차피 맥락 도구 상한으로 줄인다)
-const CONTROL_DIR = join(HOME_DIR, "ssh");
-// 유닉스 소켓 경로는 104바이트 미만이어야 한다(%C 는 40글자). 홈 폴더가 길면 연결을 다시 쓰지 않는다
-const CONTROL = CONTROL_DIR.length + 41 < 100 ? ["-o", "ControlMaster=auto", "-o", `ControlPath=${join(CONTROL_DIR, "%C")}`, "-o", "ControlPersist=120"] : [];
 
 export const remoteRun: RemoteRun = (host, script, timeoutMs) => new Promise((resolve, reject) => {
-  if (CONTROL.length) mkdirSync(CONTROL_DIR, { recursive: true, mode: 0o700 });
-  const p = spawn("ssh", [...SSH_OPTS, ...CONTROL, "--", host, script], { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn("ssh", [...sshArgs(), "--", host, script], { stdio: ["ignore", "pipe", "pipe"] });
   let out = "", err = "", settled = false;
   const finish = (e?: Error) => {
     if (settled) return;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ActivityTracker, deriveActivity, visibleRuns, type ActivitySnapshot } from "./activity.ts";
+import { awayAwareBriefing, parseHidIdle, ActivityTracker, deriveActivity, visibleRuns, type ActivitySnapshot } from "./activity.ts";
 
 function fakeClock(start = Date.parse("2026-10-08T01:00:00Z")) {
   let now = start;
@@ -114,4 +114,31 @@ test("ActivityTracker.begin/track: 기록 밖 일도 studying, 끝내기는 한 
   assert.equal(v, 3);
   await assert.rejects(a.track("fix", "x", async () => { assert.equal(a.snapshot().activity, "studying"); throw new Error("boom"); }));
   assert.equal(a.snapshot().activity, "idle");
+});
+
+test("parseHidIdle: ioreg 의 나노초를 초로", () => {
+  assert.equal(parseHidIdle('    | |   "HIDIdleTime" = 284786416\n'), 0.284786416);
+  assert.equal(parseHidIdle("없음"), 0);
+});
+
+test("awayAwareBriefing: 자리를 비우면 미루고 돌아오면 한 번만", async () => {
+  let idle = 7200, hours = true, runs = 0;
+  const timers: (() => void)[] = [];
+  const tick = awayAwareBriefing({ idleSec: async () => idle, inHours: () => hours, run: () => { runs++; }, later: (fn) => timers.push(fn) });
+  await tick();
+  assert.equal(runs, 0);
+  assert.equal(timers.length, 1);
+  await tick(); // 미루는 중의 매시간 신호는 무시
+  assert.equal(timers.length, 1);
+  await timers.pop()!(); // 아직 자리 비움
+  assert.equal(runs, 0);
+  idle = 30;
+  await timers.pop()!(); // 돌아옴
+  assert.equal(runs, 1);
+  assert.equal(timers.length, 0);
+  await tick(); // 이제 평소대로
+  assert.equal(runs, 2);
+  idle = 7200; hours = false;
+  await tick(); // 업무시간 밖이면 미루지도 않는다
+  assert.equal(timers.length, 0);
 });

@@ -1,7 +1,7 @@
 // Claude Code / Codex 세션 JSONL → 지식그래프(session · project · file 노드).
 import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, sep } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Store } from "../store.ts";
 import { IS_WIN, winNorm } from "../plat.ts";
 import { loadSshSessionHosts } from "./ssh-hosts.ts";
@@ -148,7 +148,7 @@ function* walkJsonl(dir: string): Generator<string> {
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) yield* walkJsonl(p);
+    if (e.isDirectory()) { if (e.name !== "subagents") yield* walkJsonl(p); } // 서브에이전트 트랜스크립트는 부모 세션에 포함 — 들어가지 않는다
     else if (e.name.endsWith(".jsonl")) yield p;
   }
 }
@@ -178,7 +178,6 @@ export function ingestSessions(
   const cutoff = Date.now() - sinceMs;
   for (const [tool, dir] of [["claude", dirs.claude], ["codex", dirs.codex]] as const) {
     for (const path of walkJsonl(dir)) {
-      if (path.includes("/subagents/") || path.includes(`${sep}subagents${sep}`)) continue; // 서브에이전트 트랜스크립트는 부모 세션에 포함
       let mtime: number;
       try { mtime = statSync(path).mtimeMs; } catch { continue; }
       if (mtime < cutoff) continue;

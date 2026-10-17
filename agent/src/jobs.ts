@@ -6,6 +6,9 @@
 //   서버 → 맥으로 포트를 열지 않는다(데몬 포트를 넘기면 공용 서버의 다른 사용자도 할 일·대화에 닿는다)
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { HOME_DIR } from "./config.ts";
 import { phrase } from "./phrases.ts";
 import { focusDuration } from "./focus.ts";
 import type { Bubble } from "./bus.ts";
@@ -86,8 +89,16 @@ for f in *.running; do [ -f "$f" ] || continue; p=$(sed -n 's/.*"pid":\\([0-9][0
 
 export type RunSsh = (args: string[], timeoutMs: number) => Promise<string>;
 export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"];
+// 연결 재사용(ControlMaster): 2분 확인·10분 세션 수집·remote-fs 가 서버마다 한 연결을 나눠 쓴다. 유지 300초 > 2분 확인 간격.
+// 유닉스 소켓 경로는 104바이트 미만이어야 한다(%C 는 40글자). 홈 폴더가 길면 재사용하지 않는다. 낡은 소켓은 ssh 가 알아서 새로 연다
+export function sshArgs(): string[] {
+  const dir = join(HOME_DIR, "ssh"); // HOME_DIR 는 config.ts 와 순환 import 라 호출 때 읽는다
+  if (dir.length + 41 >= 100) return SSH_OPTS;
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return [...SSH_OPTS, "-o", "ControlMaster=auto", "-o", `ControlPath=${join(dir, "%C")}`, "-o", "ControlPersist=300"];
+}
 export const runSsh: RunSsh = (args, timeoutMs) => new Promise((resolve, reject) => {
-  execFile("ssh", [...SSH_OPTS, ...args], { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+  execFile("ssh", [...sshArgs(), ...args], { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
     if (err) reject(new Error(String(stderr || err.message).trim().split("\n").at(-1) || "ssh 실패"));
     else resolve(String(stdout));
   });
@@ -146,4 +157,18 @@ export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_
   }
   if (drop.length) await run(["--", host, `cd ${dir} && rm -f -- ${drop.map((f) => `'${f}'`).join(" ")}`], 20e3);
   return { done, running, tmux: mineOnly(parseTmux(panes), dir, home) };
+}
+
+// 서버별 연속 실패 백오프: 실패할 때마다 다음 시도까지 간격이 두 배(baseMs·2^실패 횟수, 상한 maxMs), 성공하면 처음으로.
+// 호출 주기(baseMs)로 도는 타이머가 due() 로 건너뛸지 정한다(주기 어긋남을 baseMs/2 만큼 봐준다)
+export function hostBackoff(baseMs: number, maxMs = 30 * 60e3, now = Date.now) {
+  const st = new Map<string, { fails: number; next: number }>();
+  return {
+    due: (host: string) => now() >= (st.get(host)?.next ?? 0),
+    ok: (host: string) => { st.delete(host); },
+    fail: (host: string) => {
+      const fails = (st.get(host)?.fails ?? 0) + 1;
+      st.set(host, { fails, next: now() + Math.min(baseMs * 2 ** fails, maxMs) - baseMs / 2 });
+    },
+  };
 }
