@@ -12,6 +12,7 @@ import { HOME_DIR } from "./config.ts";
 import { phrase } from "./phrases.ts";
 import { focusDuration } from "./focus.ts";
 import type { Bubble } from "./bus.ts";
+import { redact } from "./runs.ts";
 
 export type JobDone = { name: string; seconds: number; code: number | null; host?: string; id?: string; cwd?: string; cmd?: string; start?: number; files?: string[] };
 export type TmuxSession = { name: string; created: number; activity: number; running: string | null; path: string };
@@ -21,11 +22,13 @@ export type RunningJob = { id: string; name: string; host: string; start: number
 
 const NAME_MAX = 120;
 const one = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+// 이름(-n 이 없으면 명령 전체)·명령은 노드·연구 노트(iCloud 의 Tine 저널)에 남는다. 자르기 전에 비밀값을 가린다
+const safe = (v: unknown, max: number) => one(typeof v === "string" ? redact(v) : v, max);
 const okId = (v: unknown): v is string => typeof v === "string" && /^[\w.-]{1,80}$/.test(v);
 const okStart = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
 // usagi-run 이 더 남기는 것(작업 폴더·명령·시작 시각·바뀐 파일). 없거나 이상하면 그 칸만 뺀다
 function extras(o: Record<string, unknown>) {
-  const cwd = one(o.cwd, 500), cmd = one(o.cmd, 300);
+  const cwd = one(o.cwd, 500), cmd = safe(o.cmd, 300);
   const files = Array.isArray(o.files) ? o.files.map((f) => one(f, 300)).filter(Boolean).slice(0, 8) : [];
   return { ...(okId(o.id) ? { id: o.id } : {}), ...(cwd ? { cwd } : {}), ...(cmd ? { cmd } : {}), ...(okStart(o.start) ? { start: o.start } : {}), ...(files.length ? { files } : {}) };
 }
@@ -34,7 +37,7 @@ function extras(o: Record<string, unknown>) {
 export function parseJobDone(b: unknown, host?: string): JobDone | null {
   if (!b || typeof b !== "object" || Array.isArray(b)) return null;
   const o = b as Record<string, unknown>;
-  const name = one(o.name, NAME_MAX);
+  const name = safe(o.name, NAME_MAX);
   const seconds = typeof o.seconds === "number" && Number.isFinite(o.seconds) && o.seconds >= 0 ? o.seconds : NaN;
   const code = o.code === null || o.code === undefined ? null : Number.isInteger(o.code) ? (o.code as number) : NaN;
   if (!name || Number.isNaN(seconds) || Number.isNaN(code)) return null;
@@ -44,7 +47,7 @@ export function parseJobDone(b: unknown, host?: string): JobDone | null {
 export function parseRunning(b: unknown, host: string, alive: boolean): RunningJob | null {
   if (!b || typeof b !== "object" || Array.isArray(b)) return null;
   const o = b as Record<string, unknown>;
-  const name = one(o.name, NAME_MAX);
+  const name = safe(o.name, NAME_MAX);
   if (!name || !okId(o.id) || !okStart(o.start)) return null;
   const { cwd, cmd } = extras(o);
   return { id: o.id, name, host, start: o.start, alive, ...(cwd ? { cwd } : {}), ...(cmd ? { cmd } : {}) };
