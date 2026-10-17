@@ -388,7 +388,7 @@ test("attentionSince: 닫은 할 일에 이어진 범위는 닫은 시각까지 
   store.trashTodo(todoId(), iso(30));
   assert.ok(!chans().includes("D3"));
   store.db.prepare("DELETE FROM todos").run();
-  store.addTodo({ title: "박서준 님과 회의 준비" }); // 이름만 같은 다른 일은 잇지 않는다
+  store.addTodo({ title: "박서준 님 견적 메시지 정리" }); // 이름만 같은 다른 일(DM·Slack 이란 말 없음, admin 같은 낱말 속 dm 도 아님)은 잇지 않는다
   close(30);
   assert.ok(chans().includes("D3"));
   store.db.prepare("DELETE FROM todos").run();

@@ -754,9 +754,9 @@ function mpimLabel(name: string | null): string {
 type MsgRow = { id: string; label: string; updated: string; props: Record<string, any> };
 
 // 닫힌(done·안 해도 됨·휴지통) 할 일이 이어진 Slack 범위 → 닫은 시각 최댓값. 범위 키는 attentionSince 묶음 키와 같다.
-// 이음: id·sourceRef·link·origin 의 slack:<채널>:p<ts> 또는 permalink, 없으면 제목에 든 DM 상대 이름(DM·답장 같은 말이 함께 있고 그런 DM 이 하나일 때만).
+// 이음: id·sourceRef·link·origin 의 slack:<채널>:p<ts> 또는 permalink, 없으면 제목에 든 DM 상대 이름(DM·Slack 이라는 말이 함께 있고 그런 DM 이 하나일 때만).
 // 다시 열면 닫힌 할 일에서 빠지니 처리 표시도 저절로 풀린다.
-const SLACKISH = /dm|slack|슬랙|답장|메시지/i; // 이름만 같은 다른 일(「김호은 님과 회의」)로 DM 을 숨기지 않게
+const SLACKISH = /(?<![a-z])dm(?![a-z])|디엠|slack|슬랙/i; // DM·Slack 을 말하는 할 일만 — 이름만 같은 다른 일(「김호은 님 견적 메시지 정리」)로 DM 을 숨기지 않게
 function closedScopes(store: Store, sinceIso: string): Map<string, string> {
   const out = new Map<string, string>();
   const closed = store.db.prepare(`SELECT id, title, source_ref, link, origin, coalesce(trashed_at, updated) AS at FROM todos
