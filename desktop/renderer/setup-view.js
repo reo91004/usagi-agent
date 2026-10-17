@@ -396,7 +396,26 @@ function calendarsBlock(calendars, onAdd, onRemove) {
       h('button.ghost', { type: 'button', text: 'Outlook 캘린더 하나 더 추가', onclick: () => onAdd('outlook') })) : null);
 }
 
-function extrasView({ done = {}, repos = [], coder = true, readSessions = false, servers = {}, calendars = [], onOpen, onDisconnect, onCopy, onAddCalendar, onRemoveCalendar, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish, onBack }) {
+// 이 Mac 의 캘린더·미리알림(EventKit, #53): 주소 없이 macOS 허락 한 번으로. 앱에 도우미가 없으면(개발 실행 등) 안 보인다
+function appleBlock(a, onConnect, onDisconnect, onPrivacy) {
+  if (!a || a.available === false || !onConnect) return null;
+  const cal = !!a.connected?.calendar, rem = !!a.connected?.reminders;
+  const denied = (k) => a[k] === 'denied' || a[k] === 'restricted';
+  const on = [cal ? '캘린더' : '', rem ? '미리알림' : ''].filter(Boolean).join('·');
+  return h('div.setup-folder.setup-apple', null,
+    h('span.setup-pick-title', { text: on ? `이 Mac 의 캘린더·미리알림 · ${on} 연결됨` : '이 Mac 의 캘린더·미리알림' }),
+    h('p.setup-blurb', { text: '주소를 붙이지 않고 캘린더 앱과 미리알림 앱을 바로 읽어요. 처음 한 번 macOS 가 허락을 물어요. 구글 캘린더는 시스템 설정 → 인터넷 계정에 Google 계정을 넣으면 함께 읽혀요. 읽기만 하고 바꾸지 않아요.' }),
+    a.pending ? h('p.setup-gate', { text: 'macOS 창에서 허락을 기다리고 있어요…' }) : null,
+    a.error ? h('p.setup-gate', { text: a.error }) : null,
+    h('div.setup-fields.row', null,
+      !cal || !rem ? h('button.primary', { type: 'button', disabled: !!a.pending, text: cal ? '미리알림도 연결' : rem ? '캘린더도 연결' : '연결하기', onclick: () => onConnect({ calendar: !cal, reminders: !rem }) }) : null,
+      cal ? h('button.ghost', { type: 'button', text: '캘린더 빼기', onclick: () => onDisconnect({ calendar: true }) }) : null,
+      rem ? h('button.ghost', { type: 'button', text: '미리알림 빼기', onclick: () => onDisconnect({ reminders: true }) }) : null,
+      denied('calendar') ? h('button.ghost', { type: 'button', text: '캘린더 허락 열기', onclick: () => onPrivacy('calendar') }) : null,
+      denied('reminders') ? h('button.ghost', { type: 'button', text: '미리알림 허락 열기', onclick: () => onPrivacy('reminders') }) : null));
+}
+
+function extrasView({ done = {}, repos = [], coder = true, readSessions = false, servers = {}, calendars = [], apple = null, onOpen, onDisconnect, onCopy, onAddCalendar, onRemoveCalendar, onAppleConnect, onAppleDisconnect, onOpenPrivacy, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish, onBack }) {
   const items = EXTRAS.filter((id) => id !== 'repos').map(hubItem).filter(Boolean);
   const input = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: '/Users/나/code', 'aria-label': '레포 폴더', value: repoDraft });
   input.addEventListener('input', () => { repoDraft = input.value; });
@@ -408,6 +427,7 @@ function extrasView({ done = {}, repos = [], coder = true, readSessions = false,
     title: '더 연결할까요?',
     identity: '하나를 누르면 그 안내로 들어가고, 끝나면 이 목록으로 돌아와요.',
     extra: h('div', null,
+      appleBlock(apple, onAppleConnect, onAppleDisconnect, onOpenPrivacy),
       h('div.setup-picks', null, items.map((item) => extraItem(item, done, onOpen, onDisconnect, onCopy, servers))),
       calendarsBlock(calendars, onAddCalendar, onRemoveCalendar),
       h('div.setup-folder', null,
@@ -529,7 +549,7 @@ export function renderSetup(root, state) {
     return;
   }
   if (phase === 'extras') {
-    root.replaceChildren(extrasView({ done, repos, coder, readSessions, servers: state.servers, calendars: state.calendars, onAddCalendar: state.onAddCalendar, onRemoveCalendar: state.onRemoveCalendar, onOpen: onOpenExtra, onDisconnect: onDisconnectExtra, onCopy: state.onCopyText, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish: onFinishExtras, onBack }));
+    root.replaceChildren(extrasView({ done, repos, coder, readSessions, servers: state.servers, calendars: state.calendars, apple: state.apple, onAppleConnect: state.onAppleConnect, onAppleDisconnect: state.onAppleDisconnect, onOpenPrivacy: state.onOpenPrivacy, onAddCalendar: state.onAddCalendar, onRemoveCalendar: state.onRemoveCalendar, onOpen: onOpenExtra, onDisconnect: onDisconnectExtra, onCopy: state.onCopyText, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish: onFinishExtras, onBack }));
     return;
   }
   if (phase === 'done') {

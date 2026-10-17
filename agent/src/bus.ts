@@ -40,6 +40,8 @@ export type BusHandlers = {
   // 연구 카드(research.ts): GPU 는 버튼을 누를 때만 서버에 묻는다. 노트 「열기」는 그 날짜 파일 경로. 없으면 503
   researchGpu?(): Promise<unknown>;
   researchNote?(day: string): string | null;
+  // 이 Mac 의 캘린더·미리알림(eventkit.ts): 상태 · 연결(macOS 권한을 묻고 기다리는 동안 pending) · 해제. 없으면 503
+  apple?: { status(): Promise<unknown>; connect(o: { calendar: boolean; reminders: boolean }): unknown; disconnect(o: { calendar: boolean; reminders: boolean }): unknown };
   // 맥락 도구 MCP(mcp-http.ts) — Codex·agy 뇌가 부른다. 경로의 토큰 검사·본문 읽기는 처리기가 한다. 없으면 503
   mcp?(req: IncomingMessage, res: ServerResponse, token: string): Promise<void>;
   // Slack 지시사항 카드(directives.ts): [할 일로]·[괜찮아요]. 모르는 지시면 false → 404. 없으면 503
@@ -352,6 +354,10 @@ export class Bus {
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, mood: this.mood, activity: this.activity.snapshot().activity });
     if (req.method === "GET" && url.pathname === "/dashboard") return json(res, 200, await h.dashboard());
     // 연구 카드: 서버 접속(ssh)·파일 경로라 다른 웹 페이지가 부르지 못하게 읽기라도 커스텀 헤더 필수
+    if (req.method === "GET" && url.pathname === "/apple/status") {
+      if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
+      return h.apple ? json(res, 200, await h.apple.status()) : json(res, 503, { error: "apple unavailable" });
+    }
     if (req.method === "GET" && (url.pathname === "/research/gpu" || url.pathname === "/research/note")) {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
       if (url.pathname === "/research/gpu") return h.researchGpu ? json(res, 200, await h.researchGpu()) : json(res, 503, { error: "research unavailable" });
@@ -562,6 +568,13 @@ export class Bus {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
       if (url.pathname === "/connectors/reload") {
         return h.connectorsReload ? json(res, 200, h.connectorsReload()) : json(res, 503, { error: "reload unavailable" });
+      }
+      // 이 Mac 의 캘린더·미리알림: { calendar, reminders } 켜기·끄기
+      if (url.pathname === "/apple/connect" || url.pathname === "/apple/disconnect") {
+        if (!h.apple) return json(res, 503, { error: "apple unavailable" });
+        const b = await readJson(req, true);
+        const o = { calendar: b.calendar === true, reminders: b.reminders === true };
+        return json(res, 200, url.pathname === "/apple/connect" ? h.apple.connect(o) : await h.apple.disconnect(o));
       }
       // Slack 지시사항 카드: POST /directives/<메시지 id>/todo|dismiss
       const dm = url.pathname.match(/^\/directives\/(message:[\w.:-]{1,120})\/(todo|dismiss)$/);

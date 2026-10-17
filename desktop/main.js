@@ -823,7 +823,7 @@ async function request(method, pathname, body, timeoutMs) {
     headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body ?? {});
   } else if (method === 'DELETE') headers['X-CY-Agent'] = '1'; // 쓰기는 다 헤더(DELETE /guidelines/:id)
-  if (pathname.startsWith('/research/')) headers['X-CY-Agent'] = '1'; // 연구 카드는 읽기라도 헤더(서버 접속·파일 경로)
+  if (pathname.startsWith('/research/') || pathname.startsWith('/apple/')) headers['X-CY-Agent'] = '1'; // 연구 카드·이 Mac 캘린더 상태는 읽기라도 헤더
   try {
     const res = await fetch(`${BASE}${pathname}`, init);
     const text = await res.text();
@@ -1593,6 +1593,15 @@ function setupIPC() {
   ipcMain.handle('directive-from', (e, ids) => {
     if (!fromOurs(e) || !Array.isArray(ids) || ids.length > 20 || !ids.every((x) => typeof x === 'string' && /^[UW][A-Z0-9]{2,20}$/.test(x))) return denied();
     return request('PUT', '/settings', { directiveFrom: ids });
+  });
+  // 이 Mac 의 캘린더·미리알림(EventKit): 상태 · 연결(macOS 권한 창 — 데몬은 바로 돌아오고 상태로 기다린다) · 해제 · 시스템 설정 개인정보 화면
+  const appleBody = (o) => ({ calendar: o?.calendar === true, reminders: o?.reminders === true });
+  ipcMain.handle('apple-status', (e) => (fromOurs(e) ? request('GET', '/apple/status') : denied()));
+  ipcMain.handle('apple-connect', (e, o) => (fromOurs(e) ? post('/apple/connect', appleBody(o)) : denied()));
+  ipcMain.handle('apple-disconnect', (e, o) => (fromOurs(e) ? post('/apple/disconnect', appleBody(o)) : denied()));
+  ipcMain.handle('open-privacy', (e, kind) => {
+    if (!fromOurs(e) || !['calendar', 'reminders'].includes(kind)) return denied();
+    return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${kind === 'calendar' ? 'Calendars' : 'Reminders'}`).then(() => ({ ok: true }), () => ({ ok: false }));
   });
   ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
   ipcMain.handle('research-note-open', async (e, day) => {

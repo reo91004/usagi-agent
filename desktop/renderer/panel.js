@@ -137,6 +137,17 @@ let keyNote = ''; // 키는 맞지만 알릴 말(Genspark 무료 플랜 → 크�
 let gskFound = false; // gsk login 한 Genspark 키가 이 맥에 있나
 let afterConnect = ''; // 'claudecode'·'codexcli': 그 도구 연결을 마치면 시사의 AI로 쓴다
 let setupCalendars = []; // 연결된 캘린더(main calendar-list: 가린 이름만, 주소 없음)
+// 이 Mac 의 캘린더·미리알림 상태(GET /apple/status). 허락 창을 기다리는 동안(pending)만 2초마다 다시 묻는다
+let setupApple = null;
+let appleTimer = null;
+async function loadApple() {
+  let r;
+  try { r = await cy.appleStatus(); } catch { r = null; }
+  const next = r?.ok ? r.data : setupApple; // 데몬이 다시 켜지는 중이면 예전 값 그대로
+  clearTimeout(appleTimer);
+  if (next?.pending || !r?.ok) appleTimer = setTimeout(loadApple, 2000);
+  if (JSON.stringify(next) !== JSON.stringify(setupApple)) { setupApple = next; setupKey = ''; if (section === 'setup') renderSetupView(false); }
+}
 let setupSlotError = null; // 저장하려다 막힌 칸 값({ id, value, text }, 예: 이미 연결된 캘린더)
 let cannedOpen = false; // 채팅: AI가 있을 때 ＋ 로 연 정해진 답 버튼 줄(renderChatLock)
 let sisa = { provider: '', hasKey: false, persona: '', canned: {}, done: {}, connected: [], chatModels: {}, codeModel: 'default' };
@@ -684,13 +695,13 @@ function renderSetupView(resetScroll) {
     return;
   }
   clampSetupCursor();
-  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupAgent}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${setupPicked.join(',')}|${JSON.stringify(setupChoices)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupSlotError)}`;
+  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupAgent}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${setupPicked.join(',')}|${JSON.stringify(setupChoices)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupApple)}|${JSON.stringify(setupSlotError)}`;
   if (!resetScroll && key === setupKey && $('sec-setup').childElementCount) {
     watchAgentLogin();
     return;
   }
   setupKey = key;
-  if (setupPhase === 'extras') loadCalendars();
+  if (setupPhase === 'extras') { loadCalendars(); if (!setupApple) loadApple(); }
   const top = resetScroll ? 0 : ($('sec-setup').querySelector('.setup-scroll')?.scrollTop ?? 0);
   const redraw = (scroll) => { setupKey = ''; renderSetupView(scroll); };
   renderSetup($('sec-setup'), {
@@ -816,6 +827,10 @@ function renderSetupView(resetScroll) {
     onCopyText: (text) => cy.copyText(text),
     // 연결된 캘린더: 하나 더 추가(같은 안내를 다시) · 하나 빼기(그 주소만, 마지막이면 캘린더 연결 해제)
     calendars: setupCalendars,
+    apple: setupApple,
+    onAppleConnect: async (o) => { await cy.appleConnect(o).catch(() => null); loadApple(); },
+    onAppleDisconnect: async (o) => { await cy.appleDisconnect(o).catch(() => null); setTimeout(loadApple, 1500); },
+    onOpenPrivacy: (kind) => cy.openPrivacy(kind),
     slotError: setupSlotError,
     onAddCalendar: (id) => {
       if (id !== 'gcal' && id !== 'outlook') return;

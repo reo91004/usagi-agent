@@ -51,6 +51,7 @@ import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
 import { notePathFor, researchSummary } from "./research.ts";
 import { directivesView } from "./directives.ts";
+import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
@@ -182,6 +183,22 @@ function pushStatus() {
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 
+// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다 할 일과 맞춘다(맥 안 DB 만 읽는다). 연결 창 상태는 applePending·appleError
+let applePending = false, appleError: string | undefined, remindersBusy = false, remindersWarned = false;
+async function syncRemindersNow() {
+  if (!cfg.appleReminders || remindersBusy || !eventkitAvailable()) return;
+  remindersBusy = true;
+  try {
+    const r = await syncReminders(store);
+    if (!r.ok) { if (!remindersWarned) console.warn(`[reminders] ${r.error}`); remindersWarned = true; return; }
+    remindersWarned = false;
+    if (r.added || r.done) { console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개`); bus.dashboardChanged(); }
+  } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
+  finally { remindersBusy = false; }
+}
+setTimeout(() => void syncRemindersNow(), 20e3).unref();
+setInterval(() => void syncRemindersNow(), 10 * 60e3).unref();
+
 // 맥락 도구 MCP(mcp-http.ts): Codex·agy 뇌의 채팅이 Claude 와 같은 cy 도구를 부른다
 const mcpTok = mcpToken();
 await bus.listen(cfg.port, {
@@ -199,6 +216,33 @@ await bus.listen(cfg.port, {
   }),
   researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
   directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
+  // 이 Mac 의 캘린더·미리알림: 연결은 macOS 권한 창을 띄우고 바로 돌아온다(패널이 status 로 기다린다). 캘린더는 연결이 바뀌니 데몬이 다시 켜지며 붙는다
+  apple: {
+    status: async () => ({ ...(await appleStatus()), connected: { calendar: conns.calendar.mode === "api" && !!(conns.calendar as any).local, reminders: !!cfg.appleReminders }, pending: applePending, ...(appleError ? { error: appleError } : {}) }),
+    connect: (o) => {
+      if (!eventkitAvailable()) return { ok: false, error: "이 앱에는 캘린더 도우미가 없어요(macOS 앱 0.5.0 이상)" };
+      if (applePending) return { ok: true, pending: true };
+      applePending = true;
+      appleError = undefined;
+      ekRun(["request"], 10 * 60e3).then((r) => {
+        const cal = o.calendar && r?.calendar === "granted", rem = o.reminders && r?.reminders === "granted";
+        if ((o.calendar && !cal) || (o.reminders && !rem)) appleError = "macOS 권한을 받지 못했어요. 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림에서 우사기를 켜 주세요";
+        setAppleFlags(join(HOME_DIR, "config.json"), { ...(cal ? { calendar: true } : {}), ...(rem ? { reminders: true } : {}) });
+        if (rem) { cfg.appleReminders = true; void syncRemindersNow(); }
+        if (cal) reloadConnectors();
+        pushStatus();
+        bus.dashboardChanged();
+      }).catch((e) => { appleError = String(e?.message ?? e).slice(0, 200); }).finally(() => { applePending = false; });
+      return { ok: true, pending: true };
+    },
+    disconnect: (o) => {
+      setAppleFlags(join(HOME_DIR, "config.json"), { ...(o.calendar ? { calendar: false } : {}), ...(o.reminders ? { reminders: false } : {}) });
+      if (o.reminders) cfg.appleReminders = false;
+      if (o.calendar) reloadConnectors();
+      pushStatus();
+      return { ok: true };
+    },
+  },
   researchNote: (day) => notePathFor(cfg, day),
   todoDone: (id) => agent.todoDone(id),
   todoAdd: (t) => agent.addTodo(t),

@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('cy', {
   getDashboard: () => ipcRenderer.invoke('get-dashboard'),
   briefingNow: () => ipcRenderer.invoke('briefing-now'),
   researchGpu: () => ipcRenderer.invoke('research-gpu'), // 연구 카드: 실험 서버 GPU(누를 때만)
+  appleStatus: () => ipcRenderer.invoke('apple-status'), // 이 Mac 의 캘린더·미리알림 상태
+  appleConnect: (o) => ipcRenderer.invoke('apple-connect', { calendar: !!o?.calendar, reminders: !!o?.reminders }),
+  appleDisconnect: (o) => ipcRenderer.invoke('apple-disconnect', { calendar: !!o?.calendar, reminders: !!o?.reminders }),
+  openPrivacy: (kind) => ipcRenderer.invoke('open-privacy', String(kind)), // 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림
   directiveDecide: (id, decision) => ipcRenderer.invoke('directive-decide', String(id), String(decision)), // 지시사항 [할 일로]·[괜찮아요]
   directiveFrom: (ids) => ipcRenderer.invoke('directive-from', Array.isArray(ids) ? ids.map(String) : []), // 지시자 목록 저장
   researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
