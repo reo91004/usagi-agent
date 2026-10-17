@@ -6,7 +6,8 @@ import { dirname, join } from "node:path";
 import { Store } from "../store.ts";
 import { scanSessions } from "../kg/chunks.ts";
 import { ingestSessions } from "./sessions.ts";
-import { parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchBatch } from "./remote-sessions.ts";
+import { listCmd, parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchBatch } from "./remote-sessions.ts";
+import { execFileSync } from "node:child_process";
 
 test("parseList: 정해진 두 폴더 아래 셸에 안전한 .jsonl 만, wc 의 total 줄은 뺀다", () => {
   const out = [
@@ -124,4 +125,28 @@ test("syncRemoteSessions: 실제 find·wc·tail 명령(가짜 ssh 가 서버 홈
   } finally {
     process.env.PATH = path;
   }
+});
+
+test("listCmd: 공용 계정은 cwd 가 내 폴더나 그 아래인 기록만 낸다(진짜 sh·find·grep 으로)", () => {
+  const home = mkdtempSync(join(tmpdir(), "cy-shared-"));
+  const put = (rel: string, ...lines: object[]) => {
+    mkdirSync(dirname(join(home, rel)), { recursive: true });
+    writeFileSync(join(home, rel), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  };
+  put(".claude/projects/-h-reo-a/mine.jsonl", { type: "user", cwd: `${home}/reo/a` });
+  put(".claude/projects/-h/moved.jsonl", { type: "ai-title", aiTitle: "x".repeat(70_000) }, { type: "user", cwd: home }, { type: "user", cwd: `${home}/reo` }); // 홈에서 시작해 옮겨 감
+  put(".claude/projects/-h-reo2/other.jsonl", { type: "user", cwd: `${home}/reo2` }); // 이름만 비슷한 남의 폴더
+  put(".claude/projects/-h/home.jsonl", { type: "user", cwd: home });
+  put(".codex/sessions/2026/10/17/rollout-a.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b` } });
+  put(".codex/sessions/2026/10/17/rollout-b.jsonl", { type: "session_meta", payload: { cwd: `${home}/jo` } });
+  const list = (mine?: string) => parseList(execFileSync("sh", ["-c", listCmd(mine)], { env: { ...process.env, HOME: home } }).toString()).map((f) => f.rel).sort();
+  assert.deepEqual(list("~/reo"), [".claude/projects/-h-reo-a/mine.jsonl", ".claude/projects/-h/moved.jsonl", ".codex/sessions/2026/10/17/rollout-a.jsonl"]);
+  assert.deepEqual(list(`${home}/reo`), list("~/reo")); // 절대 경로로 적어도 같다
+  assert.equal(list().length, 6); // 개인 계정은 다
+});
+
+test("syncRemoteSessions: 공용 계정 이름이 이상하면 ssh 전에 멈춘다", async () => {
+  let ssh = 0;
+  await assert.rejects(syncRemoteSessions("gpu1", { run: async () => { ssh++; return ""; }, mine: "~/reo'; rm -rf ~" }), /jobDirs/);
+  assert.equal(ssh, 0);
 });

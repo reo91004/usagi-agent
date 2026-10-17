@@ -119,12 +119,16 @@ export function parseTmux(lines: string[][]): TmuxSession[] {
   return [...by.values()].sort((a, b) => b.activity - a.activity);
 }
 
-// 공용 계정(jobDirs): 내 폴더 = 결과 폴더를 품은 폴더(…/reo/.usagi-agent/jobs → …/reo). 그 아래에서 연 세션만 남긴다. 개인 계정(기본 폴더)이면 거르지 않는다
+// 공용 계정(jobDirs 가 <내 폴더>/.usagi-agent/jobs 모양)이면 내 폴더(jobDirs 에 적힌 모양 그대로, 예: ~/reo). 개인 계정(기본 폴더·따로 정한 폴더)이면 undefined
+export const sharedMineDir = (dir: string | undefined): string | undefined =>
+  dir && dir !== REMOTE_DIR && /\/\.usagi-agent\/jobs\/?$/.test(dir) ? dir.replace(/\/\.usagi-agent\/jobs\/?$/, "") : undefined;
+
+// 공용 계정이면 내 폴더 아래에서 연 세션만 남긴다. 개인 계정이면 거르지 않는다
 export function mineOnly(sessions: TmuxSession[], dir: string, home: string): TmuxSession[] {
-  // 공용 계정 모양(<내 폴더>/.usagi-agent/jobs)일 때만 거른다. 개인 계정에서 jobDirs 를 따로 정한 경우는 다 내 것
-  if (dir === REMOTE_DIR || !/\/\.usagi-agent\/jobs\/?$/.test(dir)) return sessions;
-  if (!home && dir.startsWith("~/")) return []; // 공용인데 내 폴더를 못 알아냄 → 남의 세션을 보이지 않는다
-  const mine = (dir.startsWith("~/") ? home + dir.slice(1) : dir).replace(/\/\.usagi-agent\/jobs\/?$/, "");
+  const m = sharedMineDir(dir);
+  if (m === undefined) return sessions;
+  if (!home && m.startsWith("~/")) return []; // 공용인데 내 폴더를 못 알아냄 → 남의 세션을 보이지 않는다
+  const mine = m.startsWith("~/") ? home + m.slice(1) : m;
   return sessions.filter((s) => s.path === mine || s.path.startsWith(`${mine}/`));
 }
 
