@@ -328,10 +328,10 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
     }
     const system = withCharacter(opts.system); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
     if (schema === null) {
-      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, ...opts.deps }) as { reply?: string };
+      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, mcp: !!opts.interactive, ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
-    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, mcp: !!opts.interactive, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
   });
 }
 
