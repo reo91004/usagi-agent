@@ -40,8 +40,31 @@ npm run dist -- --no-dmg   # dmg 없이 dist/app/시사-darwin-<arch>/시사.app
 - 인터넷이 필요합니다. 데몬 의존성은 `npm ci --omit=dev --os=darwin --cpu=<arch>`로 그 아키텍처용을 받고, Electron은 `@electron/packager`가 그 아키텍처용을 받습니다. 그래서 애플 실리콘 맥에서 인텔용(x64)도 만들 수 있습니다.
 - 아이콘은 개인 그림(`~/.cy-agent/assets`)이 아니라 레포 `assets/`의 그림으로 만듭니다.
 - `desktop/node_modules`가 없는 폴더(워크트리 등)에서는 다른 곳에 `npm ci`한 desktop 의존성을 `SHISA_BUILD_MODULES=<그 node_modules 경로>`로 알려 줍니다.
-- 서명은 ad-hoc(`codesign --force --deep --sign -`)입니다. 애플 실리콘은 서명이 아예 없으면 실행을 막기 때문에 넣습니다. Claude Agent SDK 실행 파일은 원래 붙어 있던 Anthropic 서명이 그대로 남습니다.
+- 서명은 키체인에 `Usagi Code Signing` 코드 서명 인증서가 있으면 그 인증서로, 없으면 ad-hoc(`codesign --force --deep --sign -`)으로 합니다. `USAGI_SIGN_IDENTITY=<인증서 이름이나 SHA-1>`로 다른 인증서를 고를 수 있습니다. 애플 실리콘은 서명이 아예 없으면 실행을 막기 때문에 어느 쪽이든 서명은 넣습니다. 빌드 끝에 지정 요구 사항(`codesign -d -r-`)을 출력합니다.
 - dmg는 macOS 기본 `hdiutil`로 「시사.app」과 「응용 프로그램」 바로가기를 담아 압축(UDZO)합니다.
+
+## 업데이트해도 macOS 허락이 남게 하는 서명 인증서
+
+macOS(TCC)는 캘린더·미리알림·문서 폴더 허락을 줄 때 앱의 지정 요구 사항을 함께 저장하고, 다음 접근 때 지금 앱이 그 요구 사항을 만족하는지 봅니다. ad-hoc 서명의 지정 요구 사항은 `cdhash H"…"`라서 내용이 바뀐 새 버전은 만족하지 못하고, 업데이트할 때마다 허락이 풀립니다(#81, #84). 권한을 쓰는 프로세스는 `bin/usagi-eventkit`이지만 TCC가 확인하는 것은 책임 프로세스인 앱(`com.cy-agent.desktop`)의 서명입니다.
+
+인증서로 서명하면 지정 요구 사항이 `identifier "com.cy-agent.desktop" and certificate … = H"<인증서 해시>"`처럼 인증서 기준이 되어, 같은 인증서로 서명한 다음 버전도 만족합니다. 애플 개발자 계정이 없으면 이 Mac 로그인 키체인의 자체 서명 인증서로 충분합니다. 서명에 인증서가 들어가므로 brew로 설치한 다른 Mac에도 똑같이 적용됩니다.
+
+릴리스를 만드는 Mac에서 한 번 만듭니다(키체인을 바꾸는 일이라 직접 실행합니다).
+
+```bash
+D=$(mktemp -d)
+printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=Usagi Code Signing\n[ext]\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n' > "$D/cs.cnf"
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$D/cs.cnf" -keyout "$D/key.pem" -out "$D/cert.pem"
+openssl pkcs12 -export -inkey "$D/key.pem" -in "$D/cert.pem" -out "$D/usagi.p12" -passout pass:usagi
+security import "$D/usagi.p12" -k ~/Library/Keychains/login.keychain-db -P usagi -T /usr/bin/codesign
+rm -rf "$D"
+security find-identity -p codesigning   # "Usagi Code Signing" 이 보이면 됩니다(신뢰 안 됨 표시는 괜찮습니다)
+```
+
+- 인증서를 신뢰로 바꿀 필요는 없습니다. 처음 서명할 때 키체인이 codesign의 키 사용을 물으면 「항상 허용」을 누릅니다.
+- 인증서로 처음 내보낸 버전에서 한 번 더 허락해야 하고, 그 뒤로는 같은 인증서로 서명하는 동안 허락이 남습니다. 다시 ad-hoc이나 다른 인증서로 내보내면 그때 또 한 번 풀립니다.
+- 개인 키를 잃으면 새 인증서를 만들고 사용자가 한 번 더 허락하면 됩니다. 반대로 이 키를 가진 사람은 macOS가 우사기로 여기는 앱을 서명할 수 있으니 p12 파일은 남기거나 나누지 않습니다.
+- 애플 Developer ID(유료 개발자 계정)로 바꾸면 같은 효과에 공증까지 할 수 있습니다. 그때는 `USAGI_SIGN_IDENTITY="Developer ID Application: …"`로 고르고 공증 단계를 더합니다.
 
 ## 손으로 확인하기
 

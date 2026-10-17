@@ -159,10 +159,17 @@ for (const res of [path.join(APP, 'Contents', 'Frameworks', 'Electron Framework.
 // packager 가 CFBundleDisplayName 을 실행 파일 이름(usagi)으로 덮어써서 서명 전에 다시 쓴다(Spotlight·Launchpad 이름)
 run('plutil', ['-replace', 'CFBundleDisplayName', '-string', APP_NAME, path.join(APP, 'Contents', 'Info.plist')]);
 
-// 5) ad-hoc 서명: 애플 실리콘은 서명이 아예 없으면 실행을 막는다. 개발자 인증서 없이 「-」(ad-hoc)로
-step('ad-hoc 서명');
-run('codesign', ['--force', '--deep', '--sign', '-', APP]);
+// 5) 서명: 애플 실리콘은 서명이 아예 없으면 실행을 막는다.
+// ad-hoc(「-」)은 지정 요구 사항이 cdhash 라 빌드마다 바뀌고, macOS(TCC)는 업데이트할 때마다 캘린더·미리알림·문서 폴더 허락을 다시 묻는다(#81, #84).
+// 키체인에 「Usagi Code Signing」 코드 서명 인증서(자체 서명이어도 됨)가 있으면 그것으로 서명해 요구 사항을 인증서 기준으로 고정한다.
+// USAGI_SIGN_IDENTITY 로 다른 인증서(이름이나 SHA-1)를 고를 수 있다. 인증서로 한 번 내보낸 뒤에는 같은 인증서로만 내보내야 허락이 유지된다(docs/release.md)
+const SIGN_NAME = 'Usagi Code Signing';
+const identity = process.env.USAGI_SIGN_IDENTITY
+  ?? (execFileSync('security', ['find-identity', '-p', 'codesigning'], { encoding: 'utf8' }).includes(`"${SIGN_NAME}"`) ? SIGN_NAME : '-');
+step(identity === '-' ? `ad-hoc 서명(키체인에 「${SIGN_NAME}」 인증서가 없음: 업데이트하면 macOS 허락이 풀립니다)` : `서명: ${identity}`);
+run('codesign', ['--force', '--deep', '--timestamp=none', '--sign', identity, APP]);
 run('codesign', ['--verify', '--deep', '--strict', APP]);
+run('codesign', ['--display', '--requirements', '-', APP]); // 인증서 서명이면 cdhash 가 아니라 identifier 와 인증서 해시가 보여야 한다
 
 if (MAKE_DMG) {
   // 6) dmg: 우사기.app + 응용 프로그램(/Applications) 바로가기, 압축(UDZO)
