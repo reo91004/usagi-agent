@@ -18,7 +18,12 @@ export function normStatus(raw) {
   const bg = obj(f.background) ?? {};
   const by = bg.by === 'claude-code' || bg.by === 'codex' || bg.by === 'agy' ? bg.by : null;
   return {
-    brain: { provider: str(b.provider, 40), label: str(b.label, 60) || b.provider, ready: tri(b.ready), local: b.local === true, detail: str(b.detail) },
+    brain: {
+      provider: str(b.provider, 40), label: str(b.label, 60) || b.provider, ready: tri(b.ready), local: b.local === true, detail: str(b.detail),
+      // 우선순위(brain.fallback)를 쓸 때: 지금 실제로 쓰는 뇌 · 사용량을 다 써서 쉬는 뇌(until = 다시 쓸 수 있는 시각, ms)
+      active: str(b.active, 40),
+      cooling: (Array.isArray(b.cooling) ? b.cooling : []).map(obj).filter((c) => c && typeof c.provider === 'string' && Number.isFinite(c.until)).map((c) => ({ provider: str(c.provider, 40), until: c.until })),
+    },
     chat: tri(s.chat),
     coder: { claude: tri(coder.claude), codex: coder.codex === true, agy: coder.agy === true },
     features: {
@@ -50,6 +55,8 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
       label: st.brain.label,
       local: st.brain.local,
       detail: st.brain.detail,
+      active: st.brain.active,
+      cooling: st.brain.cooling,
       coder: claude !== false,
       code: st.features.code ?? claude !== false, // 코드 고치기·이어 하기(뇌가 Codex·agy 면 그 명령 — 데몬 features.code)
       codex: st.coder.codex || caps?.codex === true,

@@ -2826,6 +2826,7 @@ function applyBrain(v) {
     if (section === 'chat') renderChat();
   }
   if (section === 'setup') renderSetupView(false);
+  if (section === 'models') modelsView.update();
 }
 cy.brain?.().then(applyBrain).catch(() => {});
 cy.onBrain?.(applyBrain);
@@ -3212,7 +3213,7 @@ cy.onSisa?.((v) => {
   if (section === 'setup') { setupKey = ''; renderSetupView(false); }
   loadCalendars(); // 설정 창에서 캘린더를 뺐을 수도 있다
 });
-const modelsView = mountModels({ section: $('sec-models'), h, cy, getSisa: () => sisa, onSisa: applySisa, gotoSetup: () => openSetup() });
+const modelsView = mountModels({ section: $('sec-models'), h, cy, getSisa: () => sisa, onSisa: applySisa, gotoSetup: () => openSetup(), getBrain: () => brain });
 
 goto(section);
 renderAll();

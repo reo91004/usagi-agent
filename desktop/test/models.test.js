@@ -5,7 +5,7 @@ import {
 } from '../src/sisa-store.js';
 import { SISA_BASE } from '../src/persona.js';
 import { CANNED_DEFAULTS } from '../src/canned.js';
-import { optionsFor, codeOptions, cannedOverrideOf } from '../renderer/models-view.js';
+import { optionsFor, codeOptions, cannedOverrideOf, priorityStatus } from '../renderer/models-view.js';
 import { pickModels, listModels, CLI_MODELS } from '../src/llm-check.js';
 
 const KEY = 'AIzaSyExampleExampleExample';
@@ -103,4 +103,11 @@ test('cannedOverrideOf: 기본값과 다른 칸만 남긴다', () => {
   const tired = ['안녕 **시사**예요.\n오늘은 쉬어요.'];
   assert.deepEqual(cannedOverrideOf({ tired }, {}), { tired });
   assert.deepEqual(cannedOverrideOf({ tired: [...CANNED_DEFAULTS.tired] }, {}), {});
+});
+
+test('우선순위 카드 상태 줄: 쉬는 AI 가 있을 때만, 지금 쓰는 AI 와 다시 쓸 수 있는 시각', () => {
+  assert.equal(priorityStatus(null), '');
+  assert.equal(priorityStatus({ active: 'claude-code', cooling: [] }), '');
+  const t = priorityStatus({ active: 'codex', cooling: [{ provider: 'claude-code', until: Date.UTC(2026, 9, 17, 3, 0) }] });
+  assert.match(t, /^지금은 Codex로 하고 있어요\. Claude Code는 .+까지 쉬어요$/);
 });

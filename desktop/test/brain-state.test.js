@@ -138,3 +138,10 @@ test('사용법 투어: AI 없으면 한 번 눌러 질문 칩, Slack 없으면 
   assert.ok(!off.find((s) => s.id === 'todos').text.includes('새로고침'));
   assert.match(tourSteps({ ready: true, connected: ['slack'] }).find((s) => s.id === 'todos').text, /새로고침/);
 });
+
+test('normStatus: 우선순위를 쓰면 지금 쓰는 뇌와 쉬는 뇌를 읽고, 모양이 이상한 쉬는 뇌는 버린다', () => {
+  const st = normStatus({ brain: { provider: 'claude-code', label: 'Claude Code', ready: true, local: false, detail: '', active: 'codex', cooling: [{ provider: 'claude-code', until: 5 }, { provider: 3 }, { provider: 'x', until: 'a' }] } });
+  assert.deepEqual([st.brain.active, st.brain.cooling], ['codex', [{ provider: 'claude-code', until: 5 }]]);
+  assert.deepEqual(brainView({ status: { brain: { provider: 'claude-code', label: 'c', active: 'codex', cooling: [] } } }).cooling, []);
+  assert.deepEqual(normStatus({ brain: { provider: 'codex' } }).brain.cooling, []);
+});

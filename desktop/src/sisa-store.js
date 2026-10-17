@@ -32,9 +32,12 @@ export function normalizeSisa(raw) {
   for (const [k, v] of Object.entries(obj(d.chatModels))) {
     if (ALL_PROVIDERS.includes(k) && isModelId(v)) chatModels[k] = v;
   }
+  // order: 연결한 AI 우선순위(앞이 먼저, 사용량을 다 쓰면 다음 AI 가 이어 받는다). 연결 여부는 priorityList 가 본다
+  const order = [...new Set((Array.isArray(d.order) ? d.order : []).filter((p) => ALL_PROVIDERS.includes(p)))];
   return {
     keys,
     clis,
+    order,
     gsk: d.gsk === true,
     provider: ALL_PROVIDERS.includes(d.provider) || d.provider === 'none' ? d.provider : '',
     chatModels,
@@ -57,6 +60,15 @@ export function activeProvider(data) {
   return connectedProviders(d).includes(d.provider) ? d.provider : '';
 }
 
+// 우선순위: 지금 쓰는 AI 가 맨 앞, 다음은 저장한 순서(연결된 것만), 순서에 없는 연결은 뒤에. 'none'(AI 없이 쓰기)이면 비어 있다
+export function priorityList(data) {
+  const d = normalizeSisa(data);
+  const first = activeProvider(d);
+  if (!first) return [];
+  const conn = connectedProviders(d);
+  return [first, ...d.order.filter((p) => p !== first && conn.includes(p)), ...conn.filter((p) => p !== first && !d.order.includes(p))];
+}
+
 export function publicView(data, defaultPersona = '') {
   const d = normalizeSisa(data);
   const provider = activeProvider(d);
@@ -67,6 +79,7 @@ export function publicView(data, defaultPersona = '') {
     canned: d.canned,
     done: d.done,
     connected: connectedProviders(d),
+    order: priorityList(d),
     chatModels: d.chatModels,
     codeModel: d.codeModel,
   };
@@ -103,7 +116,16 @@ export function withoutProvider(data, provider) {
   const gsk = provider === 'genspark' ? false : d.gsk;
   const chatModels = { ...d.chatModels };
   delete chatModels[provider];
-  return { ...d, keys, clis, gsk, chatModels, provider: d.provider === provider ? 'none' : d.provider };
+  return { ...d, keys, clis, gsk, chatModels, order: d.order.filter((x) => x !== provider), provider: d.provider === provider ? 'none' : d.provider };
+}
+
+// 우선순위를 통째로 바꾼다(연결된 AI 만, 중복 없이). 맨 앞이 지금 쓰는 AI 가 된다. 잘못되면 null
+export function withOrder(data, order) {
+  const d = normalizeSisa(data);
+  const conn = connectedProviders(d);
+  if (!Array.isArray(order) || !order.length || new Set(order).size !== order.length || !order.every((p) => conn.includes(p))) return null;
+  const rest = priorityList(d).filter((p) => !order.includes(p));
+  return { ...d, order: [...order, ...rest], provider: order[0] };
 }
 
 export function withSkip(data) {
@@ -153,18 +175,26 @@ export function daemonBrainPatch(data) {
   const provider = DAEMON_BRAIN[chosen];
   if (!provider) return null;
   const brain = { provider };
-  // Genspark 를 gsk login 키로 쓰면 데몬 설정의 키를 지운다(null) — 데몬이 gsk login 파일을 읽는다
-  if (KEY_FIELD[chosen]) brain[KEY_FIELD[chosen]] = d.keys[chosen] ?? (chosen === 'genspark' ? null : undefined);
+  // 연결한 키는 전부 보낸다(다음 AI 가 이어 받을 때 쓴다). Genspark 를 gsk login 키로 쓰면 데몬 설정의 키를 지운다(null) — 데몬이 gsk login 파일을 읽는다
+  for (const p of connectedProviders(d)) {
+    if (KEY_FIELD[p]) brain[KEY_FIELD[p]] = d.keys[p] ?? (p === 'genspark' ? null : undefined);
+  }
   const m = d.chatModels[chosen];
   // models.general: 고른 모델(기본값이면 비운다; agy 는 `agy models` 의 id). codex·local 은 데몬 쪽 기본을 그대로
   const general = chosen === 'codexcli' || chosen === 'none' ? undefined : m && m !== 'default' ? m : null;
+  // 첫 AI 다음 순서. 이어 받는 AI 는 자기 모델(기본이면 생략 = 그 AI 의 기본 모델). 없으면 null(데몬 설정에서 지운다)
+  const fallback = priorityList(d).slice(1).map((p) => {
+    const fm = d.chatModels[p];
+    return { provider: DAEMON_BRAIN[p], ...(p !== 'codexcli' && fm && fm !== 'default' ? { model: fm } : {}) };
+  });
+  brain.fallback = fallback.length ? fallback : null;
   return { brain, general };
 }
 
-// daemonBrainPatch → PUT /settings 본문 { brain: { provider, keys?, model? } } — 데몬이 재시작 없이 바로 쓴다
+// daemonBrainPatch → PUT /settings 본문 { brain: { provider, keys?, model?, fallback } } — 데몬이 재시작 없이 바로 쓴다
 export function settingsBrainBody(patch) {
   if (!patch?.brain?.provider) return null;
-  const b = { provider: patch.brain.provider };
+  const b = { provider: patch.brain.provider, fallback: patch.brain.fallback ?? [] };
   const keys = {};
   if (patch.brain.geminiApiKey) keys.gemini = patch.brain.geminiApiKey;
   if (patch.brain.openaiApiKey) keys.openai = patch.brain.openaiApiKey;

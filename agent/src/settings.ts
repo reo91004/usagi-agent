@@ -7,7 +7,8 @@ import { calendarAlertOf, validateCalendarAlert, type CalendarAlertConfig } from
 import { readFileSync, renameSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isAbsolute } from "node:path";
-import { BRAIN_PROVIDERS, DEFAULT_GENERAL_MODEL, HOME_DIR, configErrorText, type BrainProvider, type Config } from "./config.ts";
+import { resetBrainCooldowns } from "./brain-fallback.ts";
+import { BRAIN_PROVIDERS, DEFAULT_GENERAL_MODEL, HOME_DIR, configErrorText, type BrainFallback, type BrainProvider, type Config } from "./config.ts";
 import { modelLabel } from "./models.ts";
 import { gskLoginKey } from "./providers.ts";
 import { AUTO_MERGE_MAX, inAutoMerge, normSlug } from "./auto-merge.ts";
@@ -58,7 +59,7 @@ export type SettingsView = {
   todayReminder: TodayReminder; // 오늘 할 일 알림(auto: 아침 + N시간마다·지정 시각 / off)
   calendarAlert: CalendarAlertConfig; // 일정 알림: 몇 분 전에 알릴지([] = 끔)
   // 뇌: 키는 절대 내보내지 않는다 — 있나 없나만
-  brain: { provider: BrainProvider; model: string; keys: Record<BrainKey, boolean> };
+  brain: { provider: BrainProvider; model: string; fallback: BrainFallback[]; keys: Record<BrainKey, boolean> };
   // 캐릭터(characters.ts): 그림·영상·말투·고정 문구 기본값이 바뀐다
   character: CharacterId;
   characters: { id: CharacterId; name: string; custom?: boolean }[];
@@ -72,7 +73,8 @@ export type SettingsView = {
 export type BrainKey = "gemini" | "openai" | "anthropic" | "genspark";
 const BRAIN_KEY_FIELD: Record<BrainKey, "geminiApiKey" | "openaiApiKey" | "anthropicApiKey" | "gensparkApiKey"> = { gemini: "geminiApiKey", openai: "openaiApiKey", anthropic: "anthropicApiKey", genspark: "gensparkApiKey" };
 // 뇌 바꾸기: provider · 키(null = 지우기) · model(null = 기본으로). 바로 반영(데몬 재시작 불필요)
-export type BrainPatch = { provider?: BrainProvider; keys?: Partial<Record<BrainKey, string | null>>; model?: string | null };
+// fallback: 첫 뇌 다음 순서 통째로([] = 비움). 첫 뇌와 같은 것은 합칠 때 뺀다
+export type BrainPatch = { provider?: BrainProvider; keys?: Partial<Record<BrainKey, string | null>>; model?: string | null; fallback?: BrainFallback[] };
 export type PhraseView = { key: string; group: string; label: string; vars: string[]; default: string[]; value: string[] | null };
 
 // phrases: 키 → 줄들(고침) | null(기본값으로)
@@ -158,7 +160,7 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
 export function validateBrain(raw: unknown): BrainPatch {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new SettingsError("brain must be an object");
   const r = raw as Record<string, unknown>;
-  for (const k of Object.keys(r)) if (k !== "provider" && k !== "keys" && k !== "model") throw new SettingsError(`unknown key: brain.${k}`);
+  for (const k of Object.keys(r)) if (k !== "provider" && k !== "keys" && k !== "model" && k !== "fallback") throw new SettingsError(`unknown key: brain.${k}`);
   const out: BrainPatch = {};
   if (r.provider !== undefined) {
     if (typeof r.provider !== "string" || !(BRAIN_PROVIDERS as readonly string[]).includes(r.provider)) throw new SettingsError(`brain.provider must be one of ${BRAIN_PROVIDERS.join(", ")}`);
@@ -175,6 +177,16 @@ export function validateBrain(raw: unknown): BrainPatch {
       keys[k as BrainKey] = v.trim();
     }
     out.keys = keys;
+  }
+  if (r.fallback !== undefined) {
+    if (!Array.isArray(r.fallback) || r.fallback.length > BRAIN_PROVIDERS.length) throw new SettingsError("brain.fallback must be a list");
+    const seen = new Set<string>();
+    out.fallback = r.fallback.map((e: any) => {
+      if (typeof e?.provider !== "string" || e.provider === "local" || !(BRAIN_PROVIDERS as readonly string[]).includes(e.provider) || seen.has(e.provider)) throw new SettingsError("brain.fallback needs distinct known providers (not local)");
+      seen.add(e.provider);
+      if (e.model !== undefined && e.model !== null && (typeof e.model !== "string" || !MODEL_ID.test(e.model))) throw new SettingsError("brain.fallback model must be a model id");
+      return { provider: e.provider as BrainProvider, ...(e.model ? { model: e.model as string } : {}) };
+    });
   }
   if (r.model !== undefined) {
     if (r.model !== null && (typeof r.model !== "string" || !MODEL_ID.test(r.model))) throw new SettingsError("brain.model must be a model id");
@@ -256,6 +268,11 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): void {
       const f = BRAIN_KEY_FIELD[k as BrainKey];
       if (v) br[f] = v;
       else delete br[f];
+    }
+    if (patch.brain.fallback) br.fallback = patch.brain.fallback;
+    if (Array.isArray(br.fallback)) { // 첫 뇌가 된 것은 순서에서 뺀다
+      const rest = (br.fallback as BrainFallback[]).filter((e) => e.provider !== br.provider);
+      if (rest.length) br.fallback = rest; else delete br.fallback;
     }
     next.brain = br;
     if (patch.brain.model !== undefined) {
@@ -340,7 +357,7 @@ export class Settings {
       todayReminder: todayReminderOf(c.todayReminder),
       calendarAlert: calendarAlertOf(c.calendarAlert),
       brain: {
-        provider: c.brain?.provider ?? "claude-code", model: c.models.general,
+        provider: c.brain?.provider ?? "claude-code", model: c.models.general, fallback: (c.brain?.fallback ?? []).map((e) => ({ ...e })),
         // genspark: 설정에 키가 있거나, Genspark 를 고른 채 gsk login 파일에 키가 있으면 true(키 값은 내보내지 않는다).
         // 고르지 않았으면 gsk login 만 해 둔 것으로 「연결됨」이 되지 않게 파일은 보지 않는다
         keys: { gemini: !!c.brain?.geminiApiKey, openai: !!c.brain?.openaiApiKey, anthropic: !!c.brain?.anthropicApiKey, genspark: !!c.brain?.gensparkApiKey || (c.brain?.provider === "genspark" && !!gskLoginKey(this.env)) },
@@ -380,6 +397,9 @@ export class Settings {
         if (v) b[f] = v;
         else delete b[f];
       }
+      if (patch.brain.fallback) b.fallback = patch.brain.fallback;
+      if (b.fallback) { b.fallback = b.fallback.filter((e) => e.provider !== b.provider); if (!b.fallback.length) delete b.fallback; }
+      resetBrainCooldowns(); // 키·순서를 바꾸면 쉬는 기록은 버린다
       this.cfg.brain = b; // brain.ts·connections 가 매번 cfg.brain 을 읽으니 다음 질문부터 바로
       if (patch.brain.model !== undefined) this.cfg.models.general = patch.brain.model || DEFAULT_GENERAL_MODEL;
     }

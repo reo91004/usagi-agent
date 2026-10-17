@@ -95,8 +95,11 @@ export type Config = {
 
 export const BRAIN_PROVIDERS = ["claude-code", "codex", "agy", "anthropic", "gemini", "openai", "genspark", "local"] as const;
 export type BrainProvider = (typeof BRAIN_PROVIDERS)[number];
+// 첫 뇌(brain.provider)가 사용량을 다 쓰면 이어 쓸 뇌. model 이 없으면 그 뇌의 기본 모델(첫 뇌는 models.general)
+export type BrainFallback = { provider: BrainProvider; model?: string };
 export type BrainConfig = {
   provider: BrainProvider;
+  fallback?: BrainFallback[];
   geminiApiKey?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string; // Claude API 키(Claude Code 없이 Claude 와 이야기 — providers.ts anthropicJson)
@@ -118,9 +121,26 @@ function safeLabel(raw: string): string {
   return raw;
 }
 
+// brain.fallback: 모르는 뇌·중복·첫 뇌와 같은 것은 버린다. local 도 뺀다(한도 오류가 없어 다음으로 못 넘기고, 브리핑 말고는 답하지 못한다)
+export function fallbackOf(raw: unknown, primary: string, notes: string[] = []): BrainFallback[] {
+  if (raw === undefined) return [];
+  const out: BrainFallback[] = [];
+  for (const e of Array.isArray(raw) ? raw : []) {
+    const provider = nonempty((e as { provider?: unknown })?.provider);
+    const model = nonempty((e as { model?: unknown })?.model);
+    if (!provider || provider === "local" || provider === primary || out.some((x) => x.provider === provider) || !(BRAIN_PROVIDERS as readonly string[]).includes(provider)) {
+      notes.push(`brain.fallback 의 ${safeLabel(provider ?? "(빈 값)")} 는 쓸 수 없어서 뺐어요`);
+      continue;
+    }
+    out.push({ provider: provider as BrainProvider, ...(model ? { model } : {}) });
+  }
+  if (!Array.isArray(raw)) notes.push("brain.fallback 은 목록이어야 해서 무시했어요");
+  return out;
+}
+
 // notes: 모르는 provider 면 여기에 한 줄(GET /status configNotes). 데몬은 죽지 않고 local 로 뜬다
 export function pickBrain(env: NodeJS.ProcessEnv, file: Record<string, unknown>, notes: string[] = []): BrainConfig {
-  const rawBrain = (file.brain && typeof file.brain === "object" ? file.brain : {}) as { provider?: unknown; geminiApiKey?: unknown; openaiApiKey?: unknown; anthropicApiKey?: unknown; gensparkApiKey?: unknown };
+  const rawBrain = (file.brain && typeof file.brain === "object" ? file.brain : {}) as { provider?: unknown; fallback?: unknown; geminiApiKey?: unknown; openaiApiKey?: unknown; anthropicApiKey?: unknown; gensparkApiKey?: unknown };
   // 새 설치(onboarded 키가 있음)는 마법사에서 고르기 전까지 "아직 안 고름" = local(모델 없음). 예전 설정은 claude-code
   let providerRaw = nonempty(env.CY_AGENT_BRAIN) ?? nonempty(rawBrain.provider) ?? (isNewStyle(file) ? "local" : "claude-code");
   if (!(BRAIN_PROVIDERS as readonly string[]).includes(providerRaw)) {
@@ -135,8 +155,10 @@ export function pickBrain(env: NodeJS.ProcessEnv, file: Record<string, unknown>,
   // ANTHROPIC_API_KEY 는 Claude Code 도 쓰는 이름이라 일부러 안 읽는다(뇌를 anthropic 으로 고른 사람만 키를 넣는다)
   const anthropicApiKey = nonempty(env.CY_AGENT_ANTHROPIC_API_KEY) ?? nonempty(rawBrain.anthropicApiKey);
   const gensparkApiKey = nonempty(env.CY_AGENT_GENSPARK_API_KEY) ?? nonempty(rawBrain.gensparkApiKey);
+  const fallback = fallbackOf(rawBrain.fallback, providerRaw, notes);
   return {
     provider: providerRaw as BrainProvider,
+    ...(fallback.length ? { fallback } : {}),
     ...(geminiApiKey ? { geminiApiKey } : {}),
     ...(openaiApiKey ? { openaiApiKey } : {}),
     ...(anthropicApiKey ? { anthropicApiKey } : {}),

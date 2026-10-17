@@ -6,6 +6,8 @@
 // 워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로. 코드 고치기는 codex 도 된다(fixer.ts driveCodex).
 // 메일·이슈 MCP 연결은 Codex·agy 뇌면 채팅에서만 읽는다(cli-mcp.ts) — 뒤에서 하는 정리·브리핑·캘린더 동기화는 Claude Code 뇌일 때만
 import type { Config } from "./config.ts";
+import { brainOrder, activeBrain, isCooled, withFallback } from "./brain-fallback.ts";
+import { DEFAULT_GENERAL_MODEL } from "./config.ts";
 import { agyExec, agyModel, codexExec, commandOnPath, type ExecFileLike } from "./providers.ts";
 
 export type FeatureBrain = "claude-code" | "codex" | "agy";
@@ -24,16 +26,19 @@ export const mcpBrainNote = (provider?: string) => (provider === "codex" || prov
 // 이 기능들을 돌릴 뇌. 없으면 null. 설치 마법사를 마치기 전(onboarded false)에도 null: 아무 모델 작업도 하지 않는다(onboarding.ts)
 export function featureBrain(cfg: Pick<Config, "brain" | "onboarded">, exists: (name: string) => boolean = (n) => commandOnPath(n)): FeatureBrain | null {
   if (cfg.onboarded === false) return null;
-  const p = cfg.brain?.provider ?? "claude-code";
-  if (p === "claude-code") return "claude-code";
-  if (p === "codex") return exists("codex") ? "codex" : null;
-  if (p === "agy") return exists("agy") ? "agy" : null;
+  // 첫 뇌부터 차례로: 한도로 쉬는 뇌는 건너뛰고, 명령이 없는 CLI 도 건너뛴다. 쉬지 않는데 뒤에서 못 도는 뇌(API 키 방식)를 만나면 거기서 멈춘다
+  for (const { provider: p } of brainOrder(cfg)) {
+    if (isCooled(p)) continue;
+    if (p === "claude-code") return "claude-code";
+    if ((p === "codex" || p === "agy") && exists(p)) return p;
+    if (p !== "codex" && p !== "agy") return null;
+  }
   return null;
 }
 
 // 구조화 호출을 어느 길로 보낼지(호출 직전). 건너뛸지는 featureBrain 이 앞에서 정한다 — 여기선 provider 만 본다
 // codex·agy: 도구 없이 CLI 한 번으로 구조화 답을 받는 뇌(cliStructured)
-export const usesCli = (cfg: Pick<Config, "brain">) => cfg.brain?.provider === "codex" || cfg.brain?.provider === "agy";
+export const usesCli = (cfg: Pick<Config, "brain">) => { const p = activeBrain(cfg); return p === "codex" || p === "agy"; };
 
 const noted = new Set<string>();
 // 기능마다 한 번만 알린다(뇌를 바꾸면 다시 한 번)
@@ -97,8 +102,12 @@ export async function cliStructured<T>(
   spec: { system: string; prompt: string; schema: unknown; timeoutMs?: number },
   deps: CodexDeps = {},
 ): Promise<{ out: T; stat: CodexStat }> {
-  if (cfg.brain?.provider !== "agy") return codexStructured<T>(spec, deps);
-  return cliCall<T>("Antigravity", (s) => agyExec(s.prompt, s.schema, { system: s.system, execFile: deps.execFile, commandExists: deps.commandExists, timeoutMs: s.timeoutMs, model: agyModel(cfg) }), spec);
+  // CLI 뇌만 순서대로(첫 뇌 → fallback): 한도·인증 오류면 다음 CLI 뇌로(brain-fallback.ts)
+  const order = brainOrder(cfg), cli = order.filter((e) => e.provider === "codex" || e.provider === "agy");
+  const [head, ...rest] = cli;
+  const c0 = { ...cfg, brain: { ...cfg.brain, provider: head.provider, fallback: rest }, models: head === order[0] ? cfg.models : { ...cfg.models, general: head.model ?? DEFAULT_GENERAL_MODEL } };
+  return withFallback(c0, (c) => c.brain.provider !== "agy" ? codexStructured<T>(spec, deps)
+    : cliCall<T>("Antigravity", (s) => agyExec(s.prompt, s.schema, { system: s.system, execFile: deps.execFile, commandExists: deps.commandExists, timeoutMs: s.timeoutMs, model: agyModel(c) }), spec));
 }
 
 async function cliCall<T>(who: string, run: (s: { system: string; prompt: string; schema: unknown; timeoutMs?: number }) => Promise<{ out: unknown; usage: { inTokens: number; outTokens: number } }>, spec: { system: string; prompt: string; schema: unknown; timeoutMs?: number }): Promise<{ out: T; stat: CodexStat }> {
