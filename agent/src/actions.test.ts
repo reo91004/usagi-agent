@@ -254,18 +254,6 @@ test("캐릭터 대화(hover): ✓/✗ 말풍선 카드 → 실행하면 같은 
   assert.match(last.text, /✅ 메모로 남겼어요/);
 });
 
-test("할 일 팝오버: actions → 응답에 카드, 그 할 일 대화의 답에 붙음", async () => {
-  const s = agentSetup({ askTodo: async () => ({ reply: "남길까요?", todo_ops: [], rule: null, actions: [NOTE("초대 응답 메모")] }) });
-  const t = s.agent.addTodo({ title: "주간 회의 초대 응답" });
-  const r = await s.agent.askTodo(t.id, "메모해줘");
-  assert.equal(r!.actions.length, 1);
-  assert.equal(r!.actions[0].via, "todo");
-  assert.equal(r!.actions[0].threadId, r!.threadId);
-  const msgs = s.agent.threadMessages(r!.threadId)!;
-  assert.equal(r!.actions[0].msgN, msgs.messages.find((m) => m.role === "assistant")!.n);
-  assert.equal(s.calls.length, 0);
-});
-
 test("Slack DM: 실행/취소 버튼 카드를 올리고, 실행하면 그 메시지가 결과로 바뀐다(정기 브리핑은 제안 못 함)", async () => {
   const thought = (actions: unknown[]) => ({ bubble: "b", reply_md: "카드 올렸어요", todos: [], done_todo_ids: [], proposals: [], todo_ops: [], rule: null, actions });
   const s = agentSetup({ think: async (_c: any, _s: any, task: string) => thought(task.startsWith("정기") ? [NOTE("브리핑 메모")] : [NOTE("DM 메모")]) });

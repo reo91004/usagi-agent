@@ -11,7 +11,6 @@ import { loadConfig } from "./config.ts";
 import { chatPrompt } from "./chat.ts";
 import { thinkPrompt } from "./brain.ts";
 import { sdkOptions } from "./fixer.ts";
-import { askPrompt } from "./todo-ask.ts";
 import { followUpChatText } from "./followup.ts";
 
 const cfgOf = () => ({ ...loadConfig(), repoRoots: [], claudeProjectsDir: "/none", codexSessionsDir: "/none" });
@@ -179,9 +178,6 @@ test("프롬프트: 채팅(tools·inline)·Slack DM·브리핑·코드 작업·�
   has(opts.systemPrompt.append, ["커밋 메시지는 한국어"], ["대화 답은 짧게"]);
   setGuidelineStore(undefined);
   assert.equal(codeGuidelines(), "");
-  // 할 일 팝오버(사용자 대화) = chat
-  const todo = s.store.addTodo({ title: "견적 회신", priority: 2 } as any);
-  has(askPrompt(s.store, todo, "이거 뭐야"), ["대화 답은 짧게"], ["커밋"]);
   // 같은 상태면 늘 같은 글(캐시)
   const now = new Date("2026-10-13T00:00:00Z");
   assert.equal(thinkPrompt(s.cfg, s.store, "x", { tools: true, scope: "chat", now }), thinkPrompt(s.cfg, s.store, "x", { tools: true, scope: "chat", now }));

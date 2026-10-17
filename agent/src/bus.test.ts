@@ -77,38 +77,6 @@ test("bus: 대시보드·할 일·채팅 라우트, 잘못된 입력은 400", as
   }
 });
 
-test("bus: /profile/facts 저장·목록·삭제", async () => {
-  const facts: { text: string }[] = [];
-  const { bus, base, post } = await serve({
-    profileFacts: () => facts,
-    profileRemember: (text) => {
-      if (text.length < 4) return { ok: false, error: "짧아요" };
-      const fact = { text, id: "fact:x" };
-      facts.push(fact);
-      return { ok: true, fact, created: true };
-    },
-    profileForget: (key) => {
-      const n = facts.length;
-      facts.splice(0, facts.length, ...facts.filter((f) => f.text !== key && (f as any).id !== key));
-      return facts.length < n;
-    },
-  });
-  try {
-    assert.equal((await post("/profile/facts", JSON.stringify({ text: "내 이름은 홍길동이야, 기억해줘" }))).status, 200);
-    assert.deepEqual(await (await fetch(`${base}/profile/facts`)).json(), { facts: [{ text: "내 이름은 홍길동이야, 기억해줘", id: "fact:x" }] });
-    assert.equal((await post("/profile/facts", JSON.stringify({ text: "짧" }))).status, 400);
-    const long = `긴 사실 ${"가".repeat(5000)}`;
-    assert.equal((await post("/profile/facts", JSON.stringify({ text: long }))).status, 200, "글자 수 제한 없음");
-    assert.equal(facts.at(-1)?.text, long);
-    facts.pop();
-    assert.equal((await post("/profile/facts/forget", JSON.stringify({ text: "내 이름은 홍길동이야, 기억해줘" }))).status, 200);
-    assert.equal((await post("/profile/facts/forget", JSON.stringify({ id: "nope" }))).status, 404);
-    assert.equal((await post("/profile/facts", JSON.stringify({}), { "x-cy-agent": "1" })).status, 400);
-  } finally {
-    bus.close();
-  }
-});
-
 test("bus: 오늘 할 일은 할 일 API 로(today 필드), 예전 /today 표 저장은 없음", async () => {
   const added: unknown[] = [], edited: unknown[] = [];
   const b = await serve({
@@ -239,56 +207,6 @@ test("bus: POST /chat todoId — 문자열이어야 하고 없는 할 일이면 
     }
     assert.equal((await post("/chat", JSON.stringify({ text: "그냥", todoId: null }))).status, 202); // null = 없음
     assert.deepEqual(calls, [["chat", "이거 없애", { todoId: "mail:1" }], ["chat", "그냥", undefined]]);
-  } finally {
-    bus.close();
-  }
-});
-
-test("bus: 할 일 팝오버 ask·apply·reject — CSRF 403, 검증 400, 404, stale 409, 핸들러 없으면 503", async () => {
-  const none = await serve();
-  try {
-    for (const a of ["ask", "apply", "reject"]) assert.equal((await none.post(`/todos/mail%3A1/${a}`, JSON.stringify({ text: "x", ops: [{ op: "done" }] }))).status, 503);
-  } finally {
-    none.bus.close();
-  }
-  const { bus, post, calls } = await serve({
-    todoAsk: async (id, text) => { calls.push(["ask", id, text]); return id === "mail:1" ? { reply: "지울까?", ops: [{ op: "delete", id }], preview: [], rev: "r1" } : undefined; },
-    todoApply: (id, ops, rev) => {
-      calls.push(["apply", id, ops, rev]);
-      if (id !== "mail:1") return { ok: false, reason: "missing" };
-      if (!ops.some((o) => o.op !== "add" || o.title)) return { ok: false, reason: "empty" };
-      if (rev === "old") return { ok: false, reason: "stale", ops, preview: [{ kind: "edit" }], rev: "r2" };
-      return { ok: true, applied: ["삭제"], errors: [], todo: null, added: [] };
-    },
-    todoReject: (id, text, ops) => { calls.push(["reject", id, text, ops]); return id === "mail:1"; },
-  });
-  try {
-    assert.equal((await post("/todos/mail%3A1/ask", JSON.stringify({ text: "x" }), {})).status, 403);
-    assert.equal((await post("/todos/mail%3A1/apply", JSON.stringify({ ops: [{ op: "done" }] }), { "x-cy-agent": "1", origin: "https://evil.example" })).status, 403);
-
-    const r = await post("/todos/mail%3A1/ask", JSON.stringify({ text: "  없애  " }));
-    assert.equal(r.status, 200);
-    assert.equal((await r.json()).reply, "지울까?");
-    assert.equal((await post("/todos/nope/ask", JSON.stringify({ text: "없애" }))).status, 404);
-    for (const bad of [{}, { text: "" }, { text: 3 }]) assert.equal((await post("/todos/mail%3A1/ask", JSON.stringify(bad))).status, 400);
-
-    const ok = await post("/todos/mail%3A1/apply", JSON.stringify({ ops: [{ op: "delete" }], rev: "r1" }));
-    assert.equal(ok.status, 200);
-    assert.equal((await ok.json()).ok, true);
-    const st = await post("/todos/mail%3A1/apply", JSON.stringify({ ops: [{ op: "delete" }], rev: "old" }));
-    assert.equal(st.status, 409);
-    assert.equal((await st.json()).rev, "r2");
-    assert.equal((await post("/todos/nope/apply", JSON.stringify({ ops: [{ op: "delete" }] }))).status, 404);
-    for (const bad of [{}, { ops: [] }, { ops: [{ op: "nuke" }] }, { ops: [{ op: "edit", x: 1 }] }, { ops: [{ op: "done" }], rev: 3 }]) {
-      assert.equal((await post("/todos/mail%3A1/apply", JSON.stringify(bad))).status, 400, JSON.stringify(bad));
-    }
-    assert.equal((await post("/todos/mail%3A1/apply", JSON.stringify({ ops: [{ op: "add" }] }))).status, 400); // 적용할 게 없음
-
-    assert.equal((await post("/todos/mail%3A1/reject", JSON.stringify({ text: "없애", ops: [{ op: "delete" }] }))).status, 200);
-    assert.equal((await post("/todos/mail%3A1/reject")).status, 200); // 빈 본문 OK
-    assert.equal((await post("/todos/nope/reject", "{}")).status, 404);
-    assert.equal((await post("/todos/mail%3A1/reject", JSON.stringify({ ops: "x" }))).status, 400);
-    assert.deepEqual(calls.filter((c: any) => c[0] === "reject")[0], ["reject", "mail:1", "없애", [{ op: "delete" }]]);
   } finally {
     bus.close();
   }

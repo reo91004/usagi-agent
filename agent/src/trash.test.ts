@@ -238,20 +238,6 @@ test("DM delete도 휴지통으로 — 답에 '휴지통으로 옮겼어요'", a
   assert.match(JSON.stringify(s.posts.at(-1).blocks), /🗑 '이슈' 휴지통으로 옮겼어요/);
 });
 
-test("팝오버 적용 delete도 휴지통으로", async () => {
-  const s = setup({
-    askTodo: async () => ({ reply: "지울까요?", todo_ops: [{ op: "delete" }], rule: null }),
-  });
-  s.store.upsertTodo({ id: "mail:1", title: "답장", source: "mail", priority: 2 });
-  const p = (await s.agent.askTodo("mail:1", "없애"))!;
-  const r = s.agent.applyAsk("mail:1", p.ops, p.rev) as any;
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.applied, ["휴지통으로 옮겼어요: 답장"]);
-  assert.equal(r.todo, null);
-  assert.ok(s.store.trashedTodo("mail:1"));
-  assert.equal(s.agent.restoreTodo("mail:1")!.status, "open");
-});
-
 test("Slack 메뉴 '삭제' 줄 표시 · trashedNote", () => {
   const line = todoLine({ id: "mail:1", title: "답장", source: "mail", priority: 2, status: "open", created: "t" });
   const out = replaceTodoLine([line], line.block_id, { trashed: "답장" });

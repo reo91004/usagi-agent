@@ -27,7 +27,6 @@ const pre = (tool_name: string, tool_input: unknown, tool_use_id = "tu1", agent_
 const decision = (o: any) => o?.hookSpecificOutput?.permissionDecision;
 const reason = (o: any) => String(o?.hookSpecificOutput?.permissionDecisionReason ?? "");
 const tick = () => new Promise((r) => setTimeout(r, 1));
-const waitFor = async (fn: () => boolean, ms = 2000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error("timeout"); await tick(); } };
 
 // 손으로 끝내는 가짜 run: release(id, 결과) / fail(id)
 function gate() {

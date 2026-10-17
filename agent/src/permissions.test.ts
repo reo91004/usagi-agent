@@ -15,7 +15,6 @@ import { loadConfig } from "./config.ts";
 import { CalendarSync } from "./calendar-sync.ts";
 import { actionBlocks } from "./slack/blocks.ts";
 import { REQUEST_SCHEMA, toolOptions, INTERACTIVE_SYSTEM, SYSTEM, permWaitSteps } from "./brain.ts";
-import { ASK_SYSTEM } from "./todo-ask.ts";
 import { CHAT_SYSTEM } from "./chat.ts";
 import {
   CHECK_MAX, DENIED_STEP, HARD_DENY, PermissionBroker, PermissionRules, bashNeedsCard, bashPrefix, buildPreview, cySafePlace, globMatch, hardDeny, isAutoAllowed, ruleFor, ruleMatches, waitStep, type GitState, type PermCtx, type PermWait,
@@ -364,26 +363,6 @@ test("캐릭터 대화(hover): [허용]/[항상]/[거부] 말풍선 → 허용�
   assert.deepEqual(s.agent.listPermissions().map((r) => r.scope), ["npm test"]);
 });
 
-test("할 일 팝오버: 승인 카드에 todoId(팝오버가 SSE 로 잡음) → 응답 actions 에 들어가고 그 할 일 대화 답에 붙음", async () => {
-  let s!: ReturnType<typeof agentSetup>;
-  s = agentSetup({
-    askTodo: async (_c: any, _s: any, todo: any) => {
-      const p = s.agent.broker.decide(INV, { service: "mail", tool: "send_mail", args: { to: "a@x.com", subject: "s", body: "b" } }, { via: "todo", todoId: todo.id }, ctx);
-      const card = await s.waitPending();
-      assert.equal(card.todoId, todo.id);
-      s.agent.cancelAction(card.id);
-      await p;
-      return { reply: "메일은 안 보냈어요", todo_ops: [], rule: null };
-    },
-  });
-  const t = s.agent.addTodo({ title: "견적 메일" });
-  const r = await s.agent.askTodo(t.id, "메일 보내줘");
-  assert.equal(r!.actions.length, 1);
-  assert.deepEqual([r!.actions[0].type, r!.actions[0].status, r!.actions[0].threadId], [PERMISSION, "cancelled", r!.threadId]);
-  const msgs = s.agent.threadMessages(r!.threadId)!;
-  assert.equal(r!.actions[0].msgN, msgs.messages.find((m) => m.role === "assistant")!.n);
-});
-
 test("Slack DM 요청: 대화형(승인 카드가 그 스레드에 버튼으로), 정기 브리핑은 대화형 아님", async () => {
   const seenOpts: any[] = [];
   let s!: ReturnType<typeof agentSetup>;
@@ -452,7 +431,7 @@ test("정기 작업은 읽기 전용 그대로: dontAsk + 읽기 훅, 쓰기 출
   assert.equal(h.hookSpecificOutput.permissionDecision, "deny");
   assert.ok(!(REQUEST_SCHEMA.required as readonly string[]).includes("actions"));
   assert.match(SYSTEM, /\*\*읽기만\*\*/);
-  for (const sys of [INTERACTIVE_SYSTEM, CHAT_SYSTEM, ASK_SYSTEM]) {
+  for (const sys of [INTERACTIVE_SYSTEM, CHAT_SYSTEM]) {
     assert.doesNotMatch(sys, /읽기만/);
     assert.match(sys, /쓰기 도구도 쓸 수 있다/);
     assert.match(sys, /승인 카드/);

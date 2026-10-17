@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { loadConfig } from "./config.ts";
 import { ask, REQUEST_SCHEMA, SCHEMA, TEXT_SCHEMA } from "./brain.ts";
 import { CHAT_SCHEMA, HOVER_SCHEMA, TITLE_SCHEMA } from "./chat.ts";
-import { ASK_SCHEMA } from "./todo-ask.ts";
+import { RULE_SCHEMA } from "./todo-rules.ts";
 import { MERGE_ASK_SCHEMA } from "./reactions.ts";
 import { DESC_SCHEMA } from "./todo-source.ts";
 import { opPatch, TODO_OPS_SCHEMA, type TodoOp } from "./todos.ts";
@@ -11,7 +11,7 @@ import { OPENAI_URL, openaiStrict, openaiUnstrict, type FetchLike } from "./prov
 
 // 뇌 ask 로 OpenAI 에 실제 넘어가는 스키마 전부(정기 브리핑·DM·채팅·제목·팝오버·머지 질문·할 일 설명·슬래시 명령 글).
 // kg·profile·todo-auto·todo-progress·fixer 의 스키마는 Codex·Claude 경로만 탄다
-const BRAIN_SCHEMAS: Record<string, unknown> = { SCHEMA, REQUEST_SCHEMA, TEXT_SCHEMA, CHAT_SCHEMA, HOVER_SCHEMA, TITLE_SCHEMA, ASK_SCHEMA, MERGE_ASK_SCHEMA, DESC_SCHEMA };
+const BRAIN_SCHEMAS: Record<string, unknown> = { SCHEMA, REQUEST_SCHEMA, TEXT_SCHEMA, CHAT_SCHEMA, HOVER_SCHEMA, TITLE_SCHEMA, MERGE_ASK_SCHEMA, DESC_SCHEMA };
 
 // strict 에서 쓸 수 있는 키워드(https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas, 2026-10 확인).
 // 구조 키워드 + 지원 제약(string: pattern·format, number: multipleOf·minimum·maximum·exclusive*, array: minItems·maxItems).
@@ -53,7 +53,6 @@ test("openaiStrict: 뇌에 넘어가는 스키마 전부 strict 규칙에 맞는
   // 원본은 strict 규칙에 안 맞았다(400 원인) — 회귀 확인
   assert.ok(strictErrors(REQUEST_SCHEMA).length > 0);
   assert.ok(strictErrors(CHAT_SCHEMA).length > 0);
-  assert.ok(strictErrors(ASK_SCHEMA).length > 0);
 });
 
 test("openaiStrict: 선택 속성엔 없음 자리, 원래 null(지우기)인 link·note 엔 {_omit}, 지원 제약은 남긴다", () => {
@@ -86,7 +85,7 @@ test("openaiUnstrict: 덧붙인 없음 자리만 빼고, 원래 null 을 받는 
     memory_ops: [{ op: "remember", text: "x" }],
     proposals: [{ repo: "/r", title: "t", plan: "p" }],
   });
-  const rule = openaiUnstrict({ rule: { text: "t", match: { description: "d", keywords: ["a"], sources: null, titleRegex: null }, effect: { priority: 4, backlog: null, skip: null, note: null } } }, ASK_SCHEMA);
+  const rule = openaiUnstrict({ rule: { text: "t", match: { description: "d", keywords: ["a"], sources: null, titleRegex: null }, effect: { priority: 4, backlog: null, skip: null, note: null } } }, { type: "object", additionalProperties: false, required: ["rule"], properties: { rule: RULE_SCHEMA } });
   assert.deepEqual(rule, { rule: { text: "t", match: { description: "d", keywords: ["a"] }, effect: { priority: 4 } } });
   // 원래 required 인 키는 null 이어도 건드리지 않는다(검증은 받는 쪽에서)
   assert.deepEqual(openaiUnstrict({ bubble: null }, SCHEMA), { bubble: null });

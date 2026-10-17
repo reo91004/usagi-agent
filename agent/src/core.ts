@@ -4,17 +4,15 @@ import { randomUUID } from "node:crypto";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Bus } from "./bus.ts";
 import { LEDGER_KEEP_DAYS, TRASH_KEEP_DAYS, type Store, type Proposal, type Todo, type TodoPatch, type AutoEvidence, type TrashedTodo } from "./store.ts";
-import { buildPreview, focusOps, opPatch, opsSummary, todoRev, type NewTodo, type PreviewItem, type TodoOp } from "./todos.ts";
-import { askTodo as realAskTodo, getAsk, lastExchange, markAsk, saveAsk, type AskTodo, type AskOutcome } from "./todo-ask.ts";
-import { TodoRules, evaluateRules, parseRule, ruleChanges, ruleMatches, ruleSummary, withNote, RULE_GUIDE, type RuleProposal, type RuleChange, type RuleSkip, type TodoRule } from "./todo-rules.ts";
-import { ledgerDay } from "./todo-ledger.ts";
+import { opPatch, type NewTodo, type TodoOp } from "./todos.ts";
+import { TodoRules, evaluateRules, parseRule, ruleChanges, ruleSummary, withNote, RULE_GUIDE, type RuleProposal, type RuleChange, type RuleSkip, type TodoRule } from "./todo-rules.ts";
 import { describeTodo as realDescribe, originOf, resolveOrigin, type Describe, type GitShow } from "./todo-source.ts";
 import type { TodoSource } from "./store.ts";
 import { ingestSessions } from "./ingest/sessions.ts";
 import { sessionDirs } from "./ingest/remote-sessions.ts";
 import { attentionSince, formatAttention } from "./ingest/slack.ts";
 import { directivesSince, directiveTodo, markDirective } from "./directives.ts";
-import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, listFacts, forgetFact, factId } from "./profile.ts";
+import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps } from "./profile.ts";
 import { think as realThink, type Thought } from "./brain.ts";
 import { cliMcpServers, readOnlyGate, type CliMcpServer } from "./cli-mcp.ts";
 import type { ProviderDeps } from "./providers.ts";
@@ -55,13 +53,6 @@ import { WAIT_SETUP, modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 const cliBrain = (cfg: Config) => { const p = activeBrain(cfg); return p === "codex" || p === "agy" ? p : undefined; };
 
 export type Posted = { channel: string; ts: string; permalink?: string };
-// 팝오버 마지막 문답(GET /todos/:id/thread/last). ops·preview·rev·rule 은 아직 ✓ 할 수 있을 때만(outcome pending)
-export type LastExchange = {
-  question: string; reply: string; at: string;
-  outcome: AskOutcome | "stale"; // stale: 제안이었지만 그 뒤에 할 일이 바뀜(또는 예전 기록이라 ops 를 모름)
-  ops: TodoOp[]; preview: PreviewItem[]; rev?: string; rule: unknown | null;
-  result?: string; replyN?: number;
-};
 export interface SlackPort {
   post(blocks: any[], text: string, threadTs?: string): Promise<Posted>;
   update(channel: string, ts: string, blocks: any[], text: string): Promise<void>;
@@ -72,7 +63,6 @@ export type Deps = {
   runFix: (cfg: Config, p: Proposal, onStep: (s: string) => void) => Promise<FixResult>;
   mergePr: (url: string, headOid?: string) => string | Promise<string>; // headOid: 승인한 커밋(그 사이 새 커밋이 오면 gh 가 거절)
   converse: Converse;
-  askTodo: AskTodo; // 할 일 팝오버 한 턴
   describe: Describe; // 설명 없는 할 일을 펼칠 때 한 번(가벼운 모델)
   gitShow?: GitShow; // 테스트용. 기본은 git show
   git?: (cfg: Config) => Promise<RepoActivity[]>; // 테스트용. 기본은 git.ts
@@ -135,7 +125,7 @@ export class Agent {
 
   constructor(cfg: Config, store: Store, bus: Bus, slack?: SlackPort, deps: Partial<Deps> = {}) {
     this.cfg = cfg; this.store = store; this.bus = bus; this.slack = slack;
-    this.deps = { think: realThink, runFix: realRunFix, mergePr: realMergePr, converse: realConverse, askTodo: realAskTodo, describe: realDescribe, prStatus: realPrStatus, mergeCommit: realMergeCommit, ...deps };
+    this.deps = { think: realThink, runFix: realRunFix, mergePr: realMergePr, converse: realConverse, describe: realDescribe, prStatus: realPrStatus, mergeCommit: realMergeCommit, ...deps };
     this.attachments = this.deps.attachments ?? new AttachmentStore();
     this.rules = new TodoRules(store);
     // 오늘 할 일은 할 일에 날을 단 것. 바꿀 때 같은 길(규칙·갱신 신호·진행률 반응)로
@@ -258,19 +248,6 @@ export class Agent {
   }
 
   dailyPlan(): DailyPlanService { return this.plan; }
-  remember(text: string, category?: string) {
-    const r = rememberFact(this.store, { text, category, evidence: ["api"] });
-    if (r.ok) this.changed();
-    return r;
-  }
-  forgetMemory(idOrText: string) {
-    const id = idOrText.startsWith("fact:") ? idOrText : factId(idOrText);
-    const ok = forgetFact(this.store, id);
-    if (ok) this.changed();
-    return ok;
-  }
-  memories() { return listFacts(this.store); }
-
   dashboard(): Promise<Dashboard> {
     return buildDashboard(this.cfg, this.store, { git: this.deps.git });
   }
@@ -371,14 +348,6 @@ export class Agent {
     return this.attachments.resolve(threadId, file);
   }
 
-  // 할 일 팝오버 문답을 그 할 일의 스레드에 남긴다(채팅 탭에서 이어 말할 수 있게)
-  // 반환: 스레드 id + 남긴 말 순번(lines 순서, 빈 줄은 undefined)
-  private todoLog(todo: Todo, lines: [ "user" | "assistant" | "system", string][]): { threadId: string; ns: (number | undefined)[] } {
-    const { thread } = todoThreadFor(this.store, todo);
-    const ns = lines.map(([role, text]) => (text ? this.store.addChat(role, text, undefined, undefined, thread.id) : undefined));
-    this.bus.threads({ thread: this.store.thread(thread.id) });
-    return { threadId: thread.id, ns };
-  }
   // 데몬이 켜질 때(main): 이전 데몬이 답하다 꺼져서 사용자 말만 남은 턴을 닫는다 — 시스템 줄 "앱을 다시 켜서 끊겼어요" +
   // 그 턴에 뜬(답에 안 붙은) 카드를 그 줄에 붙인다. 안 그러면 물음은 답 없이 매달리고 카드는 대화 맨 아래를 떠돈다
   closeDanglingTurns(): number {
@@ -957,13 +926,6 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     return true;
   }
 
-  // 미리보기: 규칙이 맞는 기존 열린 할 일에 생길 변화(바꾸지 않음). focus: 팝오버에서 집어 든 할 일
-  rulePreview(p: RuleProposal, focus?: { id: string; ops: TodoOp[] }): { proposal: RuleProposal; summary: string; changes: RuleChange[]; skipped: RuleSkip[] } {
-    const handled = focus && focus.ops.some((o) => (o.id ?? focus.id) === focus.id && (o.op === "delete" || o.op === "done" || (o.op === "edit" && o.priority !== undefined)));
-    const r = ruleChanges(p, this.store.openTodos(), focus ? (handled ? { exclude: [focus.id] } : { force: [focus.id] }) : {});
-    return { proposal: p, summary: ruleSummary(p), ...r };
-  }
-
   // 규칙 저장 + 맞는 기존 열린 할 일에 적용(사용자가 직접 정한 우선순위는 그대로, force는 예외). 학습 신호 todo_rule_added
   addRule(p: RuleProposal, opts: { force?: string[] } = {}): { rule: TodoRule; changed: RuleChange[]; skipped: RuleSkip[] } {
     const rule = this.rules.add(p);
@@ -1042,11 +1004,6 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     if (n) this.changed();
     return n;
   }
-  // 하루치 할 일 일지(GET /todos/ledger)
-  todoLedger(day?: string) {
-    return ledgerDay(this.store, day);
-  }
-
   todoDone(id: string): boolean {
     return !!this.editTodo(id, { status: "done" });
   }
@@ -1178,125 +1135,14 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     return true;
   }
 
-  // ---- 할 일 팝오버(한 번 묻고 제안만, ✓로 적용, ✗는 학습 신호) ----
-  // 묻기: 아무것도 바꾸지 않는다. 없는 할 일이면 undefined
-  async askTodo(id: string, text: string): Promise<{ reply: string; ops: TodoOp[]; preview: PreviewItem[]; rev: string; rule: ReturnType<Agent["rulePreview"]> | null; threadId: string; actions: PendingAction[] } | undefined> {
-    const cur = this.store.getTodo(id);
-    if (!cur) return undefined;
-    this.bus.setMood("thinking");
-    try {
-      // 문답이 남을 그 할 일의 스레드를 먼저 — 이 팝오버로 도는 run 의 원래 화면(세션 창 "원래 화면 열기")
-      const { thread } = todoThreadFor(this.store, cur);
-      const r = await inRunContext({ origin: { type: "todo", todoId: id, threadId: thread.id }, routine: false }, () => this.deps.askTodo(this.cfg, this.store, cur, text));
-      const ops = focusOps(cur, r.todo_ops ?? []);
-      const pr = r.rule ? parseRule(r.rule) : null; // 잘못된 규칙 제안은 조용히 버린다(할 일 변경은 그대로)
-      if (pr && !pr.ok) console.warn("[todo-ask] 규칙 제안 버림:", pr.error);
-      const rule = pr?.ok ? this.rulePreview(pr.value, { id, ops }) : null;
-      const reply = (r.reply ?? "").replace(/\s+\n/g, "\n").trim().slice(0, 400) || (ops.length || rule ? "이렇게 바꿀까요?" : "음, 잘 모르겠어요.");
-      const proposed = [ops.length ? opsSummary(ops) : "", rule ? `규칙 "${rule.proposal.text}"` : ""].filter(Boolean).join(" + ");
-      const { threadId, ns } = this.todoLog(cur, [["user", text], ["assistant", reply], ["system", proposed ? `제안: ${proposed}` : ""]]);
-      // 회의 응답 제안: 팝오버에 확인 카드(실행은 사용자가)
-      const acts = r.actions?.length ? await this.actions.propose(r.actions, { via: "todo", threadId, ...(ns[1] ? { msgN: ns[1] } : {}) }) : { created: [], errors: [] };
-      if (acts.errors.length) this.todoLog(cur, acts.errors.map((e) => ["system", `⚠️ ${e}`] as ["system", string]));
-      const outcome: AskOutcome = ops.length || rule ? "pending" : "answered";
-      saveAsk(this.store.db, { todoId: id, threadId, question: text, reply, ops, rule: pr?.ok ? r.rule : null, rev: todoRev(cur), outcome, ...(ns[1] ? { replyN: ns[1] } : {}), at: new Date().toISOString() });
-      // 이번 물음 동안 뜬 도구 승인 카드: 이 할 일 대화의 답 아래에 붙인다(기록용)
-      const perms = this.actions.list({ type: PERMISSION, limit: 50 }).filter((a) => a.todoId === id && a.msgN === undefined)
-        .map((a) => (ns[1] ? this.actions.attach(a.id, ns[1], threadId) : undefined) ?? a);
-      return { reply: acts.errors.length && !ops.length && !rule && !acts.created.length ? `${reply}\n⚠️ ${acts.errors[0]}` : reply,
-        ops, preview: buildPreview(cur, ops), rev: todoRev(cur), rule, threadId, actions: [...perms, ...acts.created] };
-    } finally {
-      this.bus.setMood("idle");
-    }
-  }
-
-  // 적용: 지금 상태로 다시 검증하고 기존 경로(addTodo·editTodo·deleteTodo)로 — 갱신 신호·user_edited·묘비·학습 신호 그대로.
-  // rev가 지금과 다르면(미리보기 뒤에 바뀜) 적용하지 않고 새 미리보기를 돌려준다
-  // rule: 같이 제안된 지속 규칙(다시 검증). 할 일 변경 뒤에 저장·적용 — 집어 든 할 일은 직접 정한 우선순위여도 적용
-  applyAsk(id: string, ops: TodoOp[], rev?: string, rule?: unknown):
-    | { ok: true; applied: string[]; errors: string[]; todo: Todo | null; added: Todo[]; rule?: TodoRule; ruleChanged?: string[] }
-    | { ok: false; reason: "missing" | "empty" }
-    | { ok: false; reason: "bad_rule"; error: string }
-    | { ok: false; reason: "stale"; ops: TodoOp[]; preview: PreviewItem[]; rev: string; rule: ReturnType<Agent["rulePreview"]> | null } {
-    const cur = this.store.getTodo(id);
-    if (!cur) return { ok: false, reason: "missing" };
-    const pr = rule === undefined || rule === null ? null : parseRule(rule);
-    if (pr && !pr.ok) return { ok: false, reason: "bad_rule", error: pr.error };
-    const clean = focusOps(cur, ops);
-    if (!clean.length && !pr) return { ok: false, reason: "empty" };
-    const now = todoRev(cur);
-    if (rev !== undefined && rev !== now) return { ok: false, reason: "stale", ops: clean, preview: buildPreview(cur, clean), rev: now, rule: pr?.ok ? this.rulePreview(pr.value, { id, ops: clean }) : null };
-    const r = clean.length ? this.applyTodoOps(clean) : { applied: [], errors: [], added: [], trashed: [] };
-    const out: { ok: true; applied: string[]; errors: string[]; todo: Todo | null; added: Todo[]; rule?: TodoRule; ruleChanged?: string[] } =
-      { ok: true, applied: r.applied, errors: r.errors, todo: null, added: r.added };
-    if (pr?.ok) {
-      const x = this.addRule(pr.value, { force: [id] });
-      // 집어 든 할 일을 ops가 이미 바꿨어도(규칙 때문에) 규칙 기록은 남긴다
-      const f = this.store.getTodo(id);
-      if (f?.status === "open" && !x.changed.some((c) => c.id === id) && ruleMatches(x.rule, f)) {
-        this.store.setAppliedRule(id, { id: x.rule.id, text: x.rule.text });
-        this.rules.hit([x.rule.id]);
-        x.rule.hits++;
-      }
-      out.rule = x.rule;
-      out.ruleChanged = x.changed.map((c) => c.id);
-      out.applied.push(`규칙: ${x.rule.text}${x.changed.length ? ` (${x.changed.length}개 적용)` : ""}`);
-    }
-    out.todo = this.store.getTodo(id) ?? null;
-    const line = `✓ 적용: ${out.applied.join(", ") || "(바뀐 것 없음)"}${out.errors.length ? ` · ⚠️ ${out.errors.join(", ")}` : ""}`;
-    this.todoLog(cur, [["system", line]]);
-    markAsk(this.store.db, id, "applied", line);
-    return out;
-  }
-
-  // ✗: 제안을 버렸다는 학습 신호. 없는 할 일이면 false
-  rejectAsk(id: string, text?: string, ops: TodoOp[] = [], rule?: unknown): boolean {
-    const cur = this.store.getTodo(id);
-    if (!cur) return false;
-    const pr = rule ? parseRule(rule) : null;
-    const summary = [opsSummary(focusOps(cur, ops)), pr?.ok ? `규칙 "${pr.value.text}"` : ""].filter(Boolean).join(" + ");
-    recordFeedback(this.store, { kind: "todo_proposal_rejected", ref: id, note: `${text ? `"${text.slice(0, 200)}" → ` : ""}${summary} 제안 거절` });
-    this.todoLog(cur, [["system", `✗ 버림: ${summary || "제안"}`]]);
-    markAsk(this.store.db, id, "rejected", `✗ 버림: ${summary || "제안"}`);
-    return true;
-  }
-
-  // 팝오버를 지난 문답째로 다시 띄울 때(세션 창 "원래 화면 열기"): 마지막 물음·답 + 아직 유효한 제안(지금 rev 와 같을 때만 ops·diff)
-  // 아니면 결과 한 줄만. 없는 할 일 → { missing, threadId?, trashed }
+  // GET /todos/:id/thread/last — 세션 창 "원래 화면 열기"가 할 일 줄/대화로 보낼 때 본다. 없는 할 일 → { missing, threadId?, trashed }
   lastAsk(id: string):
     | { missing: true; threadId?: string; trashed: boolean }
-    | { missing?: false; todo: Pick<Todo, "id" | "title" | "status" | "priority">; threadId: string | null; exchange: LastExchange | null; actions: PendingAction[] } {
+    | { missing?: false; todo: Pick<Todo, "id" | "title" | "status" | "priority">; threadId: string | null } {
     const cur = this.store.getTodo(id);
     const thread = this.store.todoThread(id);
     if (!cur) return { missing: true, ...(thread ? { threadId: thread.id } : {}), trashed: !!this.store.trashedTodo(id) };
-    const rec = getAsk(this.store.db, id);
-    const threadId = rec?.threadId && this.store.thread(rec.threadId) ? rec.threadId : thread?.id ?? null;
-    let ex: LastExchange | null = null;
-    // 그 할 일의 대화에서 팝오버 뒤에 더 말했으면(채팅 탭·세션 창) 그게 마지막 문답
-    const x = threadId ? lastExchange(this.store.threadMessages(threadId, { limit: 40 })) : undefined;
-    const newer = !!x && (!rec || (x.replyN ?? 0) > (rec.replyN ?? 0));
-    if (rec && !newer) {
-      const rev = todoRev(cur);
-      const valid = rec.outcome === "pending" && rec.rev === rev && cur.status === "open";
-      const ops = valid ? focusOps(cur, rec.ops) : [];
-      const pr = valid && rec.rule ? parseRule(rec.rule) : null;
-      const rule = pr?.ok ? this.rulePreview(pr.value, { id, ops }) : null;
-      const live = valid && (ops.length > 0 || !!rule);
-      const outcome: LastExchange["outcome"] = rec.outcome === "pending" && !live ? "stale" : rec.outcome;
-      ex = {
-        question: rec.question, reply: rec.reply, at: rec.at, outcome,
-        ...(live ? { ops, preview: buildPreview(cur, ops), rev, rule } : { ops: [], preview: [], rule: null }),
-        ...(outcome === "stale" ? { result: "그 뒤에 할 일이 바뀌어서 그때 제안은 지났어요 — 다시 물어보세요." } : rec.result ? { result: rec.result } : {}),
-        ...(rec.replyN ? { replyN: rec.replyN } : {}),
-      };
-    } else if (x) { // 기록 없음(예전 문답) 또는 그 뒤 대화가 더 새로움 — ops 는 모른다(채팅 경로는 바로 적용)
-      const outcome: LastExchange["outcome"] = x.result?.startsWith("✓") ? "applied" : x.result?.startsWith("✗") ? "rejected" : x.result?.startsWith("제안:") ? "stale" : "answered";
-      ex = { question: x.question, reply: x.reply, at: x.at, outcome, ops: [], preview: [], rule: null,
-        ...(outcome === "stale" ? { result: "예전 제안이라 다시 적용할 수 없어요 — 다시 물어보세요." } : x.result ? { result: x.result } : {}),
-        ...(x.replyN ? { replyN: x.replyN } : {}) };
-    }
-    const actions = threadId && ex?.replyN ? this.actions.list({ threadId, limit: 50 }).filter((a) => a.msgN === ex!.replyN) : [];
-    return { todo: { id: cur.id, title: cur.title, status: cur.status, priority: cur.priority }, threadId, exchange: ex, actions };
+    return { todo: { id: cur.id, title: cur.title, status: cur.status, priority: cur.priority }, threadId: thread?.id ?? null };
   }
 
   // ---- 확인 후 실행하는 쓰기 동작(actions.ts): 패널·팝오버·말풍선·Slack 버튼 공용 ----

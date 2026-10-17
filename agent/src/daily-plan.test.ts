@@ -11,7 +11,6 @@ import { Reactions } from "./reactions.ts";
 import { loadConfig } from "./config.ts";
 
 const WED = () => new Date("2026-10-07T01:00:00Z"); // KST 수요일 10:00
-const at = (iso: string) => () => new Date(iso);
 
 test("오늘 할 일 = 할 일에 날을 단 것: 추가·고르기·토글·우선순위·빼기", () => {
   const store = new Store(":memory:");
@@ -59,15 +58,6 @@ test("예전 따로 있던 표의 오늘 줄은 할 일로 옮겨진다(지난 �
   assert.equal((store.db.prepare("SELECT COUNT(*) AS n FROM daily_plan").get() as any).n, 1);
   new DailyPlanService(store, { now: WED }); // 두 번 돌아도 안 늘어난다
   assert.equal(p.state().items.length, 2);
-});
-
-test("아침 질문은 영업일 한 번", () => {
-  const store = new Store(":memory:");
-  const p = new DailyPlanService(store, { now: WED });
-  assert.ok(p.askMorning());
-  assert.equal(p.askMorning(), null, "같은 날 두 번 안 묻는다");
-  const sat = new DailyPlanService(store, { now: at("2026-10-10T01:00:00Z") });
-  assert.equal(sat.askMorning(), null, "주말엔 안 묻는다");
 });
 
 test("알림 설정: 기본은 아침 한 번, 잘못된 값 거절", () => {

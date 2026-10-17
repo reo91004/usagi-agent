@@ -13,7 +13,6 @@ import { FollowUps, followUpChatText, type FollowUpPorts } from "./followup.ts";
 import { Store } from "./store.ts";
 import { Bus } from "./bus.ts";
 import type { Config } from "./config.ts";
-import type { Proposal } from "./store.ts";
 
 const git = (cwd: string, ...a: string[]) => execFileSync("git", a, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const until = async (cond: () => boolean, ms = 5000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 5)); } };

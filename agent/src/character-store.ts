@@ -307,10 +307,6 @@ export class CharacterStore {
   }
   has = (id: string) => isBuiltinId(id) || this.users.has(id);
   user = (id: string) => this.users.get(id);
-  mediaPath(id: string, file: string): string | undefined {
-    const c = this.users.get(id);
-    return c && STORED_FILE.test(file) && Object.values(c.media).includes(file) ? join(this.dir, id, file) : undefined;
-  }
 
   // GET /characters
   view() {

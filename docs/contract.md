@@ -158,7 +158,6 @@ type Bubble = {
 | `GET /models` | 고를 수 있는 모델 `{ choices: [{ id, label, role }], defaults: { fix, chat } }`. 요청의 `model`은 이 안의 id만 받는다(아니면 400) |
 | `GET /commands` | 채팅 슬래시 명령 `{ commands: [{ name, description, argumentHint }] }` |
 | `GET /repos` | 「새 작업」 레포 목록(`repoRoots` 아래) |
-| `GET /profile/facts` · `POST /profile/facts { text, category? }` · `POST /profile/facts/forget { id \| text }` | 나에 대해 배운 사실 |
 | `GET /guidelines` · `POST /guidelines` · `GET\|PUT\|DELETE /guidelines/:id` | 행동 지침(말투·답 모양·일하는 법) |
 | `GET /permissions` · `POST /permissions/:id/delete` | [항상 허용]으로 저장한 도구 권한 규칙 |
 
@@ -191,15 +190,7 @@ type Bubble = {
 | `POST /todos/:id/revert` | 자동 완료 되돌리기. 409 = 자동 완료가 아님 |
 | `POST /todos/reorder { id, priority, beforeId? }` | 그 우선순위 묶음의 `beforeId` 앞으로 옮김 |
 | `GET /todos/:id/detail` | `{ description, source: { kind, ref, excerpt?, author?, at?, channel?, permalink?, repo?, sha?, title? } \| null, link }` |
-| `GET /todos/ledger?day=YYYY-MM-DD` | 하루치 할 일 일지(추가·완료·휴지통) |
-| `GET /todos/:id/thread/last` | 그 할 일 팝오버의 마지막 문답 |
-
-### 할 일 팝오버(묻기 → 미리보기 → ✓/✗)
-
-- `POST /todos/:id/ask { text }` → 200 `{ reply, ops: TodoOp[], preview, rev, rule: RulePreview|null }`. **아무것도 바꾸지 않는다.**
-- `POST /todos/:id/apply { ops, rev?, rule? }` → 200 `{ ok, applied, errors, todo, added, rule?, ruleChanged? }`.
-  - `rev`가 지금과 다르면 409 `{ error, ops, preview, rev, rule? }`이고, 아무것도 바뀌지 않는다.
-- `POST /todos/:id/reject { text?, ops?, rule? }` → 200. 학습 신호만 남긴다.
+| `GET /todos/:id/thread/last` | `{ todo: { id, title, status, priority }, threadId \| null }`. 없는/휴지통 할 일은 404 `{ trashed, threadId? }` |
 
 ### 할 일 규칙(`todo-rules.ts`)
 

@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { parseNew, parseOps, parsePatch, type NewTodo, type TodoOp } from "./todos.ts";
+import { parseNew, parsePatch, type NewTodo } from "./todos.ts";
 import type { TodoPatch } from "./store.ts";
 import { parseRulePatch } from "./todo-rules.ts";
 import { ActivityTracker } from "./activity.ts";
@@ -57,15 +57,9 @@ export type BusHandlers = {
   todoPurge?(id: string): boolean; // 영구 삭제(휴지통에 있는 것만). false → 404
   todoTrashEmpty?(): number; // 휴지통 비우기 → 지운 개수
   todoRevert?(id: string): unknown; // 자동 완료 되돌리기: "missing" → 404, "not_auto" → 409, 그 외 바뀐 할 일 → 200
-  // 할 일 팝오버: 묻기(바꾸지 않음) → 적용/거절. 없는 할 일이면 undefined/false → 404
-  todoAsk?(id: string, text: string): Promise<unknown>;
-  // rule: 같이 제안된 지속 규칙(데몬이 다시 검증). { ok:false, reason:"missing"|"empty"|"stale"|"bad_rule", … } 또는 적용 결과
-  todoApply?(id: string, ops: TodoOp[], rev?: string, rule?: unknown): unknown;
-  todoReject?(id: string, text?: string, ops?: TodoOp[], rule?: unknown): boolean;
   // 할 일 규칙(todo-rules.ts): 목록 · 켜기/끄기·글 고치기 · 지우기. 없는 id면 undefined/false → 404
   todoRules?(): unknown;
   doingTodos?(): { id: string; title: string }[]; // 캐릭터 「진행 중」 말풍선용(사용자가 ▶ 켠 열린 할 일)
-  todoLedger?(day?: string): unknown; // 하루치 할 일 일지(todo-ledger.ts). day = KST YYYY-MM-DD, 없으면 오늘
   todoRuleEdit?(id: string, patch: { enabled?: boolean; text?: string }): unknown;
   todoRuleDelete?(id: string): boolean;
   todoDetail?(id: string): Promise<unknown>; // 없는 id면 undefined → 404
@@ -94,9 +88,6 @@ export type BusHandlers = {
   chatEdit?(threadId: string, n: number, text: string, opts: { stopAgents?: boolean; clientId?: string; model?: string }): Promise<{ error: string; [k: string]: unknown } | Record<string, unknown>>;
   chatEditQueued?(chatId: string, text: string): { error: string; [k: string]: unknown } | Record<string, unknown>;
   todoExists?(id: string): boolean; // POST /chat 의 todoId 확인용(없는 id면 404)
-  profileFacts?(): unknown;
-  profileRemember?(text: string, category?: string): unknown;
-  profileForget?(idOrText: string): boolean;
   // 대화 스레드. 없으면 /chat/threads* 503. 없는 id면 undefined/false → 404
   chatThreads?: ThreadsApi;
   // 머지 승인(오버레이 ✓/✗/추가질문). 결과 { ok, status?, … } — status 로 HTTP 코드
@@ -431,10 +422,6 @@ export class Bus {
         return r ? json(res, 200, r) : json(res, 404, { error: "no such run" });
       }
     }
-    if (req.method === "GET" && url.pathname === "/profile/facts") {
-      if (!h.profileFacts) return json(res, 503, { error: "profile unavailable" });
-      return json(res, 200, { facts: await h.profileFacts() });
-    }
     if (req.method === "GET" && (url.pathname === "/actions" || url.pathname.startsWith("/actions/"))) {
       if (!h.actions) return json(res, 503, { error: "actions unavailable" });
       if (url.pathname === "/actions") {
@@ -487,12 +474,6 @@ export class Bus {
     if (req.method === "GET" && url.pathname === "/todos/doing") {
       if (!h.doingTodos) return json(res, 503, { error: "doing todos unavailable" });
       return json(res, 200, { todos: h.doingTodos() });
-    }
-    if (req.method === "GET" && url.pathname === "/todos/ledger") {
-      if (!h.todoLedger) return json(res, 503, { error: "todo ledger unavailable" });
-      const day = url.searchParams.get("day") ?? undefined;
-      if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json(res, 400, { error: "day must be YYYY-MM-DD" });
-      return json(res, 200, await h.todoLedger(day));
     }
     const last = req.method === "GET" ? url.pathname.match(/^\/todos\/([^/]+)\/thread\/last$/) : null;
     if (last) {
@@ -837,7 +818,7 @@ export class Bus {
         if (!h.todoTrashEmpty) return json(res, 503, { error: "todo trash unavailable" });
         return json(res, 200, { ok: true, purged: await h.todoTrashEmpty() });
       }
-      const todo = url.pathname.match(/^\/todos\/([^/]+)(?:\/(done|delete|restore|purge|revert|ask|apply|reject))?$/);
+      const todo = url.pathname.match(/^\/todos\/([^/]+)(?:\/(done|delete|restore|purge|revert))?$/);
       if (todo) {
         let id: string;
         try { id = decodeURIComponent(todo[1]); } catch { throw new BadRequest("bad todo id"); }
@@ -849,39 +830,6 @@ export class Bus {
           if (r === "missing" || !r) return missing();
           if (r === "not_auto") return json(res, 409, { error: "not auto-completed" });
           return json(res, 200, { ok: true, todo: r });
-        }
-        if (todo[2] === "ask") {
-          if (!h.todoAsk) return json(res, 503, { error: "todo ask unavailable" });
-          const body = await readJson(req);
-          const text = typeof body.text === "string" ? body.text.trim() : "";
-          if (!text) throw new BadRequest("text required");
-          const r = await h.todoAsk(id, text);
-          return r ? json(res, 200, r) : missing();
-        }
-        if (todo[2] === "apply") {
-          if (!h.todoApply) return json(res, 503, { error: "todo ask unavailable" });
-          const body = await readJson(req);
-          const rule = body.rule ?? undefined; // 지속 규칙(있으면 ops는 비어도 됨)
-          if (rule !== undefined && (typeof rule !== "object" || Array.isArray(rule))) throw new BadRequest("rule must be an object");
-          const ops = parseOps(body.ops ?? (rule ? [] : undefined), { allowEmpty: rule !== undefined });
-          if (!ops.ok) throw new BadRequest(ops.error);
-          if (body.rev !== undefined && typeof body.rev !== "string") throw new BadRequest("rev must be string");
-          const r = (await (rule === undefined ? h.todoApply(id, ops.value, body.rev) : h.todoApply(id, ops.value, body.rev, rule))) as { ok: boolean; reason?: string; error?: string } | undefined;
-          if (!r || r.reason === "missing") return missing();
-          if (r.reason === "empty") throw new BadRequest("no applicable ops");
-          if (r.reason === "bad_rule") throw new BadRequest(`bad rule: ${r.error ?? "invalid"}`);
-          if (r.reason === "stale") return json(res, 409, { error: "todo changed since preview", ...r });
-          return json(res, 200, r);
-        }
-        if (todo[2] === "reject") {
-          if (!h.todoReject) return json(res, 503, { error: "todo ask unavailable" });
-          const body = await readJson(req, true);
-          if (body.text !== undefined && typeof body.text !== "string") throw new BadRequest("text must be string");
-          const ops = parseOps(body.ops ?? [], { allowEmpty: true });
-          if (!ops.ok) throw new BadRequest(ops.error);
-          if (body.rule !== undefined && body.rule !== null && (typeof body.rule !== "object" || Array.isArray(body.rule))) throw new BadRequest("rule must be an object");
-          const ok = body.rule ? h.todoReject(id, body.text, ops.value, body.rule) : h.todoReject(id, body.text, ops.value);
-          return ok ? json(res, 200, { ok: true }) : missing();
         }
         if (todo[2] === "delete") {
           if (!h.todoDelete) return json(res, 503, { error: "todo edit unavailable" });
@@ -1015,25 +963,6 @@ export class Bus {
         if (!Object.keys(patch).length) throw new BadRequest("nothing to change");
         const r = await h.chatThreads.edit(th[1], patch);
         return r ? json(res, 200, { ok: true, thread: r }) : json(res, 404, { error: "no such thread" });
-      }
-      if (url.pathname === "/profile/facts") {
-        if (!h.profileRemember) return json(res, 503, { error: "profile unavailable" });
-        const body = await readJson(req);
-        const text = typeof body.text === "string" ? body.text.trim() : "";
-        if (!text) throw new BadRequest("text required");
-        const category = typeof body.category === "string" ? body.category : undefined;
-        const r = await h.profileRemember(text, category) as { ok?: boolean; error?: string; fact?: unknown };
-        if (r && r.ok === false) return json(res, 400, { ok: false, error: r.error ?? "invalid fact" });
-        return json(res, 200, r && typeof r === "object" ? r : { ok: true });
-      }
-      if (url.pathname === "/profile/facts/forget") {
-        if (!h.profileForget) return json(res, 503, { error: "profile unavailable" });
-        const body = await readJson(req);
-        const id = typeof body.id === "string" ? body.id.trim() : "";
-        const text = typeof body.text === "string" ? body.text.trim() : "";
-        const key = id || text;
-        if (!key) throw new BadRequest("id or text required");
-        return h.profileForget(key) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such fact" });
       }
     }
     json(res, 404, { error: "not found" });

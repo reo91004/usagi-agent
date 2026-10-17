@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HOME_DIR, loadConfig } from "./config.ts";
 import { REQUEST_SCHEMA, SCHEMA, ask, think } from "./brain.ts";
-import { TODO_OPS_SCHEMA, parseOps } from "./todos.ts";
+import { TODO_OPS_SCHEMA } from "./todos.ts";
 import { Store } from "./store.ts";
 import { converse } from "./chat.ts";
 import { inlineContext } from "./ctx-tools.ts";
@@ -515,7 +515,6 @@ test("openai strict: 선택 속성도 전부 required 로 보내고, 받은 답�
   const got = [{ op: "edit", id: "user:1", title: null, priority: 1, link: { _omit: true }, note: null, description: null, source_ref: null }];
   const ops = openaiUnstrict(got, TODO_OPS_SCHEMA);
   assert.deepEqual(ops, [{ op: "edit", id: "user:1", priority: 1, note: null }]);
-  assert.equal(parseOps(ops).ok, true);
   // 실제 요청·응답 경로
   let sent: any;
   const fetch: FetchLike = async (_u, init) => { sent = JSON.parse(init?.body ?? "{}"); return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ bubble: "b", reply_md: "r", todos: [], done_todo_ids: [], proposals: [], todo_ops: got, plan_ops: [], memory_ops: [], rule: null }) } }] }), { status: 200 }); };

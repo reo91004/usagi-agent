@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { Agent, type SlackPort } from "./core.ts";
 import { Bus } from "./bus.ts";
 import { Store, kstDay } from "./store.ts";
@@ -12,7 +11,7 @@ import { loadConfig } from "./config.ts";
 import { buildContext } from "./brain.ts";
 import { briefingDue, briefingTask } from "./briefing-sources.ts";
 import { ctxHandlers } from "./ctx-tools.ts";
-import { ledgerContext, ledgerDay, removedRecently } from "./todo-ledger.ts";
+import { ledgerContext, removedRecently } from "./todo-ledger.ts";
 import { linkRef, normRef, sameItem, similarTitle } from "./todo-match.ts";
 
 test("todo-match: 참조 키 정규화·링크 키·제목 비슷함(숫자가 다르면 다른 일)", () => {
@@ -111,8 +110,6 @@ test("할 일 일지: 경로마다 누가 무엇을 했는지 일별로, 예전 
   ]);
   const today = kstDay(new Date());
   assert.equal(s.ledger({ day: today }).length, rows.length);
-  assert.deepEqual(s.ledgerDays(), [{ day: today, count: rows.length }]);
-  assert.equal(ledgerDay(s).day, today);
 
   // 예전 DB: 지금 있는 할 일·휴지통·묘비로 한 번 채운다
   const path = join(mkdtempSync(join(tmpdir(), "cy-ledger-")), "cy.db");
@@ -191,25 +188,5 @@ test("Agent 브리핑: 지운 일을 새 key 로 올려도 안 생기고, 사용
   const blocked = store.ledger({ actions: ["blocked"] })[0];
   assert.deepEqual([blocked.todoId, blocked.by], ["session:ms365-jira-mcp-reconnect", "briefing"]);
   assert.match(blocked.detail!, /지운 일 other:ms365-jira-reconnect/);
-  assert.equal(agent.todoLedger().entries.some((e) => e.action === "merged" && e.todoId === "mail:report"), true);
-});
-
-test("bus: GET /todos/ledger?day= — 형식 틀리면 400, 핸들러 없으면 503", async () => {
-  const bus = new Bus();
-  const days: (string | undefined)[] = [];
-  await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c",
-    todoLedger: (day) => { days.push(day); return { day: day ?? "2026-10-13", entries: [], days: [] }; },
-  });
-  const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
-  try {
-    assert.deepEqual(await (await fetch(`${base}/todos/ledger`)).json(), { day: "2026-10-13", entries: [], days: [] });
-    assert.equal((await fetch(`${base}/todos/ledger?day=2026-10-12`)).status, 200);
-    assert.equal((await fetch(`${base}/todos/ledger?day=${encodeURIComponent("어제")}`)).status, 400);
-    assert.deepEqual(days, [undefined, "2026-10-12"]);
-  } finally { bus.close(); }
-  const bare = new Bus();
-  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
-  try { assert.equal((await fetch(`http://127.0.0.1:${(bare.server!.address() as any).port}/todos/ledger`)).status, 503); } finally { bare.close(); }
+  assert.equal(store.ledger({ actions: ["merged"] }).some((e) => e.action === "merged" && e.todoId === "mail:report"), true);
 });

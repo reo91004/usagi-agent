@@ -1,7 +1,7 @@
 // 코드 보기 도우미: 관련 레포 찾기 · 경로 판정. 읽기 전용 경로(isCodeReadCall)는 대화형이 아닌 호출에서만 쓰인다.
 // 대화형 채팅은 permissions.ts(읽기는 바로, 편집·셸은 승인 카드)를 따른다.
 import { execFileSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { findRepos } from "./git.ts";

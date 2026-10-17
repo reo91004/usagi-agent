@@ -16,7 +16,6 @@ import { buildDashboard } from "./dashboard.ts";
 import { parsePatch, parseNew, opPatch } from "./todos.ts";
 import { todoCanvasMarkdown } from "./slack/canvas.ts";
 import { Reactions } from "./reactions.ts";
-import { askPrompt } from "./todo-ask.ts";
 
 const SEMINAR: RuleProposal = { text: "앞으로 모든 세미나는 우선순위 매우 낮음", match: { keywords: ["세미나"], description: "제목에 세미나" }, effect: { backlog: true, priority: 4 } };
 
@@ -128,71 +127,13 @@ function setup(think?: any, extra: Record<string, unknown> = {}) {
 }
 const feedback = (store: Store) => store.db.prepare("SELECT kind, ref, note FROM profile_feedback ORDER BY n").all() as any[];
 
-test("팝오버: 지속 지시 → 규칙 미리보기(집어 든 것 + 맞는 다른 할 일 전부), ✓면 저장·적용, ✗면 학습 신호", async () => {
-  const s = setup(undefined, {
-    askTodo: async (_c: unknown, _s: unknown, todo: any) => ({ reply: "앞으로 세미나는 백로그로 보낼까?", todo_ops: [{ op: "edit", id: todo.id, priority: 4 }], rule: SEMINAR }),
-  });
-  s.store.upsertTodo({ id: "slack:1", title: "제134회 세미나(10/15 목 10:00) 참석 여부 정하기", source: "slack", priority: 2 });
-  s.store.upsertTodo({ id: "mail:2", title: "제135회 세미나 사전 신청", source: "mail", priority: 3 });
-  s.store.upsertTodo({ id: "mail:3", title: "견적 회신", source: "mail", priority: 2 });
-  const r = (await s.agent.askTodo("slack:1", "야 앞으로 모든 세미나는 우선순위 매우 낮음"))!;
-  assert.deepEqual(r.ops, [{ op: "edit", id: "slack:1", priority: 4 }]);
-  assert.equal(r.rule!.proposal.text, SEMINAR.text);
-  // 집어 든 것은 ops가 다루니 규칙 변화엔 다른 세미나만
-  assert.deepEqual(r.rule!.changes.map((c) => [c.id, c.before.priority, c.after.priority]), [["mail:2", 3, 4]]);
-  assert.equal(s.agent.todoRules().length, 0); // 묻기는 아무것도 안 바꾼다
-  assert.equal(s.store.getTodo("mail:2")!.priority, 3);
-
-  // ✗: 규칙까지 거절했다는 학습 신호
-  assert.equal(s.agent.rejectAsk("slack:1", "야 앞으로", r.ops, SEMINAR), true);
-  assert.match(feedback(s.store).at(-1).note, /규칙 "앞으로 모든 세미나는/);
-
-  // ✓: 할 일 변경 + 규칙 저장 + 맞는 기존 할 일 적용(직접 수정 표시 없이, 규칙 기록)
-  const ok = s.agent.applyAsk("slack:1", r.ops, r.rev, SEMINAR) as any;
-  assert.equal(ok.ok, true);
-  assert.deepEqual(ok.ruleChanged, ["mail:2"]);
-  assert.equal(s.store.getTodo("slack:1")!.priority, 4);
-  assert.equal(s.store.getTodo("slack:1")!.appliedRule!.text, SEMINAR.text); // ops가 바꿨어도 규칙 기록
-  const m2 = s.store.getTodo("mail:2")!;
-  assert.equal(m2.priority, 4);
-  assert.deepEqual(m2.userEdited, []);
-  assert.equal(m2.appliedRule!.text, SEMINAR.text);
-  assert.equal(s.store.getTodo("mail:3")!.priority, 2);
-  const rule = s.agent.todoRules()[0];
-  assert.equal(rule.hits, 2);
-  assert.equal(feedback(s.store).at(-1).kind, "todo_rule_added");
-  // 잘못된 규칙은 400용 이유, 규칙만 있어도(ops 없음) 적용된다
-  assert.deepEqual(s.agent.applyAsk("mail:3", [], undefined, { text: "x" }), { ok: false, reason: "bad_rule", error: "rule match required" });
-  assert.equal((s.agent.applyAsk("mail:3", [], undefined, { ...SEMINAR, match: { keywords: ["견적"], description: "" } }) as any).ok, true);
-  assert.equal(s.store.getTodo("mail:3")!.priority, 4);
-});
-
-test("팝오버: ops가 집어 든 할 일 우선순위를 안 건드리면 규칙이 그것도 바꾼다(직접 정한 우선순위여도), stale은 규칙 미리보기 다시", async () => {
-  const s = setup(undefined, { askTodo: async () => ({ reply: "규칙만 만들까?", todo_ops: [], rule: SEMINAR }) });
-  s.store.upsertTodo({ id: "a", title: "세미나 참석", source: "slack", priority: 1 });
-  s.store.upsertTodo({ id: "b", title: "세미나 발표", source: "slack", priority: 2 });
-  s.store.editTodo("a", { priority: 1 });
-  s.store.editTodo("b", { priority: 2 });
-  const r = (await s.agent.askTodo("a", "앞으로 세미나는 백로그"))!;
-  assert.deepEqual(r.ops, []);
-  assert.deepEqual(r.rule!.changes.map((c) => c.id), ["a"]);
-  assert.deepEqual(r.rule!.skipped.map((c) => c.id), ["b"]); // 다른 할 일의 직접 정한 우선순위는 그대로
-  s.store.editTodo("a", { note: "바뀜" });
-  const stale = s.agent.applyAsk("a", [], r.rev, SEMINAR) as any;
-  assert.equal(stale.reason, "stale");
-  assert.deepEqual(stale.rule.changes.map((c: any) => c.id), ["a"]);
-  assert.equal((s.agent.applyAsk("a", [], stale.rev, SEMINAR) as any).ok, true);
-  assert.equal(s.store.getTodo("a")!.priority, 4);
-  assert.equal(s.store.getTodo("b")!.priority, 2);
-});
-
-test("규칙은 모든 생성 경로에 결정적으로: 브리핑(skip 포함)·채팅/DM add·직접 추가·팝오버 add, 사용자 편집이 이긴다", async () => {
+test("규칙은 모든 생성 경로에 결정적으로: 브리핑(skip 포함)·채팅/DM add·직접 추가, 사용자 편집이 이긴다", async () => {
   let thought: any = { bubble: "b", reply_md: "r", done_todo_ids: [], proposals: [], todos: [
     { key: "slack:k1", title: "제136회 세미나 참석", source: "slack", priority: 2 },
     { key: "mail:x", title: "견적 회신", source: "mail", priority: 1 },
     { key: "mail:bot", title: "Dependabot 알림", source: "mail", priority: 3 },
   ] };
-  const s = setup(async () => thought, { askTodo: async () => ({ reply: "", todo_ops: [{ op: "add", title: "세미나 후기 정리", priority: 2 }], rule: null }) });
+  const s = setup(async () => thought);
   s.agent.addRule(SEMINAR);
   s.agent.addRule({ text: "봇 알림은 올리지 마", match: { keywords: ["dependabot"], description: "" }, effect: { skip: true } });
   // 1) 정기 브리핑(absorb)
@@ -226,14 +167,9 @@ test("규칙은 모든 생성 경로에 결정적으로: 브리핑(skip 포함)�
   await s.agent.handleRequest("앞으로 워크숍은 다 P3, 그리고 팀 워크숍 신청 추가해줘");
   assert.equal(s.store.openTodos().find((t) => t.title === "팀 워크숍 신청")!.priority, 3);
   assert.match(s.posts.at(-1).blocks[0].text, /📏 규칙 저장: 워크숍은 다 P3/);
-  // 5) 팝오버 add
-  s.store.upsertTodo({ id: "focus", title: "아무거나", source: "mail", priority: 2 });
-  const ask = (await s.agent.askTodo("focus", "세미나 후기 정리도 추가"))!;
-  const ap = s.agent.applyAsk("focus", ask.ops, ask.rev) as any;
-  assert.equal(ap.added[0].priority, 4);
   // 적중 수가 쌓인다
   const sem = s.agent.todoRules().find((x) => x.text === SEMINAR.text)!;
-  assert.ok(sem.hits >= 4, String(sem.hits));
+  assert.ok(sem.hits >= 3, String(sem.hits));
   // 끄면 더 이상 적용 안 함, 지우면 학습 신호
   s.agent.editRule(sem.id, { enabled: false });
   assert.equal(s.agent.addTodo({ title: "세미나 138회", priority: 2 }).priority, 2);
@@ -257,7 +193,7 @@ test("채팅: 모델이 낸 규칙은 바로 저장·적용하고 답에 한 줄
   assert.equal(s.store.getTodo("a")!.priority, 4);
 });
 
-test("프롬프트: 켜진 규칙을 브리핑·팝오버 맥락에 짧게, 백로그(P4)는 따로", () => {
+test("프롬프트: 켜진 규칙을 브리핑 맥락에 짧게, 백로그(P4)는 따로", () => {
   const s = setup();
   s.agent.addRule(SEMINAR);
   s.store.upsertTodo({ id: "a", title: "세미나 참석", source: "slack", priority: 4 });
@@ -268,7 +204,6 @@ test("프롬프트: 켜진 규칙을 브리핑·팝오버 맥락에 짧게, 백�
   assert.match(open, /\[P1\] 견적 회신/);
   assert.doesNotMatch(open, /세미나 참석/);
   assert.match(ctx.slice(ctx.indexOf("## 언젠가·백로그")), /id=a \[P4\] 세미나 참석/);
-  assert.match(askPrompt(s.store, s.store.getTodo("b")!, "x"), /## 할 일 규칙/);
 });
 
 test("P4(백로그): 검증·저장·순서·캔버스·대시보드·반응 집계", async () => {
@@ -300,7 +235,7 @@ test("P4(백로그): 검증·저장·순서·캔버스·대시보드·반응 집
   assert.equal(r.todoProgress([], [t("p1", 1, "done"), t("d1", 4, "done")]), null); // 1개뿐(3개 미만) → '다 했다' 아님
 });
 
-test("버스: GET /todo-rules, POST /todo-rules/:id(검증·404), /delete, apply에 rule(ops 비어도), reject에 rule, reorder P4", async () => {
+test("버스: GET /todo-rules, POST /todo-rules/:id(검증·404), /delete, reorder P4", async () => {
   const calls: any[] = [];
   const bus = new Bus();
   const h: BusHandlers = {
@@ -309,8 +244,6 @@ test("버스: GET /todo-rules, POST /todo-rules/:id(검증·404), /delete, apply
     todoRules: () => [{ id: "rule:1", text: "t" }],
     todoRuleEdit: (id, p) => { calls.push(["edit", id, p]); return id === "rule:1" ? { id, ...p } : undefined; },
     todoRuleDelete: (id) => { calls.push(["del", id]); return id === "rule:1"; },
-    todoApply: (id, ops, rev, rule) => { calls.push(["apply", id, ops, rev, rule]); return (rule as any)?.text === "bad" ? { ok: false, reason: "bad_rule", error: "x" } : { ok: true }; },
-    todoReject: (id, text, ops, rule) => { calls.push(["reject", id, text, ops, rule]); return true; },
     todoReorder: (id, p) => { calls.push(["reorder", id, p]); return { id }; },
   };
   await bus.listen(0, h);
@@ -325,15 +258,8 @@ test("버스: GET /todo-rules, POST /todo-rules/:id(검증·404), /delete, apply
     assert.equal((await post("/todo-rules/rule%3A1/delete", {})).status, 200);
     assert.equal((await post("/todo-rules/nope/delete", {})).status, 404);
     assert.equal((await fetch(`http://127.0.0.1:${port}/todo-rules/rule%3A1`, { method: "POST", body: "{}" })).status, 403); // CSRF
-    assert.equal((await post("/todos/a/apply", { rule: SEMINAR })).status, 200); // ops 없이 규칙만
-    assert.equal((await post("/todos/a/apply", { ops: [] })).status, 400); // 둘 다 없으면 400
-    assert.equal((await post("/todos/a/apply", { ops: [], rule: "x" })).status, 400);
-    assert.equal((await post("/todos/a/apply", { ops: [], rule: { text: "bad" } })).status, 400);
-    assert.equal((await post("/todos/a/reject", { ops: [], rule: SEMINAR })).status, 200);
     assert.equal((await post("/todos/reorder", { id: "a", priority: 4 })).status, 200);
     assert.deepEqual(calls.filter((c) => c[0] === "edit"), [["edit", "rule:1", { enabled: false }], ["edit", "nope", { text: "x" }]]);
-    assert.deepEqual(calls.find((c) => c[0] === "apply"), ["apply", "a", [], undefined, SEMINAR]);
-    assert.deepEqual(calls.find((c) => c[0] === "reject")?.[4], SEMINAR);
   } finally {
     bus.close();
   }

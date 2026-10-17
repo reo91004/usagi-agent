@@ -205,16 +205,6 @@ export class DailyPlanService {
     if (patch.slots) db.prepare("UPDATE daily_plan_meta SET slots = ? WHERE date = ?").run(JSON.stringify(patch.slots), date);
   }
 
-  // 영업일, 그날 앱을 처음 열면 작성 요청. 이미 물었으면 조용히(예전 동작, remind 의 아침 몫)
-  askMorning(): DailyPlan | null {
-    const date = this.today();
-    if (!isBusinessDay(date, this.holidays)) return null;
-    const s = this.state(date);
-    if (s.asked) return null;
-    this.mark(date, { asked: true, lastAt: this.now().toISOString() });
-    return this.state(date);
-  }
-
   // 알릴 때가 됐나(설정대로). opened = 오버레이가 막 붙음(앱 첫 실행). 알릴 게 있으면 기록하고 돌려준다
   //  - 아침: 영업일 처음 열 때, 또는 9시가 지나 처음 확인할 때 한 번(kind ask, 패널도 연다)
   //  - everyHours: 마지막 알림에서 그만큼 지났고 8–21시면
