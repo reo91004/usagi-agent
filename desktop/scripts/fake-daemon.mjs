@@ -113,6 +113,24 @@ const projects = D.projects ?? [
   },
 ];
 
+// 연구 탭 샘플: 연구 2(CHES 거절 뒤 다른 학회 이력 포함) · 프로젝트 1 · 후보 2. PUT /research/projects 로 바뀐다
+const ymd = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+const sampleRP = () => [
+  { key: `${HOME}/cy-agent`, kind: 'research', name: 'poly2msgleaks', folders: [{ path: `${HOME}/cy-agent`, onMac: true }], url: 'https://www.overleaf.com/project/abc',
+    subs: [{ venue: 'CHES 2026', stage: 'rejected', deadline: ymd(-120), at: ago(60 * 24 * 100) }, { venue: 'CHES 2027', stage: 'submitted', deadline: ymd(38), at: ago(60 * 24 * 5) }],
+    lastActive: ago(120), running: [{ name: 'train.py · exp7', host: 'pacl-208', kind: 'tmux', cwd: '/home/user/reo/experiments', cmd: 'python train.py --config exp7.yaml', start: Date.now() / 1000 - 7200, running: true }],
+    recent: { done: 6, failed: 1, lost: 0, items: [{ name: 'eval.py · exp6', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 90000, seconds: 5400, code: 0, running: false }, { name: 'ablation', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 200000, seconds: 60, code: 1, running: false }] },
+    sessions: [{ title: '그림 3 축 라벨 고치기', tool: 'claude', at: ago(130) }, { title: '실험 스크립트 정리', tool: 'codex', at: ago(60 * 20) }] },
+  { key: `${HOME}/notes-app`, kind: 'research', name: 'side-channel survey', folders: [{ path: `${HOME}/notes-app`, onMac: true }],
+    subs: [{ venue: 'USENIX Security', stage: 'prep', deadline: ymd(15), at: ago(60 * 24 * 3) }],
+    lastActive: ago(95), running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [{ title: '저장 버튼 상태 표시', tool: 'claude', at: ago(95) }] },
+  { key: `${HOME}/ui-kit`, kind: 'project', name: 'ui-kit', folders: [{ path: `${HOME}/ui-kit`, onMac: true }], subs: [],
+    lastActive: ago(60 * 26), running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [{ title: '버튼 hover 색 수정', tool: 'claude', at: ago(60 * 26) }] },
+  { key: `${HOME}/side-proj`, kind: null, name: 'side-proj', folders: [{ path: `${HOME}/side-proj`, onMac: true }], subs: [], lastActive: ago(60 * 5), running: [], recent: { done: 2, failed: 0, lost: 0, items: [] }, sessions: [] },
+  { key: 'pacl-208:/home/user/reo/experiments', kind: null, name: 'experiments', folders: [{ path: 'pacl-208:/home/user/reo/experiments', onMac: false }], subs: [], lastActive: ago(60 * 30), running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] },
+];
+let rps = D.researchProjects ?? sampleRP();
+
 let todos = D.todos ?? [
   { id: 'mail:1', title: '디자인 리뷰 전에 피그마 코멘트 3개 정리', source: 'mail', link: 'https://outlook.office.com/mail/', priority: 1, note: '코멘트는 #design 스레드에', userEdited: true, today: today() },
   { id: 'jira:CY-12', title: 'CY-12 패널 접근성 점검', source: 'jira', link: 'https://example.atlassian.net/browse/CY-12', priority: 1, today: today() },
@@ -185,7 +203,8 @@ function dashboard() {
     briefing,
     commitsToday: projects.reduce((n, p) => n + p.commitsToday, 0),
     // 숨긴 프로젝트도 hidden=true로 내려주고 보이는 것 뒤에
-    projects: projects.map((p) => ({ ...p, hidden: hiddenProjects.has(p.path) })).sort((a, b) => Number(a.hidden) - Number(b.hidden)),
+    researchProjects: rps,
+    projects: projects.map((p) => ({ ...p, hidden: hiddenProjects.has(p.path), hiddenByResearch: rps.some((r) => r.kind && r.folders.some((f) => f.path === p.path)) })).sort((a, b) => Number(a.hidden) - Number(b.hidden)),
     todos,
     recentDone: autoDone,
     proposals,
@@ -198,7 +217,7 @@ function dashboard() {
     research: {
       hosts: ['pacl-208', 'pacl-reo'],
       jobs: [
-        { id: 'job:pacl-208:1', name: '우사기 확인(공용 208)', host: 'pacl-208', state: 'done', seconds: 1, code: 0, cmd: 'sleep 1', at: ago(300) },
+        { id: 'job:pacl-208:1', label: 'sleep 1', project: `${HOME}/cy-agent`, name: '우사기 확인(공용 208)', host: 'pacl-208', state: 'done', seconds: 1, code: 0, cmd: 'sleep 1', at: ago(300) },
         { id: 'job:pacl-reo:2', name: 'r117 head', host: 'pacl-reo', state: 'failed', seconds: 5400, code: 1, at: ago(120) },
       ],
       tmux: {
@@ -597,6 +616,32 @@ const server = http.createServer(async (req, res) => {
     }
     const a = answers[b.id];
     return a ? json(res, 200, { ok: true, answer: { id: b.id, ...a } }) : json(res, 400, { error: 'unknown id' });
+  }
+  if (req.method === 'PUT' && p === '/research/projects') {
+    const cur = rps.find((x) => x.key === body.key);
+    if (!cur && body.mergeInto !== null) return json(res, 404, { error: 'no such project' });
+    if (cur && body.kind === 'none') rps = rps.filter((x) => x !== cur); // cur 없음 = 합친 폴더 풀기
+    else if (cur) {
+      if (body.kind) cur.kind = body.kind;
+      if (body.name !== undefined) cur.name = body.name ?? cur.folders[0].path.split('/').pop();
+      if (Array.isArray(body.subs)) cur.subs = body.subs.map((x) => ({ at: new Date().toISOString(), ...x }));
+      if (body.url !== undefined) { if (body.url) cur.url = body.url; else delete cur.url; }
+    }
+    if (typeof body.mergeInto === 'string') {
+      const into = rps.find((x) => x.key === body.mergeInto);
+      if (!into) return json(res, 400, { error: 'mergeInto must be another project' });
+      into.folders.push(...cur.folders);
+      rps = rps.filter((x) => x !== cur);
+    } else if (body.mergeInto === null) {
+      const host = rps.find((x) => x.folders.some((f) => f.path === body.key));
+      if (host && host.key !== body.key) {
+        const f = host.folders.find((y) => y.path === body.key);
+        host.folders = host.folders.filter((y) => y !== f);
+        rps.push({ key: f.path, kind: null, name: f.path.split('/').pop(), folders: [f], subs: [], lastActive: null, running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] });
+      }
+    }
+    json(res, 200, { ok: true });
+    return emit('dashboard', {});
   }
   if (req.method === 'PUT' && p === '/settings') {
     const b = (await readJSON(req)) ?? {};

@@ -10,10 +10,10 @@ test('내가 보낸 대화: thinking → step → done 이면 replies 에 들어
   assert.ok(isBusy(s));
   s = run([ev({ chatId: 'c1', status: 'thinking' }), ev({ chatId: 'c1', status: 'step', step: 'git.log' })], s);
   assert.equal(latestStep(s), 'git.log');
-  s = chatReducer(s, ev({ chatId: 'c1', status: 'done', text: '여기요', show: 'projects' }));
+  s = chatReducer(s, ev({ chatId: 'c1', status: 'done', text: '여기요', show: 'research' }));
   assert.ok(!isBusy(s));
-  assert.deepEqual(s.replies, [{ chatId: 'c1', text: '여기요', show: 'projects', error: false }]);
-  assert.deepEqual(s.messages.map((m) => [m.role, m.text, m.show]), [['user', '프로젝트 보여줘', undefined], ['assistant', '여기요', 'projects']]);
+  assert.deepEqual(s.replies, [{ chatId: 'c1', text: '여기요', show: 'research', error: false }]);
+  assert.deepEqual(s.messages.map((m) => [m.role, m.text, m.show]), [['user', '프로젝트 보여줘', undefined], ['assistant', '여기요', 'research']]);
   assert.deepEqual(chatReducer(s, { type: 'consumed' }).replies, []);
 });
 

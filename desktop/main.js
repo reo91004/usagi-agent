@@ -1718,6 +1718,18 @@ function setupIPC() {
     if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || typeof hide !== 'boolean') return denied();
     return post(`/projects/${hide ? 'hide' : 'unhide'}`, { id });
   });
+  // 연구 프로젝트 저장. 모양은 여기서 한 번 거르고 값 검사는 데몬이 한다
+  ipcMain.handle('research-project-save', (e, b) => {
+    const str = (v, max) => typeof v === 'string' && v.length <= max;
+    if (!fromOurs(e) || !b || typeof b !== 'object' || !str(b.key, 500) || !b.key) return denied();
+    if (b.kind != null && !['research', 'project', 'none'].includes(b.kind)) return denied();
+    for (const k of ['name', 'url', 'mergeInto']) if (b[k] != null && !str(b[k], 500)) return denied();
+    if (b.subs != null && (!Array.isArray(b.subs) || b.subs.length > 20 || b.subs.some((s) => !s || typeof s !== 'object' || !str(s.venue, 200) || !str(s.stage, 20) || (s.deadline != null && !str(s.deadline, 20)) || (s.at != null && !str(s.at, 40))))) return denied();
+    const body = { key: b.key };
+    for (const k of ['kind', 'name', 'url', 'mergeInto']) if (b[k] !== undefined) body[k] = b[k];
+    if (b.subs != null) body.subs = b.subs.map((s) => ({ venue: s.venue, stage: s.stage, ...(s.deadline ? { deadline: s.deadline } : {}), ...(s.at ? { at: s.at } : {}) }));
+    return request('PUT', '/research/projects', body);
+  });
   // 작업 폴더: ssh 서버 목록(~/.ssh/config 별칭) · VS Code/Finder 로 열기. 경로는 대시보드 목록에 있는 것만 받는다
   const sshHosts = () => { try { return sshConfigHosts(fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8')); } catch { return []; } };
   const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };

@@ -3,9 +3,10 @@ import { isSafeLink } from './bubbles.js';
 import { ellipsize } from './tool-view.js';
 import { shapeRules } from './todo-rules.js';
 import { PRIORITIES, TODAY_GROUP } from './todos.js';
+import { shapeResearchProjects } from './research-projects.js';
 
-export const SECTIONS = ['overview', 'todos', 'chat', 'research', 'projects', 'setup', 'settings'];
-export const SECTION_LABELS = { setup: '연결 도우미', overview: '개요', projects: '작업 폴더', todos: '할 일', chat: '채팅', research: '연구', settings: '설정' };
+export const SECTIONS = ['overview', 'todos', 'chat', 'research', 'setup', 'settings'];
+export const SECTION_LABELS = { setup: '연결 도우미', overview: '개요', todos: '할 일', chat: '채팅', research: '연구', settings: '설정' };
 
 // 사이드바 두 묶음: 자주 쓰는 화면(위) · 설정(맨 아래). 연결 도우미는 위쪽 단추로 연다
 export const NAV_BOTTOM = ['settings'];
@@ -18,6 +19,7 @@ export function navGroups(sections) {
 export function normalizeSection(s) {
   if (s === 'scrum' || s === 'today') return 'todos';
   if (s === 'models') return 'settings';
+  if (s === 'projects') return 'research'; // 작업 폴더 탭은 연구 탭의 「묶지 않은 폴더」로 접었다
   return SECTIONS.includes(s) ? s : null;
 }
 
@@ -140,6 +142,7 @@ function shapeProject(p, now) {
     sessions24h: num(p.sessions24h),
     branch: str(p.branch),
     commitsToday: num(p.commitsToday),
+    byResearch: p.hiddenByResearch === true, // 연구 프로젝트에 묶인 폴더 — 묶지 않은 폴더 목록에서 뺀다
     hidden: p.hidden === true, // 패널에서 숨김 — 맨 아래 '숨긴 작업 폴더'에 모은다
     lastTitle: str(p.lastTitle),
     lastPrompt: str(p.lastPrompt),
@@ -215,7 +218,7 @@ export function shapeResearch(r, now = Date.now()) {
         : `${relativeTime(j.at, now)} · ${durationText(j.seconds)}${j.state === 'failed' && Number.isInteger(j.code) ? ` · 종료 코드 ${j.code}` : ''}`;
     const where = j.host ? ` @${j.host}` : '';
     return {
-      id: j.id, name: j.name, host: str(j.host), state: j.state, forgettable: j.state !== 'running', label: st.label, chip: st.chip, time,
+      id: j.id, name: j.name, title: str(j.label) || j.name, project: str(j.project), host: str(j.host), state: j.state, forgettable: j.state !== 'running', label: st.label, chip: st.chip, time,
       detail: [str(j.cwd), str(j.cmd)].filter(Boolean).join(' · '),
       files: arr(j.files).filter((f) => str(f)).slice(0, 3),
       ask: j.state === 'running' ? `'${j.name}'${where} 실험 지금 어디까지 왔어? 로그 끝부분 봐 줘.` : `'${j.name}'${where} 실험 결과 정리해 줘.`,
@@ -226,7 +229,7 @@ export function shapeResearch(r, now = Date.now()) {
   const tmux = arr(r.hosts).filter((h) => str(h) && tm[h]).map((host) => ({
     host, rel: relativeTime(tm[host].at, now),
     sessions: arr(tm[host].sessions).filter((x) => x && str(x.name)).map((x) => ({
-      name: x.name, running: str(x.running), label: str(x.running) ? `도는 중 (${x.running})` : '쉬는 중', chip: str(x.running) ? 'warn' : '',
+      name: x.name, title: str(x.label) || x.name, project: str(x.project), running: str(x.running), label: str(x.running) ? `도는 중 (${x.running})` : '쉬는 중', chip: str(x.running) ? 'warn' : '',
       path: str(x.path), time: `${num(x.created) ? `${relativeTime(new Date(num(x.created) * 1000).toISOString(), now)} 만듦` : ''}${num(x.activity) ? ` · 마지막 활동 ${relativeTime(new Date(num(x.activity) * 1000).toISOString(), now)}` : ''}`.replace(/^ · /, ''),
     })),
   }));
@@ -328,6 +331,7 @@ export function shapeDashboard(raw, now = Date.now()) {
     todayDone,
     meetings: shapeMeetings(r.meetings, now),
     research: shapeResearch(r.research, now),
+    researchProjects: shapeResearchProjects(r.researchProjects, now),
     directives: shapeDirectives(r.directives, now),
   };
 }
