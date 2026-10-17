@@ -44,7 +44,8 @@ import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
 import { statusOf } from "./status.ts";
-import { featureBrain, NEEDS_CLAUDE_MCP, NEEDS_CODER, withMcpBrain } from "./feature-brain.ts";
+import { featureBrain, mcpBrainNote, NEEDS_CODER, withMcpBrain } from "./feature-brain.ts";
+import { cliMcpServers } from "./cli-mcp.ts";
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
@@ -88,7 +89,7 @@ for (const c of connectorStatus(conns)) console.log(`[connectors] ${c.label}: ${
 console.log(`[brain] ${cfg.brain.provider}`);
 { // 뒤에서 하는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)를 누가 돌리나 — 시작할 때 한 줄
   const fb = featureBrain(cfg);
-  console.log(`[features] 뒤에서 하는 정리: ${fb === "codex" ? "Codex" : fb === "agy" ? "Antigravity" : fb === "claude-code" ? "Claude Code" : cfg.onboarded === false ? "설치 마법사를 마치면 시작" : `안 돎 — ${NEEDS_CODER}`}${cfg.brain.provider !== "claude-code" ? ` · ${NEEDS_CLAUDE_MCP}` : ""}`);
+  console.log(`[features] 뒤에서 하는 정리: ${fb === "codex" ? "Codex" : fb === "agy" ? "Antigravity" : fb === "claude-code" ? "Claude Code" : cfg.onboarded === false ? "설치 마법사를 마치면 시작" : `안 돎 — ${NEEDS_CODER}`}${cfg.brain.provider !== "claude-code" ? ` · ${mcpBrainNote(cfg.brain.provider)}` : ""}`);
 }
 // 읽기 전용 GitHub 도구: 설정이 안 정했으면 gh 로그인 여부로(비동기 — 시작을 막지 않는다)
 if (cfg.github?.enabled === undefined) probeGh({ bin: cfg.github?.bin }).then((ok) => console.log(`[cy-agent] GitHub(gh) 읽기 도구 ${ok ? "켬" : "끔 — gh auth status 실패"}`));
@@ -193,7 +194,7 @@ await bus.listen(cfg.port, {
   dashboard: async () => ({
     ...(await agent.dashboard()),
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
-    connectors: withMcpBrain(cfg, connectorStatus(conns)), // MCP 연결은 Claude Code 뇌일 때만 읽는다
+    connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
     ...(() => { const r = researchSummary(cfg, store); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
     ...(conns.slack.mode !== "off" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(Slack 을 연결했을 때만)
   }),

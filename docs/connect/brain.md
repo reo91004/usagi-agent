@@ -11,8 +11,8 @@
 | 뇌 | `brain.provider` | 필요한 것 | 할 수 있는 것 |
 |---|---|---|---|
 | Claude Code | `claude-code`(기본) | Claude Code 설치·로그인(Pro·Max·Team·Enterprise 또는 Console), [claude-code.md](claude-code.md) 참고 | 전부: 대화·브리핑, 할 일 자동 완료·진척, 지식그래프, mcp 연결, 코드 고치기·작업 세션·자동 머지 |
-| Codex | `codex` | Codex CLI 설치·로그인(ChatGPT 유료 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기 |
-| Antigravity | `agy` | Antigravity CLI(`agy`) 설치·로그인(Google 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기 |
+| Codex | `codex` | Codex CLI 설치·로그인(ChatGPT 유료 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만) |
+| Antigravity | `agy` | Antigravity CLI(`agy`) 설치·로그인(Google 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만) |
 | Gemini | `gemini` | Google AI Studio 키 | 대화·브리핑 |
 | OpenAI | `openai` | OpenAI 플랫폼 키(크레딧 필요) | 대화·브리핑 |
 | Claude API | `anthropic` | Anthropic 콘솔 키(크레딧 필요) | 대화·브리핑 |
@@ -23,9 +23,18 @@
 
 Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 받습니다. 그래서 브리핑도 Slack(api)이나 캘린더(ICS)처럼 시사가 직접 모아 둔 자료만 가지고 합니다.
 
+## Codex·Antigravity 뇌에서 mcp 연결 읽기
+
+`connectors` 를 `mcp` 모드로 둔 메일·이슈·캘린더·Slack 은 Codex·Antigravity 뇌일 때 채팅에서만 읽습니다. 브리핑과 캘린더 동기화에서 MCP 를 읽는 것은 지금도 Claude Code 뇌일 때만입니다.
+
+- 서버 정의는 Claude Code 에 등록한 것(`~/.claude.json`)을 그대로 씁니다. stdio 서버와 http 서버만 넘길 수 있고, sse 서버나 `headersHelper` 를 쓰는 서버, 이름에 영문·숫자·`_`·`-` 밖의 글자가 있는 서버·도구는 넘기지 못합니다. Codex 는 env 가 Codex 자신의 환경변수(PATH·HOME 등)와 다른 값이면 그 서버를 붙이지 않습니다. Claude Code 안에서 OAuth 로 로그인한 http 서버는 넘기더라도 Codex·agy 가 그 로그인을 쓰지 못해 읽지 못합니다.
+- 도구는 하나하나 열어야 해서, 커넥터 매핑(프리셋이나 `tools`)에 적힌 읽기 도구만 엽니다. 매핑이 비어 있으면 그 연결은 붙이지 않고 패널에 이유를 보여 줍니다. 쓰기 이름(보내기·만들기·고치기 등)은 매핑에 적어도 열리지 않습니다.
+- Codex 는 채팅할 때마다 `-c mcp_servers.<이름>.…` 로 붙입니다. `enabled_tools` 로 그 읽기 도구만 보이게 하고, 그 도구만 `approval_mode = "approve"` 입니다. env 와 헤더 값은 명령줄 인자가 아니라 Codex 프로세스의 환경변수로 넘깁니다.
+- Antigravity 는 실행마다 MCP 를 넘길 수 없어서 전역 설정에 넣습니다. `~/.gemini/config/mcp_config.json` 에 `usagi-<이름>` 서버(`enabledTools` 는 읽기 도구만)를, `~/.gemini/antigravity-cli/settings.json` 의 `permissions.allow` 에 `mcp(usagi-<이름>/<도구>)` 를 하나씩 넣습니다. env·헤더에 비밀값이 있으면 `mcp_config.json` 권한을 600 으로 바꿉니다. 커넥터에서 빠진 `usagi-…` 항목은 다음 채팅 때 지웁니다. 전역 설정이라 터미널에서 agy 를 직접 쓸 때나 뒤에서 하는 정리 때도 이 읽기 도구가 묻지 않고 허용되고, 뇌를 다른 것으로 바꿔도 항목은 남습니다.
+
 ## Antigravity(agy)
 
-키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(도구·코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. 코드 고치기·MCP·워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.
+키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. mcp 연결은 채팅에서만 읽고([위](#codexantigravity-뇌에서-mcp-연결-읽기)), 코드 고치기·워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.
 
 1. Antigravity CLI를 설치하고 터미널에서 `agy`를 실행해 로그인한 뒤 나옵니다.
 2. 로그인됐는지는 `agy models`로 확인합니다. 종료 코드 0과 함께 `<id>  <이름>` 목록이 나오면 됩니다. 목록이 비거나 실패하면 로그인 전으로 봅니다.

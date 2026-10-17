@@ -18,6 +18,7 @@ import { allowedMcpServers, hiddenMcpRules, isReadOnlyCall, mcpNameOf, mcpServer
 import { registeredMcpServerNames } from "./mcp.ts";
 import { sessionsAllowed } from "./onboarding.ts";
 import { CONNECTORS, brainAllowedTools, mcpTool, type Connectors } from "./connectors.ts";
+import { cliMcpServers } from "./cli-mcp.ts";
 import { CODE_TOOLS, isCodeReadCall, insideRoots } from "./code-read.ts";
 import { loadInstructions } from "./instructions.ts";
 import { profileContext } from "./profile.ts";
@@ -296,7 +297,7 @@ export function thinkPrompt(cfg: Config, store: Store, task: string, o: { tools?
 
 // 두뇌 한 번 돌리기: 도구 + 구조화 출력(기본 읽기 전용, interactive 면 쓰기 승인).
 // schema 가 null 이면 구조화 출력 없이 마지막 답 글(result)을 그대로 돌려준다(채팅 슬래시 명령)
-// claude-code만 Agent SDK(askRun)를 쓴다. 다른 provider는 도구 없이 JSON만 받는다(askOther).
+// claude-code만 Agent SDK(askRun)를 쓴다. 다른 provider는 JSON만 받는다(askOther — codex·agy 채팅만 MCP 도구를 받는다).
 // 코딩(fixer)은 여기서 켜지지 않는다. fixer.ts의 Claude Code 수정 경로는 provider와 무관하게 그대로다.
 export async function ask<T>(
   cfg: Config, prompt: string, schema: unknown, onStep?: (s: string) => void, opts: AskOpts & { run?: AskRun } = {},
@@ -314,7 +315,7 @@ export async function ask<T>(
 
 export const TEXT_SCHEMA = { type: "object", additionalProperties: false, required: ["reply"], properties: { reply: { type: "string", description: "사용자에게 보낼 답(마크다운)" } } } as const;
 
-// local·gemini·openai·genspark·codex·agy: SDK·도구 없이 JSON만. 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
+// local·gemini·openai·genspark·codex·agy: SDK 없이 JSON만(codex·agy 채팅은 MCP 도구 — 맥락 도구 + 사용자 MCP 읽기). 키가 없으면 여기서 실패하고 local로 넘어가지 않는다
 async function askOther<T>(provider: string, cfg: Config, prompt: string, schema: unknown, onStep: ((s: string) => void) | undefined, opts: AskOpts, spec: AskRun): Promise<T> {
   // genspark: 실제 모델은 GET /models 목록을 받은 뒤 정한다(providers.ts gensparkJson) — 기록엔 고른 이름이나 "genspark"
   const model = provider === "local" ? "local" : provider === "codex" || provider === "agy" ? provider : provider === "genspark" ? ((opts.model ?? "").trim() || "genspark") : provider === "anthropic" ? resolveAnthropicModel(cfg.models?.general, opts.model) : resolveHttpModel(provider as "gemini" | "openai", cfg.models?.general, opts.model);
@@ -327,11 +328,13 @@ async function askOther<T>(provider: string, cfg: Config, prompt: string, schema
       return localThought(facts.now ?? new Date(), facts.open ?? [], facts.done ?? []) as T;
     }
     const system = withCharacter(opts.system); // 캐릭터 말투(시사가 아니면 첫 문장·말투 줄을 바꾼다)
+    // 채팅이면 맥락 도구 + 사용자 MCP 연결(읽기 도구만 — cli-mcp.ts). Codex·agy 만 도구를 받는다
+    const tools = opts.interactive ? { mcp: true, ...(provider === "codex" || provider === "agy" ? { servers: cliMcpServers(cfg.connectors ?? CONNECTORS) } : {}) } : {};
     if (schema === null) {
-      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, mcp: !!opts.interactive, ...opts.deps }) as { reply?: string };
+      const out = await remoteJson(provider as any, cfg, prompt, TEXT_SCHEMA, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as { reply?: string };
       return String(out?.reply ?? "") as T;
     }
-    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, mcp: !!opts.interactive, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
+    return remoteJson(provider as any, cfg, prompt, schema, { system, model: opts.model, blocks: opts.blocks, ...tools, ...opts.deps }) as Promise<T>; // 첨부 블록도(예전엔 버려져 본 척했다)
   });
 }
 

@@ -103,14 +103,17 @@ test("Connections: 꺼진 커넥터·등록 안 된 MCP 서버·키 없는 뇌",
   assert.match(byId(rows, "brain").detail!, /Gemini API 키가 없어요/);
 });
 
-test("Connections: 뇌가 Codex 면 MCP 커넥터 줄은 경고 + 「Claude Code 뇌일 때만」, API 커넥터는 그대로", async () => {
-  const { c } = make({}, { brain: { provider: "codex" } });
+test("Connections: 뇌가 Codex 면 MCP 커넥터 줄은 경고 + 「채팅에서만」(못 넘기는 서버는 그 이유), API 커넥터는 그대로", async () => {
+  const { c } = make({ cliServers: () => ["mail"] }, { brain: { provider: "codex" } });
   const { rows } = await c.list();
   assert.equal(byId(rows, "connector:mail").state, "warn");
-  assert.match(byId(rows, "connector:mail").detail!, /^MCP 연결\(메일·이슈·캘린더·Slack\)은 Claude Code 뇌일 때만 읽어요 · /);
+  assert.match(byId(rows, "connector:mail").detail!, /^Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요.* · /);
+  assert.match(byId(rows, "connector:issues").detail!, /^Codex·Antigravity 로 읽으려면 connectors 의 tools 에/);
   assert.equal(byId(rows, "connector:slack").state, "ok");
+  const gm = (await make({}, { brain: { provider: "gemini" } }).c.list()).rows;
+  assert.match(byId(gm, "connector:mail").detail!, /^MCP 연결\(메일·이슈·캘린더·Slack\)은 Claude Code·Codex·Antigravity 뇌일 때만 읽어요 · /);
   const cc = (await make().c.list()).rows;
-  assert.doesNotMatch(byId(cc, "connector:mail").detail!, /Claude Code 뇌일 때만/);
+  assert.doesNotMatch(byId(cc, "connector:mail").detail!, /뇌일 때만|채팅에서만/);
 });
 
 test("Connections.recheck: Claude 로그인 · SDK 가 본 MCP 상태", async () => {

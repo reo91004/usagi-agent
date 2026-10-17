@@ -4,7 +4,7 @@
 
 | 모드 | 어떻게 읽나 |
 |---|---|
-| `mcp` | Claude Code에 등록한 메일 MCP 서버(Claude Code 뇌일 때만 읽힙니다) |
+| `mcp` | Claude Code에 등록한 메일 MCP 서버(Claude Code 뇌는 브리핑·채팅, Codex·Antigravity 뇌는 채팅에서만 읽습니다. [brain.md](brain.md#codexantigravity-뇌에서-mcp-연결-읽기)) |
 | `off` | 브리핑에서 메일 단계가 빠집니다(기본) |
 
 발송·삭제·라벨 변경 같은 쓰기 도구는 서버에 있어도 쓰이지 않습니다. 허용 목록에는 매핑한 읽기 도구만 들어가고, 쓰기 이름은 훅이 막습니다(`agent/src/guard.ts`).
