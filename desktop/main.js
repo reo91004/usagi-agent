@@ -13,9 +13,10 @@ import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
 import { defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
 import { showOnCurrentSpace } from './src/spaces.js';
-import { normalizeSection } from './src/dashboard.js';
+import { normalizeSection, splitHost } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
 import { okRuleId, sanitizeRulePatch } from './src/todo-rules.js';
+import { sshConfigHosts, remoteUrl } from './src/folders.js';
 import { clickTarget, pickRun, okRunId, okModelId, cleanMessage } from './src/session.js';
 import { okClientId, okMsgId } from './src/session-inbox.js';
 import { okToolUseId, normAgents, runningCount } from './src/agents.js';
@@ -1713,6 +1714,33 @@ function setupIPC() {
   ipcMain.handle('project-hide', (e, id, hide) => {
     if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || typeof hide !== 'boolean') return denied();
     return post(`/projects/${hide ? 'hide' : 'unhide'}`, { id });
+  });
+  // 작업 폴더: ssh 서버 목록(~/.ssh/config 별칭) · VS Code/Finder 로 열기. 경로는 대시보드 목록에 있는 것만 받는다
+  const sshHosts = () => { try { return sshConfigHosts(fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8')); } catch { return []; } };
+  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  const codeApp = () => ['/Applications', path.join(os.homedir(), 'Applications')].map((d) => path.join(d, 'Visual Studio Code.app')).find((a) => fs.existsSync(a));
+  ipcMain.handle('folder-hosts', (e) => (fromOurs(e) ? { ok: true, hosts: sshHosts() } : denied()));
+  ipcMain.handle('folder-open', async (e, id, how, pick) => {
+    if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || !['code', 'finder'].includes(how) || (pick != null && typeof pick !== 'string')) return denied();
+    const r = await request('GET', '/dashboard');
+    if (!r.ok || !r.data?.projects?.some((p) => p?.path === id)) return { ok: false, error: '목록에 없는 폴더예요' };
+    const { host, dir } = splitHost(id);
+    const local = !host && isDir(dir);
+    if (how === 'finder') {
+      if (!local) return { ok: false, error: '이 Mac 에 있는 폴더만 Finder 로 열 수 있어요' };
+      const err = await shell.openPath(dir);
+      return err ? { ok: false, error: err } : { ok: true };
+    }
+    const app = process.platform === 'darwin' ? codeApp() : 'code';
+    if (!app) return { ok: false, error: 'VS Code 를 찾지 못했어요. 설치하면 바로 열 수 있어요' };
+    if (local) {
+      // 윈도우의 code 는 code.cmd 라 셸 없이 못 부른다 → vscode://file 주소로
+      if (process.platform !== 'darwin') return shell.openExternal(`vscode://file${pathToFileURL(dir).pathname}`).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
+      return new Promise((done) => execFile('open', ['-a', app, dir], (err) => done(err ? { ok: false, error: 'VS Code 를 열지 못했어요' } : { ok: true })));
+    }
+    const url = remoteUrl(host || pick, dir, sshHosts());
+    if (!url) return { ok: false, error: host || pick ? `~/.ssh/config 에서 서버 ${host || pick} 를 찾지 못했어요` : '어느 서버의 폴더인지 몰라요' };
+    return shell.openExternal(url).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
   });
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기 · 지우기
   ipcMain.handle('todo-rules', (e) => (fromOurs(e) ? request('GET', '/todo-rules') : denied()));
