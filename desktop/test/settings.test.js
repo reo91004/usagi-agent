@@ -107,7 +107,7 @@ test('설정 IPC: 패널에서 온 것만(오버레이·세션 창은 거절), �
 
 test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더블클릭 → 입력창 닫고 패널, 보내면 hover 스레드(chat-send 가 kind hover)', () => {
   const r = readFileSync(new URL('../renderer/renderer.js', import.meta.url), 'utf8');
-  assert.match(r, /function onCharacterClick\(\) \{\s*if \(clickTimer\) \{\s*clearTimeout\(clickTimer\);\s*clickTimer = null;\s*hideAsk\(\);[^}]*cy\.togglePanel\(\);\s*return;\s*\}\s*clickTimer = setTimeout\(\(\) => \{ clickTimer = null; \}, DOUBLE_CLICK_MS\);\s*if \(askOpen\) hideAsk\(\);\s*else talk\(\);/);
+  assert.match(r, /function onCharacterClick\(\) \{\s*if \(clicks\.click\(performance\.now\(\)\) === 'double'\) \{\s*hideAsk\(\);[^}]*cy\.togglePanel\(\);\s*return;\s*\}\s*tapOpened = !askOpen;\s*if \(askOpen\) hideAsk\(\);\s*else talk\(\);/);
   assert.match(r, /function talk\(\) \{\s*if \(brain\.ready === false\) return noBrain\(\);\s*showAsk\(\);/);
   assert.match(r, /dispatchActivity\(\{ type: 'localDance', on: true, clip \}\)/); // 칩 춤·응원은 고른 영상(clip)
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');

@@ -13,6 +13,7 @@ import { normFocus, focusBubble, doingBubble } from '../src/focus.js';
 import { who, setWho } from './who.js';
 import { characterAssets, okCharacter, localSay, clipFor, danceClipOf, DANCE_MAX_MS, nextBlinkDelay, blinkPlan, initialActivity, activityReducer, viewOf, fitBox, START_CHARACTER } from '../src/character.js';
 import { applyCharacters } from '../src/character-registry.js';
+import { createPress, createClicks } from '../src/press.js';
 
 const cy = window.cy;
 const stack = document.getElementById('stack');
@@ -941,8 +942,9 @@ cy.onFlip?.((on) => {
 // ---- 클릭 투과: 캐릭터/말풍선 위에서만 마우스 받기 ----
 let interactive = false;
 let last = null; // 마지막 마우스 좌표
-let down = null; // 캐릭터 mousedown 위치
-let dragging = false;
+const press = createPress(); // 캐릭터를 누르고 떼는 순서가 클릭인지 끌기인지(src/press.js)
+const clicks = createClicks();
+const pt = (e) => ({ x: e.screenX, y: e.screenY, t: performance.now(), ox: window.screenX, oy: window.screenY });
 
 function setInteractive(v) {
   if (v === interactive) return;
@@ -951,7 +953,7 @@ function setInteractive(v) {
 }
 
 function recheckHit() {
-  if (dragging || down) return;
+  if (press.pressed) return;
   if (!last) {
     updateHover(null);
     return setInteractive(false);
@@ -963,23 +965,15 @@ function recheckHit() {
 
 // 눌린 상태로 알았는데 실제로는 버튼이 안 눌려 있으면(메뉴가 mouseup 을 삼킨 경우) 드래그를 풀어 준다
 function resetPress() {
-  if (dragging) endDragging();
-  down = null;
-  dragging = false;
-}
-function endDragging() {
-  cy.dragEnd();
-  dragEndAt = performance.now();
+  if (press.reset(performance.now())) cy.dragEnd();
 }
 
 document.addEventListener('mousemove', (e) => {
   last = { x: e.clientX, y: e.clientY };
-  if (down && (e.buttons & 1) === 0) resetPress();
-  if (down && !dragging && Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) {
-    dragging = true;
-    // 바로 앞 클릭이 기다리던 패널 열기는 취소한다(트랙패드 「탭 후 끌기」는 클릭 한 번 + 끌기로 들어온다)
-    clearTimeout(clickTimer);
-    clickTimer = null;
+  if (press.pressed && (e.buttons & 1) === 0) resetPress();
+  if (press.pressed && press.move(pt(e))) {
+    // 트랙패드 「탭 후 끌기」는 클릭 한 번 + 끌기로 들어온다 — 그 탭이 연 입력창·칩과 더블클릭 기다림은 거둔다
+    if (clicks.cancel(press.at) && tapOpened) { hideAsk(); dismiss(QUICK_ID); }
     cy.dragStart();
   }
   recheckHit();
@@ -995,7 +989,7 @@ document.addEventListener('mouseleave', (e) => {
 
 wrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0 || e.ctrlKey) return; // Ctrl+클릭은 macOS 에서 오른쪽 클릭(메뉴) — 드래그로 치지 않는다
-  down = { x: e.screenX, y: e.screenY, at: performance.now() };
+  press.press(pt(e));
   clearTimeout(hoverTimer);
   hoverTimer = null;
   e.preventDefault();
@@ -1004,11 +998,8 @@ wrap.addEventListener('mousedown', (e) => {
 // 한 번 클릭 = 말 걸기(입력창)를 기다림 없이 바로 연다. DOUBLE_CLICK_MS 안의 두 번째 클릭 = 입력창을 닫고 패널(공부 중이면 세션 창).
 // 입력창이 열려 있을 때의 (더블이 아닌) 한 번 클릭 = 입력창 닫기.
 // 뇌(AI)가 아직 없으면 한 번 클릭 = 고르는 질문 칩(AI 없이 답하는 것 · AI 연결하기)
-const DOUBLE_CLICK_MS = 280;
-const LONG_PRESS_MS = 500; // 이보다 오래 누르고 있다 뗀 건 옮기려다 만 것 — 클릭이 아니다
-const AFTER_DRAG_MS = 600; // 옮긴 직후 들어온 클릭(드래그 잠금을 끝내는 탭 등)은 무시
-let clickTimer = null;
-let dragEndAt = -Infinity;
+// 클릭 판정(움직임 없이 짧게 누르고 뗀 것만 클릭, 더블클릭 간격)은 src/press.js
+let tapOpened = false; // 가장 최근 한 번 클릭이 입력창·칩을 열었나(끌기로 이어지면 도로 거둔다)
 let brain = { ready: true }; // 모르면 막지 않는다(main 이 GET /status 로 알려 준다)
 cy.brain?.().then((v) => { if (v) brain = v; }).catch(() => {});
 cy.onBrain?.((v) => { if (v) brain = v; if (brain.ready === false && askOpen) hideAsk(); });
@@ -1074,28 +1065,22 @@ for (const [id, run] of [['ask-focus', () => focusCmd('start')], ['ask-todos', (
 }
 
 function onCharacterClick() {
-  if (clickTimer) {
-    clearTimeout(clickTimer);
-    clickTimer = null;
+  if (clicks.click(performance.now()) === 'double') {
     hideAsk(); // 첫 클릭이 연 입력창(포커스 포함)을 닫고 패널로
     dismiss(QUICK_ID);
     cy.togglePanel();
     return;
   }
-  clickTimer = setTimeout(() => { clickTimer = null; }, DOUBLE_CLICK_MS);
+  tapOpened = !askOpen;
   if (askOpen) hideAsk();
   else talk();
 }
 
 window.addEventListener('mouseup', (e) => {
-  if (!down) return;
-  const wasDrag = dragging;
-  const now = performance.now();
-  const held = now - down.at;
-  down = null;
-  dragging = false;
-  if (wasDrag) endDragging();
-  else if (e.button === 0 && e.target.closest('#char-wrap') && held < LONG_PRESS_MS && now - dragEndAt > AFTER_DRAG_MS) onCharacterClick();
+  if (!press.pressed) return;
+  const r = press.release(pt(e), e.button === 0 && !!e.target.closest('#char-wrap'));
+  if (r === 'dragEnd') cy.dragEnd();
+  else if (r === 'click') onCharacterClick();
   recheckHit();
 });
 
