@@ -11,6 +11,7 @@ import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { findOnPath, spawnSpec } from "./plat.ts";
+import { createAgyWarm, type AgyWarm } from "./agy-warm.ts";
 import { MCP_NAME, cliToolGuide, ensureAgyMcp, openGate, type GateDecide } from "./mcp-http.ts";
 import { PERMISSION_TTL_MS } from "./permissions.ts";
 import { AGY_PREFIX, codexMcpArgs, connectorGuide, type CliMcpServer } from "./cli-mcp.ts";
@@ -896,7 +897,31 @@ export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: str
   return m && m !== DEFAULT_GENERAL_MODEL ? m : undefined;
 }
 
-export type AgyOpts = CodexOpts & { model?: string };
+export type AgyOpts = CodexOpts & { model?: string; quick?: boolean; warm?: AgyWarm };
+
+// 말 걸기용 예비 agy(agy-warm.ts). 키 = 모델 + MCP 켬/끔 + 붙인 서버(agy 는 시작할 때 MCP 설정을 읽는다)
+const warmKey = (model: string, mcp: boolean, servers: CliMcpServer[]) => JSON.stringify([model, mcp, mcp ? servers : []]);
+const agyStreamArgs = (model: string) => ["-p", "", "--input-format", "stream-json", "--output-format", "stream-json", "--sandbox", "--model", model];
+export const agyWarm = createAgyWarm({
+  spawn(args, cwd) {
+    const sp = spawnSpec("agy", args);
+    const child = spawn(sp.file, sp.args, { cwd, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["pipe", "pipe", "pipe"] });
+    const kill = child.kill.bind(child);
+    child.kill = (sig) => { killTree(child.pid); return kill(sig); };
+    return child;
+  },
+});
+
+// 입력창이 열릴 때: 말 걸기가 쓸 agy(빠른 대화 모델, 채팅이라 MCP 켬)를 하나 미리 띄운다. 뇌가 agy 인지는 부르는 쪽이 본다
+export function agyPrewarm(cfg: Pick<Config, "models">, servers: CliMcpServer[], warm: AgyWarm = agyWarm): boolean {
+  if (!commandOnPath("agy")) return false;
+  const model = agyModel(cfg, cfg.models.quick) ?? AGY_QUICK_MODEL;
+  const dir = join(HOME_DIR, "brain");
+  mkdirSync(dir, { recursive: true });
+  const mcp = !!(cliMcp && agyMcpReady(cliMcp, servers));
+  warm.prewarm(warmKey(model, mcp, servers), agyStreamArgs(model), dir);
+  return true;
+}
 
 // 모델을 고르지 않았을 때 우사기가 agy 에 주는 기본: 말 걸기(quick)는 Flash Low, 채팅·브리핑·뒤 작업은 Flash Medium.
 // agy 자체 기본(Gemini 4 Argon Medium, 모델 4~11초)보다 빠르고 사용량이 적다(측정: .plans/measurements/latency-20261017, 사용자 결정 2026-10-17)
@@ -958,14 +983,31 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
   const input = agyInput(prompt, schema, opts, mcp);
   const dir = join(HOME_DIR, "brain");
   if (!opts.execFile) mkdirSync(dir, { recursive: true });
+  const timeout = opts.timeoutMs ?? AGY_TIMEOUT_MS;
   const run = async (withSchema: boolean) => {
     try {
-      return (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, withSchema ? schema : undefined, opts.model), { timeout: opts.timeoutMs ?? AGY_TIMEOUT_MS, cwd: dir })).stdout;
+      return (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, withSchema ? schema : undefined, opts.model), { timeout, cwd: dir })).stdout;
     } catch (e) {
       throw agyFailure(e);
     }
   };
-  const first = await run(false);
+  // 말 걸기(quick)는 입력창을 열 때 미리 띄운 예비가 있으면 그것으로 한 턴. 끝나면(성공·실패) 다음 예비를 다시 띄운다. 가짜 execFile 을 넘긴 시험은 warm 을 직접 넘길 때만 쓴다
+  const warm = opts.quick && opts.model ? opts.warm ?? (opts.execFile ? undefined : agyWarm) : undefined;
+  const key = warm && warmKey(opts.model!, !!mcp, opts.servers ?? []);
+  const spare = warm && key ? warm.take(key) : undefined;
+  let first: string;
+  if (spare) {
+    try {
+      first = JSON.stringify(await warm!.runTurn(spare, input, timeout));
+    } catch (e) {
+      throw agyFailure(e);
+    } finally {
+      warm!.prewarm(key!, agyStreamArgs(opts.model!), dir);
+    }
+  } else {
+    first = await run(false);
+    if (warm) warm.prewarm(key!, agyStreamArgs(opts.model!), dir);
+  }
   let r: { out: unknown; usage: CodexUsage } | undefined;
   try { r = parseAgyStdout(first); } catch { /* 아래에서 스키마로 한 번 더 */ }
   if (r && agyShapeOk(r.out, schema)) return r;

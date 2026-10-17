@@ -43,6 +43,8 @@ Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 �
 
 모델은 패널 [모델] 탭에 `agy models` 목록이 나오고, 고르지 않으면 Gemini 3.8 Flash 를 씁니다(캐릭터 말 걸기는 `gemini-3.8-flash-low`, 채팅·브리핑·뒤에서 하는 정리는 `gemini-3.8-flash-medium`). agy 자체 기본(Gemini 4 Argon Medium)보다 빠르고 사용량이 적습니다. 그 이름이 agy 목록에서 없어지면 agy 기본 모델로 한 번 더 부릅니다. 코드 고치기는 고른 모델이 없으면 agy 기본 모델입니다. 파일로 정하려면 `models.general`에 목록의 id(예: `gemini-4-argon-medium`)를 넣습니다. 시사는 agy를 데몬의 `~/.cy-agent/brain` 폴더에서 돌리고, 레포 안에서는 돌리지 않습니다. 프롬프트는 명령줄 인자로 넘기므로 너무 긴 맥락(약 400KB 초과)은 오류로 알려 줍니다.
 
+캐릭터에게 말을 걸려고 입력창을 열면 agy 를 하나 미리 띄워 둡니다. 보낸 말 한 턴만 처리하고 끝나며, 끝나면 다음 것을 다시 띄웁니다. 캐릭터 채팅을 쓰는 동안에만 켜 두고, 3분 동안 말이 없거나 설정이 바뀌거나 데몬이 꺼지면 닫습니다. 켜 둔 동안 메모리는 80~200MB 쯤, CPU는 거의 0%입니다. 답 형식은 글에 적어 알리고, 형식이 틀렸을 때만 `--json-schema` 를 붙여 한 번 더 부릅니다.
+
 ## Genspark
 
 Genspark의 LLM 프록시(OpenAI 호환)로 Claude·GPT 등 여러 회사 모델을 키 하나로 씁니다.
