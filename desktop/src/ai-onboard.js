@@ -1,5 +1,5 @@
-// 시사에게 줄 AI, 설치 플랜(PLANS), 연결 안내(캘린더·슬랙·지라·GitHub). 슬랙 쿠키 복사는 넣지 않는다.
-import { WIN, modKey, terminalRow } from './os-hint.js';
+// 시사에게 줄 AI, 연결 안내(캘린더·슬랙). 슬랙 쿠키 복사는 넣지 않는다.
+import { modKey } from './os-hint.js';
 import { SETUP_SAY } from './character-say.js';
 
 const MOD = modKey();
@@ -85,27 +85,6 @@ export const AI_PROVIDERS = [
   },
 ];
 
-// 키 없이, 이 맥에 로그인된 Claude Code로 말하는 길
-export const CLI_PROVIDER = {
-  id: 'claudecode',
-  title: 'Claude Code로 말하기 (키 없음)',
-  blurb: '키를 만들 필요가 없습니다. 이 맥에 로그인된 Claude Code를 씁니다. 유료 Claude 계정이 필요합니다.',
-};
-
-export const CODEX_PROVIDER = {
-  id: 'codexcli',
-  title: 'Codex로 말하기 (키 없음)',
-  blurb: '키를 만들 필요가 없습니다. 이 맥에 로그인된 Codex를 씁니다. ChatGPT 유료 계정이 필요합니다.',
-};
-
-export const AGY_PROVIDER = {
-  id: 'agycli',
-  title: 'Antigravity로 말하기 (키 없음)',
-  blurb: '키를 만들 필요가 없습니다. 이 맥에 로그인된 Antigravity CLI(agy)를 씁니다. Google 계정으로 로그인합니다.',
-};
-
-export const CLI_PROVIDERS = [CLI_PROVIDER, CODEX_PROVIDER, AGY_PROVIDER];
-
 // 설치 마법사 「뇌 고르기」: 이 맥에서 찾은 Claude Code·Codex·Antigravity 는 "찾았어요 ✓" 로 바로, 키는 붙여 넣고 바로 확인.
 // AI 는 선택이다: 「AI 없이 쓰기」(none)를 고르면 로컬 뇌로 정하고 다음 단계로 간다
 export const BRAIN_CHOICES = [
@@ -136,27 +115,11 @@ export function providerById(id) {
 export { CANNED, cannedReply, resetCanned } from './canned.js';
 
 export const HUB = [
-  { id: 'claude', title: 'Claude Code', blurb: '코드 작업을 맡길 때 씁니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
-  { id: 'codex', title: 'Codex', blurb: '대화·브리핑·할 일 정리·코드 고치기를 Codex 로 돌립니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
   { id: 'gcal', title: '구글 캘린더', blurb: '내 일정을 읽습니다. 캘린더마다 비밀 주소를 붙여 넣으면 되고, 여러 개 붙일 수 있습니다.', kind: 'done' },
   { id: 'outlook', title: 'Outlook 캘린더', blurb: '내 일정을 읽습니다. 여러 개 붙일 수 있고 구글 캘린더와 같이 써도 됩니다. 회사가 일정 게시를 막았으면 쓸 수 없습니다.', kind: 'done' },
   { id: 'slack', title: 'Slack', blurb: '내 DM과 나를 멘션한 글을 읽습니다. 읽기 전용 Slack 앱을 하나 만들어 토큰을 붙입니다. 어떤 뇌든 되고, 팀 워크스페이스는 관리자 승인이 필요할 수 있습니다.', kind: 'done' },
-  { id: 'jira', title: 'Jira', blurb: '나한테 온 이슈를 읽습니다. 브라우저 로그인만 합니다. Claude Code가 먼저 필요합니다.', kind: 'done', needsAgent: 'claude' },
   { id: 'repos', title: '레포 폴더', blurb: '코드를 고치게 할 레포가 모인 폴더(예: 홈의 code 폴더)를 알려 주세요. 적은 폴더만 읽고, 그 안 레포의 내 커밋을 개요에 보여 줘요. 코드 고치기는 Claude Code·Codex·Antigravity 중 하나가 있을 때 돼요.', kind: 'folder' },
-  { id: 'github', title: 'GitHub', blurb: 'GitHub에 로그인해 두면, 고친 코드를 변경 요청(PR)으로 올릴 수 있습니다. Claude Code·Codex·Antigravity 중 하나가 먼저 필요합니다.', kind: 'done', needsAgent: true },
 ];
-
-// 설치 마법사에서 고르는 네 가지 플랜. hub 는 그 플랜에서 보여 줄 연결 목록(순서대로).
-export const PLANS = [
-  { id: 'calendar', title: '일정 관리만 하기', need: '준비물이 없습니다. 결제도 필요 없습니다', blurb: '내 일정과 오늘 할 일을 정해진 말로 알려 드립니다.', ai: 'none', hub: ['gcal', 'outlook'] },
-  { id: 'chat', title: '채팅 + 일정 관리', need: 'AI 키가 필요합니다. 무료로 만들 수 있습니다', blurb: '시사와 자유롭게 대화하고, 내 일정도 함께 봅니다.', ai: 'key', hub: ['gcal', 'outlook'] },
-  { id: 'tools', title: '채팅 + 일정 관리 + 다른 기능', need: 'Claude Code가 필요합니다(Codex 는 대화·할 일 정리까지)', blurb: '대화와 일정에 더해, 슬랙과 지라의 소식도 함께 봅니다.', ai: 'cli', hub: ['gcal', 'outlook', 'slack', 'jira'] },
-  { id: 'code', title: '코딩까지 전부 다', need: 'Claude Code와 GitHub 연결이 필요합니다', blurb: '위의 모든 기능에 더해, 코드를 고쳐 변경 요청까지 올립니다.', ai: 'cli', hub: ['gcal', 'outlook', 'slack', 'jira', 'github'] },
-];
-
-export function planById(id) {
-  return PLANS.find((p) => p.id === id) ?? null;
-}
 
 // 시사가 말풍선으로 하는 말
 export const SISA_SAY = {
@@ -164,14 +127,6 @@ export const SISA_SAY = {
   brain: '**AI**를 연결하면 저랑 자유롭게 이야기할 수 있어요.\nAI 없이도 할 일, 오늘 할 일 표, 회의 알림은 **그대로** 돼요.\n이 맥에서 찾은 게 있으면 바로 고르면 돼요.',
   extras: '더 연결하고 싶은 게 있으면 **골라** 주세요.\n전부 **선택**이에요. 건너뛰어도 돼요.\n고른 것 말고는 **아무것도 읽지 않아요**.',
   done: '준비 끝! 🎉\n어떻게 쓰는지 **짧게** 보여 드릴까요?',
-  welcome: '안녕하세요, **시사**예요.\n어떻게 쓸지 **하나만** 골라 주세요.\n나중에 언제든 바꿀 수 있어요.',
-  calendar: '좋아요. **일정만** 볼게요.\n결제는 필요 없어요.\n일정 **주소 하나**만 붙여 주세요.',
-  chat: '좋아요. 저와 대화하려면 **AI**가 필요해요.\n**무료**로 만들 수 있는 것부터 같이 해 봐요.',
-  tools: '좋아요. 슬랙이나 지라까지 보려면\n**Claude Code**가 필요해요.\n**Codex**로는 대화·할 일 정리까지 돼요.',
-  code: '좋아요. 코드를 고치려면\n**Claude Code**와 **GitHub** 연결이 필요해요.\n차근차근 같이 해 봐요.',
-  hub: '연결하고 싶은 것을 **골라** 주세요.\n건너뛰어도 괜찮아요.\n나중에 언제든 다시 할 수 있어요.',
-  aiPickKey: '어느 **AI**와 이야기할지 골라 주세요.\n처음이라면 **무료**로 시작하는 **Gemini**를 권해요.',
-  aiPickCli: '이 맥에 설치된 **Claude Code**나 **Codex** 중\n**하나**를 골라 주세요.\n키는 필요 없어요.',
 };
 
 // 고른 캐릭터의 설치 화면 말(character-say.js). 없는 키는 시사 말
@@ -211,17 +166,12 @@ export function slotOk(id, value) {
   return slotCheck(id, value).ok;
 }
 
-export function connectSteps(id, agent) {
+export function connectSteps(id) {
   if (id === 'gcal') return GCAL;
   if (id === 'outlook') return OUTLOOK;
-  if (id === 'jira') return jiraSteps(agent);
   if (id === 'slack') return SLACK_STEPS;
-  if (id === 'github') return githubSteps(agent);
   return [];
 }
-
-const TERMINAL = terminalRow();
-const PASTE_ENTER = (what) => ({ keys: [MOD, 'V'], text: `${what}을 붙이고 **↩** 를 누릅니다.` });
 
 const GCAL = [
   {
@@ -295,67 +245,6 @@ const OUTLOOK = [
   },
 ];
 
-const JIRA_URL = 'https://mcp.atlassian.com/v2/mcp';
-
-// Jira는 Claude Code 에 등록된 연결만 시사가 읽는다(Codex 는 안내하지 않는다).
-function jiraSteps(agent) {
-  if (agent !== 'claude') {
-    return [{
-      id: 'jira-need-claude',
-      gate: 'blocked',
-      title: '먼저 Claude Code를 연결하세요',
-      identity: 'Jira는 **Claude Code**가 있어야 연결됩니다.',
-      rows: [
-        '아래 **목록**을 눌러 돌아갑니다.',
-        '**Claude Code** 를 먼저 연결합니다.',
-        '연결되면 다시 **Jira** 를 누릅니다.',
-      ],
-    }];
-  }
-  return [
-    {
-      id: 'jira-add',
-      title: 'Claude Code에 Jira 주소를 등록하세요',
-      identity: 'Atlassian 공식 주소입니다. 쿠키나 토큰을 복사하지 않고, **브라우저 로그인**만 합니다.',
-      rows: [TERMINAL, PASTE_ENTER('아래 명령')],
-      codeLabel: '터미널에 붙여 넣기',
-      code: `claude mcp add --scope user --transport http atlassian ${JIRA_URL}`,
-    },
-    {
-      id: 'jira-login',
-      title: 'Jira에 로그인하세요',
-      identity: '로그인은 한 번만 하면 됩니다.',
-      rows: [
-        { keys: [MOD, 'V'], text: '아래 **claude** 를 터미널에 붙이고 **↩** 를 누릅니다.' },
-        'claude 안에서 **/mcp** 를 치고 **↩** 를 누릅니다.',
-        '목록에서 **atlassian** 을 고르고 **↩** 를 누른 뒤, **Authenticate** (로그인)를 고릅니다.',
-        '브라우저가 열리면 **Atlassian 계정**으로 로그인하고, 내 사이트를 **허용**합니다.',
-        '성공했다는 글이 나오면 **/exit** 를 치고 **↩** 를 눌러 나옵니다.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'claude',
-      details: [
-        '로그인 화면이 안 열리면 회사 관리자가 Atlassian의 Rovo MCP를 막은 것입니다. 관리자에게 허용을 부탁하거나, 이 기능은 건너뛰세요.',
-        '여러 사이트가 있으면 읽게 할 사이트만 허용하세요.',
-      ],
-    },
-    {
-      id: 'jira-check',
-      title: '연결되었는지 확인하세요',
-      identity: '터미널에 목록이 나온 뒤, **atlassian** 이 들어 있는 줄만 봅니다.',
-      rows: [
-        PASTE_ENTER('아래 명령'),
-        '**Checking MCP server health…** 가 끝날 때까지 기다립니다. 그 전에 나오는 영어 경고는 무시합니다.',
-        '**atlassian** 줄 끝에 **✔ Connected** 가 있으면 연결된 것입니다. **다음**을 누릅니다.',
-        '**Needs authentication** 이 있으면 로그인이 안 끝난 것입니다. **이전**으로 돌아가 다시 로그인합니다.',
-        '**✘ Failed to connect** 가 있으면 연결이 안 된 것입니다. 인터넷과 회사 허용 여부를 확인합니다.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'claude mcp list',
-    },
-  ];
-}
-
 // Slack: 읽기 전용 앱(봇 없음, ops/slack-readonly-manifest.yaml)의 사용자 토큰(xoxp-)을 붙인다 → connectors.slack { mode: "api", userToken }.
 // 어떤 뇌든 되고, 데몬이 5분마다 내 DM·멘션만 모아 두어 지시사항 카드·할 일로 쓴다(agent/src/ingest/slack-api.ts — 쓰기 메서드는 막힘).
 // Claude Code 의 Slack 공식 MCP 로그인(mode: mcp)은 docs/connect/slack.md 의 (b)로 따로 안내한다
@@ -408,76 +297,3 @@ const SLACK_STEPS = [
     slotNote: '이 맥의 설정 파일(~/.cy-agent/config.json)에만 저장합니다. 읽기 권한만 있는 토큰이고 서버로 보내지 않습니다.',
   },
 ];
-
-// 시사 데몬은 코드를 고친 뒤 gh(GitHub 공식 명령 도구)로 변경 요청(PR)을 만들고, 승인하면 머지한다.
-// (agent/src/fixer.ts 의 gh pr create · gh pr merge, reactions.ts 의 gh pr view)
-// gh 로그인이 필요한지는 코드로 직접 확인되지 않았다. 그래서 '로그인해 두면 쓸 수 있다'까지만 안내한다.
-function githubSteps(agent) {
-  if (agent !== 'claude' && agent !== 'codex') {
-    return [{
-      id: 'github-need-agent',
-      gate: 'blocked',
-      title: '먼저 Claude Code나 Codex를 연결하세요',
-      identity: 'GitHub는 **Claude Code**나 **Codex**를 먼저 연결해야 합니다.',
-      rows: [
-        '아래 **목록**을 눌러 돌아갑니다.',
-        '**Claude Code** 나 **Codex** 를 먼저 연결합니다.',
-        '연결되면 다시 **GitHub** 를 누릅니다.',
-      ],
-    }];
-  }
-  return [
-    {
-      id: 'github-install',
-      title: 'GitHub 도구(gh)를 설치하세요',
-      identity: '고친 코드를 GitHub에 올릴 때 이 프로그램을 씁니다.',
-      rows: [
-        PASTE_ENTER('터미널에 아래 명령'),
-        WIN ? '**이미 설치되어 있다**는 글이 나오면 바로 **다음**을 누릅니다.' : '글자 한 줄로 **gh 의 위치**가 나오면 이미 설치된 것입니다. 바로 **다음**을 누릅니다.',
-        '설치가 시작되면 끝날 때까지 기다립니다. 입력 줄이 다시 나오면 끝난 것입니다.',
-      ],
-      details: [
-        WIN ? '**winget** 을 찾을 수 없다고 나오면 크롬에서 아래 **설치 페이지**를 열어 **Windows** 설치 파일(.msi)을 받고, 열어서 설치하세요.' : '**command not found: brew** 가 나오면 Homebrew(맥용 프로그램 설치 도구)가 없는 것입니다. 크롬에서 아래 **설치 페이지**를 열어 **macOS** 설치 파일을 받고, 열어서 설치하세요.',
-        '설치 페이지는 GitHub 공식 주소입니다. 설치한 뒤에는 터미널을 한 번 닫고 다시 여세요.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: WIN ? 'winget install --id GitHub.cli -e' : 'command -v gh || brew install gh',
-      configLabel: WIN ? 'winget 이 없을 때 · 크롬 주소창에 붙여 넣기' : 'Homebrew가 없을 때 · 크롬 주소창에 붙여 넣기',
-      config: 'https://cli.github.com',
-    },
-    {
-      id: 'github-login',
-      title: 'GitHub에 로그인하세요',
-      identity: '비밀번호나 토큰을 복사하지 않고, **브라우저 로그인**만 합니다. 한 번만 하면 됩니다.',
-      rows: [
-        PASTE_ENTER('아래 명령'),
-        '질문이 나오면 **↑ ↓** 로 고르고 **↩** 를 누릅니다. **GitHub.com** 을 고릅니다.',
-        '**HTTPS** 를 고릅니다.',
-        '**Authenticate Git with your GitHub credentials?** 가 나오면 **Y** 를 치고 **↩** 를 누릅니다.',
-        '**Login with a web browser** 를 고릅니다.',
-        { keys: [MOD, 'C'], text: '화면에 **8자리 코드**가 나옵니다. 이 키로 복사하고 **↩** 를 누르면 브라우저가 열립니다.' },
-        { keys: [MOD, 'V'], text: '브라우저의 칸에 코드를 붙이고, GitHub 계정으로 로그인한 뒤 **Authorize** (허용)를 누릅니다.' },
-      ],
-      details: [
-        '브라우저가 안 열리면 터미널에 나온 주소를 복사해 크롬에 붙이세요.',
-        '회사 GitHub 조직의 코드를 쓴다면, 브라우저에서 그 조직을 **승인**하라고 할 수 있습니다. 안내대로 하고, 안 되면 조직 관리자에게 물어보세요.',
-        '**Authenticate Git** 질문에 Y 를 고르면, 고친 코드를 GitHub에 올릴 때 같은 로그인을 쓰게 해 줍니다.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'gh auth login',
-    },
-    {
-      id: 'github-check',
-      title: '연결되었는지 확인하세요',
-      identity: '터미널에 나온 글에서 **Logged in** 이 있는지만 봅니다.',
-      rows: [
-        PASTE_ENTER('아래 명령'),
-        '**Logged in to github.com** 이 있으면 연결된 것입니다. **다음**을 누릅니다.',
-        '**You are not logged into any GitHub hosts** 가 나오면 로그인이 안 끝난 것입니다. **이전**으로 돌아가 다시 로그인합니다.',
-        '**command not found: gh** 가 나오면 설치가 안 된 것입니다. 처음 단계부터 다시 합니다.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'gh auth status',
-    },
-  ];
-}

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  AI_PROVIDERS, CLI_PROVIDERS, HUB, PLANS, SISA_SAY, planById,
+  AI_PROVIDERS, HUB, SISA_SAY,
   connectSteps, cannedReply, slotCheck, slotOk, DEFAULT_PERSONA, SLACK_MANIFEST,
 } from '../src/ai-onboard.js';
 import { checkLlm } from '../src/llm-check.js';
@@ -27,10 +27,6 @@ test('AI 공급자는 넷이고, 슬랙은 쿠키를 쓰지 않는다', () => {
   assert.equal(SLACK_MANIFEST, `${yaml.split('\n').filter((l) => !l.startsWith('#')).join('\n').trim()}\n`);
   assert.doesNotMatch(SLACK_MANIFEST, /chat:write|:write\b/, '쓰기 스코프 없음');
   assert.ok(HUB.find((h) => h.id === 'slack'));
-  for (const agent of ['claude', 'codex', null]) {
-    assert.equal(/xoxc/.test(all(connectSteps('jira', agent))), false);
-    assert.equal(/xoxc|쿠키 값|ghp_|github_pat_/.test(all(connectSteps('github', agent))), false);
-  }
 });
 
 test('Gemini 안내는 무료 키 주소와 만들기 버튼을 알려 준다', () => {
@@ -68,72 +64,10 @@ test('캘린더 주소는 모양이 맞아야 통과한다', () => {
   assert.equal(slotCheck('whatever', 'x').ok, true);
 });
 
-test('Jira는 Claude Code 전용이다', () => {
-  const claude = connectSteps('jira', 'claude');
-  assert.equal(claude.length, 3);
-  assert.match(all(claude), /claude mcp add --scope user --transport http atlassian https:\/\/mcp\.atlassian\.com\/v2\/mcp/);
-  assert.match(all(claude), /Connected/);
-  assert.equal(/codex|Not logged in/i.test(all(claude)), false);
-  const codex = connectSteps('jira', 'codex');
-  assert.equal(codex.length, 1);
-  assert.equal(codex[0].gate, 'blocked');
-  assert.match(codex[0].title, /Claude Code/);
-  assert.equal(/codex mcp/.test(all(codex)), false);
-  const jira = HUB.find((h) => h.id === 'jira');
-  assert.equal(jira.needsAgent, 'claude');
-  assert.equal(/Codex/.test(jira.blurb), false);
-});
-
-test('코딩 도구가 없으면 Jira 안내는 막힌다', () => {
-  const steps = connectSteps('jira', null);
-  assert.equal(steps.length, 1);
-  assert.equal(steps[0].gate, 'blocked');
-});
-
-test('플랜은 네 가지이고 정해진 모양이다', () => {
-  assert.deepEqual(PLANS.map((p) => p.id), ['calendar', 'chat', 'tools', 'code']);
-  assert.deepEqual(PLANS.map((p) => p.ai), ['none', 'key', 'cli', 'cli']);
-  for (const p of PLANS) {
-    for (const k of ['title', 'need', 'blurb']) assert.equal(typeof p[k], 'string');
-    assert.ok(p.title && p.need && p.blurb);
-    assert.ok(Array.isArray(p.hub));
-  }
-  assert.equal(planById('chat').title, '채팅 + 일정 관리');
-  assert.equal(planById('nope'), null);
-  assert.equal(planById(undefined), null);
-});
-
-test('HUB 의 GitHub 항목은 에이전트가 먼저 필요하다', () => {
-  const gh = HUB.find((h) => h.id === 'github');
-  assert.equal(gh.kind, 'done');
-  assert.equal(gh.needsAgent, true);
-});
-
-test('GitHub 안내는 gh 설치·로그인·확인 세 단계다', () => {
-  for (const agent of ['claude', 'codex']) {
-    const steps = connectSteps('github', agent);
-    assert.equal(steps.length, 3);
-    assert.equal(steps.some((s) => s.gate === 'blocked'), false);
-    const text = all(steps);
-    assert.match(text, /brew install gh/);
-    assert.match(text, /https:\/\/cli\.github\.com/);
-    assert.match(text, /gh auth login/);
-    assert.match(text, /gh auth status/);
-    assert.match(text, /⌘/);
-    assert.doesNotMatch(text, /명령을 글자로|스페이스/);
-  }
-  for (const agent of ['none', null, undefined]) {
-    const steps = connectSteps('github', agent);
-    assert.equal(steps.length, 1);
-    assert.equal(steps[0].gate, 'blocked');
-  }
-});
-
-test('시사 말풍선은 모든 자리에 있다', () => {
-  for (const k of ['welcome', 'calendar', 'chat', 'tools', 'code', 'hub', 'aiPickKey', 'aiPickCli']) {
+test('시사 말풍선은 설치 화면이 읽는 자리에 모두 있다', () => {
+  assert.deepEqual(Object.keys(SISA_SAY), ['name', 'brain', 'extras', 'done']);
+  for (const k of Object.keys(SISA_SAY)) {
     assert.equal(typeof SISA_SAY[k], 'string', k);
-    assert.ok(SISA_SAY[k].length > 0, k);
-    assert.match(SISA_SAY[k], /요[.!]?$/, k);
     assert.match(SISA_SAY[k], /\n/, `${k}: 문장마다 줄을 바꾼다`);
     assert.match(SISA_SAY[k], /\*\*[^*]+\*\*/, `${k}: 핵심은 굵게`);
   }

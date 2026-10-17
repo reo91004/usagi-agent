@@ -38,13 +38,6 @@ export function restorePhase(saved) {
   return isSetupPhase(saved) ? saved : 'name';
 }
 
-// 코딩 도구(claude|codex): 연결을 마쳤거나 시사의 AI 로 쓰는 쪽. 없으면 null
-export function agentFrom({ done = {}, connected = [] } = {}) {
-  if (done.claude || connected.includes('claudecode')) return 'claude';
-  if (done.codex || connected.includes('codexcli')) return 'codex';
-  return null;
-}
-
 // 끝 화면 요약: 무엇이 됐고 무엇을 나중에 할 수 있나. 캘린더·Slack 은 데몬이 본 연결 상태(대시보드 connectors — 개요 카드와 같은 값),
 // 미리알림은 GET /apple/status(도우미가 없는 실행이면 줄 없음), 실험 서버·연구 노트는 연구 카드(research — 설정 파일에서 켠 것만)
 export function setupSummary({ brain = {}, repos = [], name = '', readSessions = false, connectors = [], apple = null, research = null } = {}) {

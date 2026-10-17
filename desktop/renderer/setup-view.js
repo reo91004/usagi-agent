@@ -1,7 +1,7 @@
 // 설치: 한 화면에 할 일 한 줄씩. 토큰은 이 화면 메모리에만 있고 저장하지 않는다.
 import { who, whoId } from './who.js';
 import { characterAssets } from '../src/character.js';
-import { AGENTS, FEATURES, agentSteps, buildWalk, featureTitle } from '../src/setup-flow.js';
+import { agentSteps } from '../src/setup-flow.js';
 import { sayFor, providerById, connectSteps, slotCheck, BRAIN_CHOICES, EXTRAS, SESSIONS_CONSENT, hubItem } from '../src/ai-onboard.js';
 import { setupSummary, okFolder } from '../src/setup-plan.js';
 import { HUB_CAP, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
@@ -184,15 +184,12 @@ function screen({ kicker, title, identity, rows, rowCtx, extra, nav, say }) {
     nav);
 }
 
-function walkNav({ phase, cursor, total, onList, onPrev, onBack, onSkip, onNext, nextLabel, nextDisabled }) {
+function walkNav({ cursor, onList, onPrev, onBack, onNext, nextLabel, nextDisabled }) {
   const goBack = () => { if (cursor > 0) onPrev(); else onBack(); };
   return h('div.setup-bar', null,
-    phase === 'walk' || phase === 'connect' ? h('button.ghost', { type: 'button', text: '목록', onclick: onList }) : null,
+    h('button.ghost', { type: 'button', text: '목록', onclick: onList }),
     h('button.ghost', { type: 'button', text: '이전', onclick: goBack }),
     h('span.spacer'),
-    phase === 'walk' && cursor < total - 1
-      ? h('button.ghost', { type: 'button', text: '이 기능은 연결 안 할래요', onclick: onSkip })
-      : null,
     h('button.primary', { type: 'button', text: nextLabel, disabled: !!nextDisabled, onclick: onNext }));
 }
 
@@ -205,72 +202,19 @@ function loginStatus(step, login) {
   return h('p.setup-gate', null, ...richNodes('아직 **로그인 전**입니다. 터미널에서 로그인이 끝나면 여기에 **완료**가 표시되고 다음이 켜집니다.'));
 }
 
-function agentView({ agent, onAgent, onContinue }) {
-  return screen({
-    title: '코딩 에이전트를 연결할까요?',
-    identity: '하나를 고르면, 그다음부터 그 방법으로 연결합니다.',
-    extra: h('div.setup-picks', null, AGENTS.map((a) => h('button', {
-      type: 'button',
-      class: `setup-pick${agent === a.id ? ' on' : ''}`,
-      'aria-pressed': agent === a.id ? 'true' : 'false',
-      onclick: () => onAgent(a.id),
-    },
-    h('span.setup-pick-title', { text: a.title }),
-    h('span.setup-blurb', { text: a.blurb }),
-    h('span.setup-need', { text: a.need })))),
-    nav: h('div.setup-bar', null,
-      h('span.spacer'),
-      h('button.primary', { type: 'button', text: '다음', disabled: !agent, onclick: onContinue })),
-  });
-}
-
-function pickView({ picked, agent, onToggle, onStart, onDone }) {
-  const set = new Set(picked);
-  const who = AGENTS.find((a) => a.id === agent);
-  return screen({
-    title: '어떤 기능을 연결할까요?',
-    identity: `${who ? who.title : '고른 방법'}으로, 고른 것만 하나씩 안내합니다.`,
-    extra: h('div.setup-picks', null, FEATURES.map((f) => h('button', {
-      type: 'button',
-      class: `setup-pick${set.has(f.id) ? ' on' : ''}`,
-      'aria-pressed': set.has(f.id) ? 'true' : 'false',
-      onclick: () => onToggle(f.id),
-    },
-    h('span.setup-pick-title', { text: f.title }),
-    h('span.setup-blurb', { text: f.blurb }),
-    h('span.setup-need', { text: f.need })))),
-    nav: h('div.setup-bar', null,
-      h('button.ghost', { type: 'button', text: '개요로', onclick: onDone }),
-      h('span.spacer'),
-      h('button.primary', {
-        type: 'button',
-        text: set.size ? '첫 번째 안내' : '나중에 할게요',
-        onclick: set.size ? onStart : onDone,
-      })),
-  });
-}
-
-function oneView(step, { phase, cursor, total, agent, login, slotError, onChoose, onCopy, onOpen, onList, onPrev, onBack, onSkip, onNext, nextLabel }) {
+function oneView(step, { cursor, total, login, slotError, onCopy, onOpen, onList, onPrev, onBack, onNext, nextLabel }) {
   rememberSlots(step);
   const { identity, rows } = identityAndRows(step);
-  const choices = (step.choices ?? []).map((c) => h('button', {
-    type: 'button',
-    class: `setup-pick${step.choice === c.id ? ' on' : ''}`,
-    onclick: () => onChoose(step.choiceKey, c.id),
-  }, h('span.setup-pick-title', { text: c.title }), (c.blurb || c.say) ? h('span.setup-blurb', { text: c.blurb || c.say }) : null));
   const blocks = [];
   if (step.code) blocks.push(codeBlock(step.codeLabel, filled(step.code, step), onCopy));
   if (step.config) blocks.push(codeBlock(step.configLabel || 'config.json 에 넣기', step.config, onCopy));
   return screen({
-    kicker: phase === 'walk'
-      ? `${featureTitle(step.feature)}  ·  ${cursor + 1} / ${total}`
-      : (phase === 'connect' || agent ? `${cursor + 1} / ${total}` : ''),
+    kicker: `${cursor + 1} / ${total}`,
     title: step.title,
     identity,
     rows,
     rowCtx: step.url ? { url: step.url, onOpen, onCopy } : undefined,
     extra: h('div', null,
-      choices.length ? h('div.setup-picks', null, choices) : null,
       step.need ? h('p.setup-needline', { text: step.need }) : null,
       loginStatus(step, login),
       ...blocks,
@@ -280,7 +224,7 @@ function oneView(step, { phase, cursor, total, agent, login, slotError, onChoose
         h('summary', { text: '막히면' }),
         h('ul', null, step.details.map((d) => h('li', null, ...richNodes(d))))) : null),
     nav: walkNav({
-      phase, cursor, total, onList, onPrev, onBack, onSkip, onNext, nextLabel,
+      cursor, onList, onPrev, onBack, onNext, nextLabel,
       nextDisabled: (step.gate === 'login' && !login?.loggedIn)
         || step.gate === 'blocked'
         || (!!step.slotNote && !slotState(step).ok)
@@ -524,8 +468,8 @@ export function clearSlot(id) {
 export function renderSetup(root, state) {
   redraw = () => renderSetup(root, state);
   const {
-    phase, agent, picked, cursor, choices, link, keyStatus, done, connectAgent, connected,
-    onAgent, onToggle, onContinue, onChoose, onCopy, onList, onPrev, onBack, onSkip, onNext, onStart, onDone,
+    phase, cursor, link, keyStatus, done, connected,
+    onCopy, onList, onPrev, onBack, onNext,
     onCheckKey, onKeyNext, onOpen, login,
     name, detected, current, repos, brain, coder, readSessions, connectors, research,
     onName, onPickBrain, onSkipBrain, onOpenExtra, onDisconnectExtra, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onSkipSetup, onFinishExtras, onTour, onClose,
@@ -560,20 +504,7 @@ export function renderSetup(root, state) {
     return;
   }
 
-  if (phase === 'agent') {
-    root.replaceChildren(agentView({ agent, onAgent, onContinue }));
-    return;
-  }
-  if (phase === 'pick') {
-    root.replaceChildren(pickView({ picked, agent, onToggle, onStart, onDone }));
-    return;
-  }
-
-  const steps = phase === 'agentWalk'
-    ? agentSteps(agent)
-    : phase === 'connect'
-      ? ((link === 'claude' || link === 'codex' || link === 'agy') ? agentSteps(link) : connectSteps(link, connectAgent))
-      : buildWalk(picked, choices, agent);
+  const steps = (link === 'claude' || link === 'codex' || link === 'agy') ? agentSteps(link) : connectSteps(link);
   const step = steps[cursor];
   if (!step) {
     root.replaceChildren(screen({
@@ -585,21 +516,17 @@ export function renderSetup(root, state) {
   }
   const last = cursor >= steps.length - 1;
   root.replaceChildren(oneView(step, {
-    phase,
     cursor,
     total: steps.length,
-    agent,
-    onChoose,
     onCopy,
     onOpen,
     onList,
     onPrev,
     onBack,
-    onSkip,
     login,
     slotError: state.slotError,
     onNext,
-    nextLabel: phase === 'agentWalk' ? (last ? '기능 고르기' : '다음') : phase === 'connect' ? (last ? '완료' : '다음') : (last ? '개요로' : '다음'),
+    nextLabel: last ? '완료' : '다음',
   }));
   if (focusSlot) {
     const el = root.querySelector(`[data-slot="${focusSlot}"]`);
