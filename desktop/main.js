@@ -12,6 +12,7 @@ import { cleanMergeQuestion, normalizeOpen } from './src/bubbles.js';
 import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
 import { defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
+import { showOnCurrentSpace } from './src/spaces.js';
 import { normalizeSection } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
 import { okRuleId, sanitizeRulePatch } from './src/todo-rules.js';
@@ -619,9 +620,7 @@ function showPanel(section, id) {
     if (panelReady) sendPanel('section', id ? { section, id } : { section });
     else { panelSection = section; panelFocusId = id ?? null; }
   }
-  if (process.platform === 'darwin') app.focus({ steal: true });
-  panel.show();
-  panel.focus();
+  showOnCurrentSpace(panel, app); // 다른 데스크탑에 열려 있던 패널도 지금 데스크탑으로(#88)
 }
 
 // 세션 창 "원래 화면 열기": 패널을 (없으면 만들어) 앞으로 + 그 대화·할 일·제안으로
@@ -703,9 +702,7 @@ function showSession(runId, toolUseId) {
     if (sessionReady) sendSession('select', pick);
     else sessionPick = pick;
   }
-  if (process.platform === 'darwin') app.focus({ steal: true });
-  sessionWin.show();
-  sessionWin.focus();
+  showOnCurrentSpace(sessionWin, app);
 }
 
 // 캐릭터 클릭: 공부 중(돌고 있는 세션)이면 세션 창, 아니면 대시보드 패널
