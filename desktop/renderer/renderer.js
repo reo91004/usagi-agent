@@ -103,7 +103,28 @@ function fitStill() {
     else if (el.complete && el.naturalWidth) fitEl(el, el.naturalWidth, el.naturalHeight, true);
   }
 }
-for (const el of [img, closedImg]) el.addEventListener('load', () => { if (charA.custom) fitEl(el, el.naturalWidth, el.naturalHeight, true); });
+// 움직이는 gif·webp 정지 그림은 첫 장면 한 장으로 굳힌다: 가만히 있어도 프레임마다 투명 창을 다시 그리지 않게.
+// 굳히지 못하면(캔버스가 막힘 등) 원래 그림 그대로 둔다
+const ANIMATED_IMG = /\.(gif|webp)$/i;
+async function freezeAnimated(el, src) {
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.src = src;
+  try {
+    await im.decode();
+    const c = document.createElement('canvas');
+    c.width = im.naturalWidth; c.height = im.naturalHeight;
+    c.getContext('2d').drawImage(im, 0, 0);
+    const still = c.toDataURL('image/png');
+    if (el.getAttribute('src') === src) el.src = still;
+  } catch { /* 못 굳히면 그대로 */ }
+}
+for (const el of [img, closedImg]) el.addEventListener('load', () => {
+  if (!charA.custom) return;
+  fitEl(el, el.naturalWidth, el.naturalHeight, true);
+  const src = el.getAttribute('src');
+  if (ANIMATED_IMG.test(src ?? '')) freezeAnimated(el, src);
+});
 
 // ---- 활동: 데몬이 스스로 세션을 돌리면 공부 영상, 일정 알림(기본 10분 전) 땐 춤 영상(우선순위 춤 > 공부 > 정지) ----
 // 사용자 캐릭터의 gif·png 클립은 <img id="clip-img"> 로(<video> 는 gif 를 못 튼다). 그 칸이 비면(집중 등) 정지 그림 그대로
@@ -116,6 +137,9 @@ const setPoster = (v, p) => { if (p) v.poster = p; else v.removeAttribute('poste
 // 공부 영상(집중·데몬 작업 중 — 수십 분 이어진다)은 몇 바퀴 돌고 마지막 장면에 멈춘다.
 // 투명 VP9 는 하드웨어 디코딩이 안 돼 계속 돌리면 가만히 있어도 CPU 18%. 춤은 DANCE_MAX_MS 로 끝나니 그대로 반복
 const STUDY_LOOPS = 3;
+// gif·webp 클립은 끝을 알 수 없어 시간으로 끊는다: 이만큼 지나면 정지 그림(eyes_open)으로
+const IMG_CLIP_MAX_MS = 15_000;
+let imgClipCap = null;
 let studyLoops = 0;
 videos.studying.addEventListener('ended', () => { if (shownView === 'studying' && ++studyLoops < STUDY_LOOPS) videos.studying.play().catch(() => {}); });
 for (const [k, v] of Object.entries(videos)) {
@@ -155,6 +179,13 @@ function startVideo(k) {
   if (!c) return showVideo(null);
   if (c.kind === 'img') {
     clipImg.classList.toggle('scene', !!c.scene);
+    clearTimeout(imgClipCap);
+    imgClipCap = setTimeout(() => { // 반복하는 클립을 계속 돌리지 않는다(그림을 비워 디코드·그리기도 멈춘다)
+      if (shownView !== k) return;
+      showVideo(null);
+      clipImg.removeAttribute('src');
+      delete clipImg.dataset.clip;
+    }, IMG_CLIP_MAX_MS);
     if (clipImg.dataset.clip !== c.src) { clipImg.dataset.clip = c.src; clipImg.src = c.src; } // 다 읽히면(load) 보인다
     else if (clipImg.complete && clipImg.naturalWidth) { fitEl(clipImg, clipImg.naturalWidth, clipImg.naturalHeight, true); showVideo(k); }
     return;
@@ -177,6 +208,7 @@ function applyActivity() {
   wrap.dataset.view = view;
   wrap.classList.remove('blink');
   clearTimeout(danceCap);
+  clearTimeout(imgClipCap);
   if (view === 'idle') return showVideo(null);
   if (view === 'dancing') danceCap = setTimeout(() => dispatchActivity({ type: 'danceEnd' }), DANCE_MAX_MS);
   if (sameView) showVideo(null); // 춤 종류만 바뀜(예: 칩 춤 → 데몬 응원) — 새 영상 첫 장면이 나올 때 다시 켠다

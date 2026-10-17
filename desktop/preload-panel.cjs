@@ -143,19 +143,19 @@ contextBridge.exposeInMainWorld('cy', {
     addGuideline: (g) => ipcRenderer.invoke('guidelines-add', g && typeof g === 'object' ? JSON.parse(JSON.stringify(g)) : null),
     editGuideline: (id, patch) => ipcRenderer.invoke('guidelines-edit', String(id), patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
     deleteGuideline: (id) => ipcRenderer.invoke('guidelines-delete', String(id)),
-    getCaps: () => ipcRenderer.invoke('settings-caps'), // { claude, codex } — 이 컴퓨터에 Claude Code·Codex 가 있나
+    getCaps: () => ipcRenderer.invoke('caps-get'), // { claude, codex } — 이 컴퓨터에 Claude Code·Codex 가 있나
     // [연결 해제]: 앱의 AI 저장(publicView, 키 없음) · AI 끊기(id) · 커넥터 끊기(cap) · 안내 명령 복사
-    getSisa: () => ipcRenderer.invoke('settings-sisa'),
-    disconnectBrain: (id) => ipcRenderer.invoke('settings-brain-disconnect', String(id || '')),
-    disconnectConnector: (cap) => ipcRenderer.invoke('settings-connector-disconnect', String(cap || '')),
+    getSisa: () => ipcRenderer.invoke('sisa-get'),
+    disconnectBrain: (id) => ipcRenderer.invoke('sisa-disconnect', String(id || '')),
+    disconnectConnector: (cap) => ipcRenderer.invoke('connector-disconnect', String(cap || '')),
     // 캘린더 여러 개: 목록 { ok, items: [{ id, kind, title, label }] }(주소는 없음) · 하나 빼기(id) → { ok, items, note?, error? }
-    getCalendars: () => ipcRenderer.invoke('settings-calendars'),
-    removeCalendar: (id) => ipcRenderer.invoke('settings-calendar-remove', String(id || '')),
-    copyText: (text) => ipcRenderer.invoke('settings-copy', String(text || '')),
+    getCalendars: () => ipcRenderer.invoke('calendar-list'),
+    removeCalendar: (id) => ipcRenderer.invoke('calendar-remove', String(id || '')),
+    copyText: (text) => ipcRenderer.invoke('copy-text', String(text || '')),
     openDoc: (doc) => ipcRenderer.send('settings-open-doc', String(doc)), // docs/connect/*.md — 설치 화면에 없는 연결(메일·이슈)의 안내를 GitHub 에서
     getAppPrefs: () => ipcRenderer.invoke('settings-app-get'), // { version, openAtLogin: { available, on, hint }, updateCheck, showInDock(맥) }
     setAppPrefs: (patch) => ipcRenderer.invoke('settings-app-set', patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
-    startTour: () => ipcRenderer.send('settings-tour'), // 사용법 다시 보기(캐릭터 말풍선)
+    startTour: () => ipcRenderer.send('start-tour'), // 사용법 다시 보기(캐릭터 말풍선)
     // 캐릭터: 목록(GET /characters) · 만들기 { name, from?, lines?, frame? } · 고치기(id, { name?, lines?, frame? }) · 기본값으로(id) · 지우기(id)
     // · 그림 올리기(id, 칸, 이름, 종류, 바이트) · 그림 빼기(id, 칸) → { ok, status, data }
     getCharacters: () => ipcRenderer.invoke('characters-list'),

@@ -205,36 +205,9 @@ test('모델 탭: 연결된 AI 마다 [연결 해제] → 확인 → sisaDisconn
   assert.match(section.text, /Gemini 연결을 끊었어요\. 이제 「AI 없이 쓰기」예요\./);
 });
 
-test('설정 창 IPC: 연결 해제는 이 창에서만, 아는 id·cap 만 main 으로', async () => {
-  const handlers = {};
-  const listeners = {};
-  const fakeWin = { webContents: {}, isDestroyed: () => false, loadFile() {}, once() {}, on() {}, show() {}, focus() {} };
-  fakeWin.webContents.setWindowOpenHandler = () => {};
-  fakeWin.webContents.on = () => {};
-  function BW() { return fakeWin; }
-  const calls = [];
-  setupSettings({
-    fromPanel: (e) => e.sender === fakeWin.webContents,
-    ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } },
-    shell: {}, request: async () => ({ ok: true }), preload: 'p', html: 'h',
-    sisa: () => ({ connected: ['gemini'], provider: 'gemini' }),
-    disconnectBrain: async (id) => { calls.push(['brain', id]); return { ok: true }; },
-    disconnectConnector: async (cap) => { calls.push(['conn', cap]); return { ok: true, note: '바로 적용돼요.' }; },
-    copyText: (t) => { calls.push(['copy', t]); return { ok: true }; },
-  });
-  const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
-  const bad = { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } };
-  assert.deepEqual(await handlers['settings-sisa'](mine), { connected: ['gemini'], provider: 'gemini' });
-  assert.deepEqual(await handlers['settings-sisa'](other), bad);
-  assert.deepEqual(await handlers['settings-brain-disconnect'](mine, 'gemini'), { ok: true });
-  assert.deepEqual(await handlers['settings-brain-disconnect'](mine, 'local'), bad);
-  assert.deepEqual(await handlers['settings-brain-disconnect'](other, 'gemini'), bad);
-  assert.deepEqual(await handlers['settings-connector-disconnect'](mine, 'calendar'), { ok: true, note: '바로 적용돼요.' });
-  assert.deepEqual(await handlers['settings-connector-disconnect'](mine, 'github'), bad);
-  assert.deepEqual(await handlers['settings-copy'](mine, 'claude mcp remove slack'), { ok: true });
-  assert.deepEqual(await handlers['settings-copy'](mine, 'x'.repeat(50000)), { ok: true }, '글자 수 제한 없음');
-  assert.deepEqual(await handlers['settings-copy'](mine, ''), bad);
-  assert.deepEqual(calls, [['brain', 'gemini'], ['conn', 'calendar'], ['copy', 'claude mcp remove slack'], ['copy', 'x'.repeat(50000)]]);
+test('연결 해제·복사 IPC 는 패널에서만(main 의 공용 채널)', () => {
+  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+  for (const ch of ['sisa-get', 'sisa-disconnect', 'connector-disconnect', 'copy-text']) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', (\\(e\\) => \\(|\\(e, \\w+\\) => \\(|\\(e, \\w+\\) => \\{\\s*if \\()!?fromPanel\\(e\\)`));
 });
 
 test('화면 연결: 패널·설정 창·마법사·프리로드·main 이 연결 해제를 부른다', () => {
@@ -250,7 +223,7 @@ test('화면 연결: 패널·설정 창·마법사·프리로드·main 이 연�
   assert.match(read('../renderer/panel.html'), /id="brains"/);
   assert.match(read('../preload-panel.cjs'), /sisaDisconnect: .*'sisa-disconnect'/);
   assert.match(read('../preload-panel.cjs'), /connectorDisconnect: .*'connector-disconnect'/);
-  assert.match(read('../preload-panel.cjs'), /disconnectConnector: .*'settings-connector-disconnect'/);
+  assert.match(read('../preload-panel.cjs'), /disconnectConnector: .*'connector-disconnect'/);
   const main = read('../main.js');
   assert.match(main, /ipcMain\.handle\('sisa-disconnect'/);
   assert.match(main, /post\('\/connectors\/disconnect', \{ cap \}\)/);
