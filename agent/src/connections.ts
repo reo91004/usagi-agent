@@ -9,7 +9,8 @@
 // net·gh·local 은 GET 할 때마다 새로, claude 는 비싸서 POST /connections/check 로만(결과는 기억해 둔다).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { claudeVersion, olderThan, query as sdkQuery, SDK_CLAUDE_VERSION } from "./claude-sdk.ts";
 import { HOME_DIR, type Config } from "./config.ts";
 import { classify, connectorServerUrls } from "./mcp-health.ts";
 import { argv as ghArgv, runGh } from "./gh.ts";
@@ -67,7 +68,7 @@ export function redact(s: unknown, max = 240): string {
 
 // ── 확인 결과(원재료) ────────────────────────────────────────────
 export type HttpProbe = { state: "ok" | "vpn" | "down" | "timeout"; status?: number; latencyMs: number; error?: string; at: string };
-export type SdkProbe = { account?: { email?: string; organization?: string; provider?: string; tokenSource?: string }; servers: { name: string; status: string; error?: string }[]; error?: string; latencyMs: number; at: string };
+export type SdkProbe = { account?: { email?: string; organization?: string; provider?: string; tokenSource?: string }; servers: { name: string; status: string; error?: string }[]; version?: string; error?: string; latencyMs: number; at: string };
 export type GhProbe = { ok: boolean; missing?: boolean; error?: string; latencyMs: number; at: string };
 
 type Fetch = (url: string, init: RequestInit) => Promise<{ status: number; headers: { get(k: string): string | null } }>;
@@ -199,10 +200,13 @@ export class Connections {
     else {
       const a = s.account;
       const ok = sdkLoggedIn(s);
+      const old = ok && !!s.version && olderThan(s.version, SDK_CLAUDE_VERSION);
       rows.push({
         id: "claude", label: "Claude 로그인", group: "core", check: "claude", checkedAt: s.at, latencyMs: s.latencyMs,
-        state: s.error ? (provider === "claude-code" ? "error" : "warn") : ok ? "ok" : "warn",
-        detail: s.error ? "SDK 를 띄우지 못했어요" : ok ? [a?.provider && a.provider !== "firstParty" ? a.provider : "로그인됨", a?.organization].filter(Boolean).join(" · ") : "로그인 정보가 없어요 — 터미널에서 claude 로 로그인",
+        state: s.error ? (provider === "claude-code" ? "error" : "warn") : ok && !old ? "ok" : "warn",
+        detail: s.error ? "SDK 를 띄우지 못했어요"
+          : old ? `claude ${s.version} 은 옛 버전이에요(${SDK_CLAUDE_VERSION} 이상). 터미널에서 claude update 를 해 주세요`
+          : ok ? [a?.provider && a.provider !== "firstParty" ? a.provider : "로그인됨", a?.organization, s.version && `claude ${s.version}`].filter(Boolean).join(" · ") : "로그인 정보가 없어요 — 터미널에서 claude 로 로그인",
         ...(s.error ? { error: s.error } : {}),
       });
     }
@@ -330,7 +334,9 @@ export async function realSdkProbe(opts: { query?: typeof sdkQuery; timeoutMs?: 
       await new Promise((r) => setTimeout(r, opts.settleMs ?? 700));
       servers = await Promise.race([q.mcpServerStatus(), timeout]);
     }
+    const version = await claudeVersion().catch(() => undefined);
     return {
+      ...(version ? { version } : {}),
       account: { ...(account.email ? { email: account.email } : {}), ...(account.organization ? { organization: account.organization } : {}), ...(account.apiProvider ? { provider: account.apiProvider } : {}), ...(account.tokenSource ? { tokenSource: account.tokenSource } : {}) },
       servers: servers.map((x) => ({ name: x.name, status: x.status, ...(x.error ? { error: redact(x.error) } : {}) })),
     };

@@ -41,6 +41,8 @@ claude
 ### Agent SDK가 이 로그인을 쓰는 방식
 
 - 데몬(`agent/`)은 `@anthropic-ai/claude-agent-sdk`의 `query()`를 부르고, SDK가 Claude Code 실행 파일을 하위 프로세스로 띄웁니다. 그 프로세스가 위에서 로그인한 자격 증명을 그대로 쓰기 때문에 API 키는 필요 없습니다.
+- 맥 앱에는 Claude Code 실행 파일이 들어 있지 않습니다. 데몬은 `~/.local/bin` → `/opt/homebrew/bin` → `/usr/local/bin` → PATH 순서로 `claude` 파일을 찾아 씁니다. 셸 함수나 alias로 감싼 `claude`는 데몬에게 보이지 않으니 실제 파일이 이 중 한 곳에 있어야 합니다. 못 찾으면 대화와 설정 창 「연결 상태」에 설치 안내가 나옵니다.
+- 설치된 `claude`가 Agent SDK와 함께 나온 버전보다 옛 버전이면 「연결 상태」의 Claude 줄이 주황으로 바뀝니다. 그대로도 돌지만 새 모델 이름을 몰라 비용을 잘못 셀 수 있으니 `claude update`로 올려 주세요. npm으로 깐 `claude`는 node가 데몬 PATH에 있어야 뜨므로 네이티브 설치를 권합니다.
 - Claude Code 자체는 `ANTHROPIC_API_KEY` 환경변수가 있으면 그 키를 씁니다(데몬에서 보이게 하려면 launchd 잡 환경에 넣어야 합니다). Claude Code 없이 Claude API 키로 대화·브리핑만 하려면 `brain.provider: "anthropic"` + `brain.anthropicApiKey`(또는 `CY_AGENT_ANTHROPIC_API_KEY`)를 쓰면 됩니다. 자세한 건 [brain.md](brain.md)에 있습니다.
 - 참고로 Agent SDK 문서는 "Agent SDK로 만든 **제품을 남에게 제공할 때** claude.ai 로그인을 쓰지 말고 API 키를 쓰라"고 안내합니다. cy-agent는 내 맥에서 나 혼자 쓰는 개인 도구라 내 로그인으로 돌리지만, 다른 사람에게 배포하거나 호스팅할 거라면 API 키 방식으로 바꿔야 합니다.
 

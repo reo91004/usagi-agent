@@ -4,7 +4,7 @@
 //  - 하는 중인 것 → "어디까지 됐는지" 한 줄(todos.progress — 사용자 필드(제목·메모…)는 안 건드림)
 // Slack 근거 자동 완료(todo-auto.ts)와 짝: 그쪽은 Slack 메시지, 이쪽은 작업 세션. 같은 적용 경로(Agent.autoCompleteTodos)를 쓴다.
 // 새 세션·run 이 없으면 모델을 부르지 않는다(워터마크). 가벼운 모델(cfg.models.light), 도구 없음, 구조화 출력.
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";

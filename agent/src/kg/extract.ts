@@ -2,7 +2,7 @@
 //  1단계(경량 모델): 청크 여러 개를 한 번에 — 업무 관련인지 {work, reason}
 //  2단계(cfg.kgModel, 기본 경량): 업무 청크에서 엔티티·관계를 구조화 출력으로
 // 청크 본문은 데이터다. <chunk> 태그로 감싸고, 본문 안 지시는 따르지 말라고 못 박고, 결과는 코드가 다시 검증한다.
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "../claude-sdk.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "../config.ts";

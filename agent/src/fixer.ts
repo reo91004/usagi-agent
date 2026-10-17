@@ -3,7 +3,8 @@
 // 수정 run 은 여러 개가 동시에 돈다(각자 워크트리). 같은 레포의 공유 참조를 바꾸는 git(fetch·worktree add/remove·branch -D·push)만
 // git-mutex.ts 로 짧게 줄 세우고, 테스트·네트워크 명령은 비동기라 데몬(다른 run·채팅)을 멈추지 않는다.
 // 수정 run 안의 서브에이전트는 isolation: "worktree" 로 각자 워크트리를 하나씩 팔 수 있다(agent-worktrees.ts)
-import { query, getSessionInfo, type HookCallback, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionInfo, type HookCallback, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "./claude-sdk.ts";
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync, writeFileSync } from "node:fs";

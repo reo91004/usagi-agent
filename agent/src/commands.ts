@@ -3,7 +3,8 @@
 // 터미널 UI 에만 뜻이 있는 명령(model·clear·config…)은 뺀다 — 그런 `/말`은 모르는 명령처럼 보통 채팅으로 간다.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "./claude-sdk.ts";
 import { HOME_DIR } from "./config.ts";
 
 export type SlashCommand = { name: string; description: string; argumentHint: string };
