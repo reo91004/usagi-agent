@@ -3063,7 +3063,7 @@ function sayCanned(c) {
   if (cannedTyping) return; // 앞 답이 오기 전엔 하나씩
   if (c.id === 'cheer' || c.id === 'dance') cy.localAsk?.(c.id).catch(() => {}); // 캐릭터도 응원·춤 영상
   const openItems = rawTodos();
-  const text = cannedReply(c.id, { open: openItems.length, done: vm.recentDone.length, next: openItems[0]?.title || '', hour: new Date().getHours() }, { override: sisa.canned, character });
+  const text = cannedReply(c.id, { open: openItems.length, done: vm.recentDone.filter((t) => !t.skipped).length, next: openItems[0]?.title || '', hour: new Date().getHours() }, { override: sisa.canned, character });
   messages = appendLocal(messages, { role: 'user', text: c.label, at: new Date().toISOString(), canned: true });
   cannedTyping = setTimeout(() => {
     cannedTyping = null;
