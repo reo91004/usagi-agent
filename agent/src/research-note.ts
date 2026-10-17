@@ -57,7 +57,7 @@ export type DaySummary = { lines: string[]; next: string[] };
 export type DayNote = {
   day: string;
   focus: { seconds: number; longest: number };
-  sessions: { project: string; items: { title: string; tool: string; turns: number; lastPrompt?: string }[] }[];
+  sessions: { project: string; items: { title: string; tool: string; turns: number; files: number }[] }[];
   jobs: NoteJob[];
   meetings: { time: string; title: string }[];
   done: string[];
@@ -85,7 +85,7 @@ export async function collectDay(
     if (cwd && (store.isHiddenPath(cwd, hidden) || isNoisePath(cwd))) continue; // 임시·스크래치 폴더·홈 자체는 대시보드처럼 뺀다
     if (!(Number(s.props.turns) > 0)) continue; // 0턴은 사람이 말한 적 없는 앱 안 세션(하위 에이전트 등) — 수집은 0턴을 안 남긴다
     const items = byProject.get(cwd || "(폴더 모름)") ?? [];
-    items.push({ title: s.label, tool: s.props.tool === "codex" ? "Codex" : "Claude Code", turns: Number(s.props.turns) || 0, ...(s.props.lastPrompt ? { lastPrompt: String(s.props.lastPrompt) } : {}) });
+    items.push({ title: s.label, tool: s.props.tool === "codex" ? "Codex" : "Claude Code", turns: Number(s.props.turns) || 0, files: Array.isArray(s.props.files) ? s.props.files.length : 0 });
     byProject.set(cwd || "(폴더 모름)", items);
   }
 
@@ -144,7 +144,20 @@ export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length &&
 const ID_PREFIX = "75736167-6900-5";
 export const autoId = (day: string) => { const h = createHash("sha1").update(`usagi-note:${day}`).digest("hex"); return `${ID_PREFIX}${h.slice(0, 3)}-8${h.slice(3, 6)}-${h.slice(6, 18)}`; };
 const isMark = (l: string | undefined) => !!l && (l.trim().startsWith(`id:: ${ID_PREFIX}`) || l.trim() === "usagi-auto:: true"); // usagi-auto 는 0.6.0 이 쓴 표시(보이는 속성) — 다음 쓰기 때 새 모양으로
+const QUICK_JOB_SECONDS = 10;
 const code = (s: string) => `\`${s.replace(/`/g, "'")}\``;
+
+// 세션 한 줄: 제목 (도구, 턴 수, 고친 파일 수). 요청 원문은 싣지 않는다. 같은 제목·도구는 한 줄로 합친다
+function sessionLines(items: DayNote["sessions"][number]["items"]): string[] {
+  const by = new Map<string, { title: string; tool: string; n: number; turns: number; files: number }>();
+  for (const s of items) {
+    const title = plain(s.title, 50), k = `${s.tool}\0${title}`;
+    const g = by.get(k) ?? { title, tool: s.tool, n: 0, turns: 0, files: 0 };
+    g.n++; g.turns += s.turns; g.files += s.files;
+    by.set(k, g);
+  }
+  return [...by.values()].map((g) => `\t\t\t- ${g.title} (${[g.tool, g.n > 1 ? `${g.n}개 세션` : "", `${g.turns}턴`, g.files ? `파일 ${g.files}개 고침` : ""].filter(Boolean).join(", ")})`);
+}
 
 // 우사기 블록(Logseq: 블록 속성은 두 칸, 자식은 탭). 사용자 블록과 섞이지 않게 한 블록 아래에 다 넣는다
 export function autoBlock(n: DayNote): string {
@@ -153,7 +166,10 @@ export function autoBlock(n: DayNote): string {
   if (n.summary && (n.summary.lines.length || n.summary.next.length)) {
     sec("요약", [...n.summary.lines.map((l) => `\t\t- ${plain(l, 200)}`), ...n.summary.next.map((l) => `\t\t- 다음: ${plain(l, 160)}`)]);
   }
-  sec("실험", n.jobs.flatMap((j) => {
+  // 성공한 10초 미만 작업(usagi-run 동작 확인 등)은 한 줄로 접는다. 실패·끊김은 짧아도 그대로 적는다
+  const quick = (j: NoteJob) => !j.lost && (j.code === null || j.code === 0) && j.seconds < QUICK_JOB_SECONDS;
+  const quickN = n.jobs.filter(quick).length;
+  sec("실험", [...n.jobs.filter((j) => !quick(j)).flatMap((j) => {
     const state = j.lost ? "끊김(끝 기록 없이 사라짐)" : j.code === null || j.code === 0 ? "끝" : `실패(종료 코드 ${j.code})`;
     const where = [j.cwd ? `폴더 ${code(plain(j.cwd, 200))}` : "", j.cmd ? `명령 ${code(plain(j.cmd, 200))}` : ""].filter(Boolean).join(" · ");
     return [
@@ -161,11 +177,11 @@ export function autoBlock(n: DayNote): string {
       ...(where ? [`\t\t\t- ${where}`] : []),
       ...(j.files?.length ? [`\t\t\t- 바뀐 파일: ${j.files.map((f) => code(plain(f, 120))).join(", ")}`] : []),
     ];
-  }));
+  }), ...(quickN ? [`\t\t- 짧은 작업 ${quickN}건(${QUICK_JOB_SECONDS}초 미만, 모두 끝)`] : [])]);
   sec("회의", n.meetings.map((m) => `\t\t- ${m.time} ${plain(m.title, 100)}`));
   sec("코드", [
     ...n.commits.map((c) => `\t\t- ${plain(c.repo, 40)} ${code(c.sha)} ${plain(c.subject, 100)}`),
-    ...n.sessions.flatMap((p) => [`\t\t- 작업 세션 ${code(plain(p.project, 200))}`, ...p.items.map((s) => `\t\t\t- ${plain(s.title, 80)} (${s.tool}, ${s.turns}턴)${s.lastPrompt ? ` · 마지막 요청: ${plain(s.lastPrompt, 140)}` : ""}`)]),
+    ...n.sessions.flatMap((p) => [`\t\t- 작업 세션 ${code(plain(p.project, 200))}`, ...sessionLines(p.items)]),
   ]);
   sec("할 일", [...n.done.map((t) => `\t\t- 끝냄: ${plain(t, 100)}`), ...n.added.map((t) => `\t\t- 새로 생김: ${plain(t, 100)}`)]);
   if (n.focus.seconds) out.push(`\t- 집중 ${focusDuration(n.focus.seconds)}${n.focus.longest ? ` (가장 길게 이어서 ${focusDuration(n.focus.longest)})` : ""}`);

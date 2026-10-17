@@ -27,13 +27,17 @@ test("plain: 한 줄로, 링크·임베드·매크로·태그 문법은 살지 �
 
 test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것 빼고)·회의·끝낸/새 할 일·집중·커밋", async () => {
   const store = new Store(":memory:");
-  store.upsertNode("session:a", "session", "학습 스크립트 고치기", { tool: "claude", cwd: "gpu1:/home/me/exp", turns: 3, lastPrompt: "다시 돌려줘" }, at("10:00"));
+  store.upsertNode("session:a", "session", "학습 스크립트 고치기", { tool: "claude", cwd: "gpu1:/home/me/exp", turns: 3, lastPrompt: "다시 돌려줘", files: ["a.py", "b.py"] }, at("10:00"));
+  store.upsertNode("session:f1", "session", "You are auditing the repository in the current directory (read-only; do NOT modify any file)", { tool: "codex", cwd: "gpu1:/home/me/exp", turns: 1 }, at("10:10"));
+  store.upsertNode("session:f2", "session", "You are auditing the repository in the current directory (read-only; do NOT modify any file)", { tool: "codex", cwd: "gpu1:/home/me/exp", turns: 2 }, at("10:20"));
   store.upsertNode("session:b", "session", "어제 것", { tool: "codex", cwd: "/r/app", turns: 1 }, new Date("2026-10-16T14:00:00Z").toISOString()); // 16일 23시 KST
   store.upsertNode("session:c", "session", "숨김", { tool: "claude", cwd: "/secret/x", turns: 1 }, at("11:00"));
   store.hideProject("/secret", "secret");
   store.upsertNode("session:d", "session", "임시 폴더", { tool: "claude", cwd: "/private/tmp/x", turns: 1 }, at("11:30"));
   store.upsertNode("session:e", "session", "하위 에이전트", { tool: "claude", cwd: "/r/app/.claude/worktrees/agent-1", turns: 0 }, at("11:40")); // 0턴은 뺀다
   store.upsertNode("job:gpu1:1", "job", "resnet 학습", { seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] }, at("12:00"));
+  store.upsertNode("job:gpu1:q1", "job", "우사기 확인", { seconds: 1, code: 0, host: "gpu1", cwd: "/home/me", cmd: "sleep 1" }, at("12:10"));
+  store.upsertNode("job:gpu1:q2", "job", "빨리 죽은 것", { seconds: 2, code: 1, host: "gpu1" }, at("12:20")); // 짧아도 실패는 그대로
   store.upsertNode("job:gpu1:2", "job", "도는 중", { host: "gpu1", start: 1, running: true }, at("12:30"));
   store.upsertNode("job:gpu1:3", "job", "죽은 것", { host: "gpu1", start: 1, lost: true }, at("12:40"));
   store.db.exec("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, subject TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL)");
@@ -57,9 +61,11 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
     ], recentCommits: [] }];
   };
   const n = await collectDay(cfg, store, "2026-10-17", { git, focus: { stats: () => ({ from: "", to: "", total: 4000, days: [{ date: "2026-10-17", seconds: 4000, longest: 1800 }] }) } });
-  assert.deepEqual(n.sessions, [{ project: "gpu1:/home/me/exp", items: [{ title: "학습 스크립트 고치기", tool: "Claude Code", turns: 3, lastPrompt: "다시 돌려줘" }] }]);
+  assert.deepEqual(n.sessions[0].items[0], { title: "학습 스크립트 고치기", tool: "Claude Code", turns: 3, files: 2 });
   assert.deepEqual(n.jobs, [
     { name: "resnet 학습", seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] },
+    { name: "우사기 확인", seconds: 1, code: 0, host: "gpu1", cwd: "/home/me", cmd: "sleep 1" },
+    { name: "빨리 죽은 것", seconds: 2, code: 1, host: "gpu1" },
     { name: "죽은 것", seconds: 0, code: null, host: "gpu1", lost: true },
   ]);
   assert.deepEqual(n.meetings, [{ time: "14:00", title: "랩 미팅" }]);
@@ -74,9 +80,12 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
     "- 오늘 한 일", `  id:: ${autoId("2026-10-17")}`,
     "\t- 실험",
     "\t\t- resnet 학습 @gpu1 · 1시간 2분 · 끝", "\t\t\t- 폴더 `/home/me/exp` · 명령 `python train.py`", "\t\t\t- 바뀐 파일: `out/m.json`",
+    "\t\t- 빨리 죽은 것 @gpu1 · 2초 · 실패(종료 코드 1)",
     "\t\t- 죽은 것 @gpu1 · 끊김(끝 기록 없이 사라짐)",
+    "\t\t- 짧은 작업 1건(10초 미만, 모두 끝)",
     "\t- 회의", "\t\t- 14:00 랩 미팅",
-    "\t- 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴) · 마지막 요청: 다시 돌려줘",
+    "\t- 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴, 파일 2개 고침)",
+    "\t\t\t- You are auditing the repository in the current di… (Codex, 2개 세션, 3턴)",
     "\t- 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 새로 생김: 교수님께 결과 보내기",
     "\t- 집중 1시간 6분 (가장 길게 이어서 30분)", "",
   ].join("\n"));
