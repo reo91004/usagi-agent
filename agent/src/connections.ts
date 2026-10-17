@@ -312,7 +312,7 @@ export class Connections {
     rows.push({ id: "ssh", label: "실험 서버(ssh)", group: "local", check: "local", checkedAt: at, state: jh.length || xh.length ? "ok" : "off",
       detail: jh.length || xh.length ? `${[...new Set([...xh, ...jh])].join("·")} · usagi-run 끝 알림·tmux 세션 보기${xh.length ? "·물어보면 폴더·결과·GPU 확인" : ""}` : "서버 없음(config.json 의 sshHosts)" });
     rows.push({ id: "research-note", label: "연구 노트(Tine)", group: "local", check: "local", checkedAt: at, state: this.cfg.tineGraph ? "ok" : "off",
-      detail: this.cfg.tineGraph ? "그날 한 일을 「우사기 연구 노트」 페이지에 써요" : "안 씀(config.json 의 tineGraph)" });
+      detail: this.cfg.tineGraph ? "그날 Tine 일지에 「우사기 기록」 블록으로 써요" : "안 씀(config.json 의 tineGraph)" });
     return rows;
   }
 
