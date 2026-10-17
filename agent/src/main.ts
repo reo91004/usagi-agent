@@ -40,7 +40,7 @@ import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
-import { jobBubble, jobNodeId, jobProps, pullJobs, type JobDone, type RunningJob } from "./jobs.ts";
+import { jobBubble, jobNodeId, jobProps, pullJobs, tmuxSeen, type JobDone, type RunningJob } from "./jobs.ts";
 import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
@@ -235,9 +235,16 @@ await bus.listen(cfg.port, {
     ...(await agent.dashboard()),
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
-    ...(() => { const r = researchSummary(cfg, store); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
+    ...(() => { const r = researchSummary(cfg, store, new Date(), tmuxSeen); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
     ...(slackIngestMode(conns) === "api" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(api 모드일 때만 — 재료는 api 수집만 쌓는다)
   }),
+  jobForget: (id) => {
+    const n = store.node(id);
+    if (n?.kind !== "job" || n.props.running) return false;
+    store.db.prepare("DELETE FROM edges WHERE src = ? OR dst = ?").run(id, id);
+    store.db.prepare("DELETE FROM nodes WHERE id = ?").run(id);
+    return true;
+  },
   researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
   directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
   // 이 Mac 의 캘린더·미리알림: 연결은 macOS 권한 창을 띄우고 바로 돌아온다(패널이 status 로 기다린다). 캘린더는 연결이 바뀌니 데몬이 다시 켜지며 붙는다
@@ -582,7 +589,8 @@ async function pollJobHosts() {
   try {
     for (const host of cfg.jobHosts) {
       try {
-        const { done, running } = await pullJobs(host, undefined, cfg.jobDirs[host]);
+        const { done, running, tmux } = await pullJobs(host, undefined, cfg.jobDirs[host]);
+        tmuxSeen[host] = { at: new Date().toISOString(), sessions: tmux };
         jobsRunning(host, running);
         for (const j of done) jobDone(j);
         if (jobHostDown.delete(host)) console.log(`[jobs] ${host} 다시 연결됨`);
