@@ -205,6 +205,7 @@ async function refetch(full = false) {
 }
 
 // ---- 머리말·입력창 ----
+const durText = (r) => `${kindLabel(r.kind)} · ${clockTime(r.startedAt)} 시작 · ${fmtDuration(r.startedAt, r.endedAt)}`;
 function renderHead() {
   const r = current();
   $('run-icon').textContent = r ? kindIcon(r.kind) : '';
@@ -214,7 +215,7 @@ function renderHead() {
   if (r) {
     meta.append(...[
       h('span', { class: `status ${r.status}`, text: STATUS_LABELS[r.status] ?? r.status }),
-      h('span', { text: `${kindLabel(r.kind)} · ${clockTime(r.startedAt)} 시작 · ${fmtDuration(r.startedAt, r.endedAt)}` }),
+      h('span', { class: 'run-dur', text: durText(r) }),
       r.model ? h('span', { text: r.model }) : null,
       r.costUsd != null ? h('span', { text: fmtCost(r.costUsd) }) : null,
       r.cwd ? h('span.cwd', { text: r.cwd, title: r.cwd }) : null,
@@ -903,7 +904,14 @@ cy.onConnection(({ connected }) => {
   if (connected) { loadRuns(); loadModels(); if (selected) refetch(); }
 });
 
-setInterval(() => { if (current()?.status === 'running') renderHead(); }, 1000); // 경과 시간
+// 경과 시간: 도는 동안 1초마다 그 글자만 고친다. 창이 숨어 있으면 건너뛰고 다시 보일 때 헤더를 한 번 그린다
+setInterval(() => {
+  const r = current();
+  if (document.visibilityState === 'hidden' || r?.status !== 'running') return;
+  const el = document.querySelector('#run-meta .run-dur');
+  if (el && el.textContent !== durText(r)) el.textContent = durText(r);
+}, 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'hidden') renderHead(); });
 loadRuns();
 loadModels();
 

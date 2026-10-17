@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createNodeCache, pendingShape, planRender, createPoller } from '../src/render-sched.js';
+import { createNodeCache, pendingShape, planRender, createPoller, setText, oncePerFrame } from '../src/render-sched.js';
 
 test('노드 캐시: 같은 key·글이면 재사용, 글이 바뀌거나 안 쓰면 버린다', () => {
   const c = createNodeCache();
@@ -63,4 +63,25 @@ test('poller: stop 은 진행 중 확인의 결과도 버리고, 다시 start �
   await wait(40);
   q.stop();
   assert.ok(n >= 2 && seen >= 1);
+});
+
+test('setText: 글이 같으면 쓰지 않는다', () => {
+  let writes = 0;
+  const el = { _t: 'a', get textContent() { return this._t; }, set textContent(v) { writes++; this._t = v; } };
+  setText(el, 'a');
+  assert.equal(writes, 0);
+  setText(el, 'b');
+  assert.deepEqual([writes, el.textContent], [1, 'b']);
+});
+
+test('oncePerFrame: 한 프레임 안의 여러 호출은 한 번만 예약하고 한 번 부른다', () => {
+  const frames = [];
+  let calls = 0;
+  const soon = oncePerFrame(() => calls++, (f) => frames.push(f));
+  soon(); soon(); soon();
+  assert.equal(frames.length, 1);
+  frames.shift()();
+  assert.equal(calls, 1);
+  soon(); // 프레임이 지나면 다시 예약된다
+  assert.equal(frames.length, 1);
 });

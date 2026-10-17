@@ -2,6 +2,7 @@
 // 기록 보기는 GitHub 기여 그래프(잔디)처럼 오래 집중한 날일수록 진한 칸. 상태는 데몬(GET /focus · SSE focus)이 기준이고,
 // 경과 시간·오늘 합계는 1초마다 글자만 바꾼다(목록을 다시 그리지 않는다). 순수 계산은 src/focus.js.
 import { who } from './who.js';
+import { setText } from '../src/render-sched.js';
 import {
   normFocus, elapsedSec, todayLive, fmtClock, fmtDuration, fmtShort, focusLevel, LEVEL_LABELS, localDay, rangeOf, shiftAnchor,
   monthGrid, rangeTitle, cellTitle, dayLabel, dayDetail, summarize, barRatio, parseDay, WEEKDAYS,
@@ -77,6 +78,7 @@ export function createFocusView({ h, cy }) {
     swap('.focus-stats', statsCard);
   }
   function tick() {
+    if (document.hidden) return; // 숨은 창은 건너뛰고, 다시 보일 때 visibilitychange 가 한 번 맞춘다
     const now = Date.now();
     if (focus?.day && localDay(now) !== focus.day && !tick.reloading) { // 자정이 지났다
       tick.reloading = true;
@@ -84,8 +86,8 @@ export function createFocusView({ h, cy }) {
       load().finally(() => { tick.reloading = false; if (open) loadStats(true); });
     }
     const a = focus?.active;
-    for (const el of document.querySelectorAll('[data-focus-clock]')) el.textContent = fmtClock(elapsedSec(a, now));
-    for (const el of document.querySelectorAll('[data-focus-today]')) el.textContent = fmtDuration(todayLive(focus, now));
+    for (const el of document.querySelectorAll('[data-focus-clock]')) setText(el, fmtClock(elapsedSec(a, now)));
+    for (const el of document.querySelectorAll('[data-focus-today]')) setText(el, fmtDuration(todayLive(focus, now)));
   }
   // 1초 타이머는 집중 중(쉬는 중 제외)일 때만 돈다. 쉬는 동안 자정이 지난 것은 창이 다시 보일 때 tick 이 맞춘다
   let timer = null;
