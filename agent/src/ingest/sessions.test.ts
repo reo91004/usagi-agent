@@ -173,3 +173,47 @@ test("ingestSessions 증분: 늘어난 부분만 읽고, 줄었거나 앞이 바
   assert.equal(store.node("session:s1")?.props.turns, 5);
   rmSync(dir, { recursive: true, force: true });
 });
+
+const jl = (ls: object[]) => ls.map((l) => JSON.stringify(l)).join("\n");
+
+test("claude: 중단 안내·claude -p(sdk)·다른 세션/알림이 넣은 줄·사이드체인은 사람 턴이 아니다", () => {
+  const u = (text: string, extra: object = {}) => ({ type: "user", sessionId: "h1", cwd: "/r/app", entrypoint: "cli", message: { content: text }, ...extra });
+  const s = parseClaudeSession(jl([
+    u("고쳐줘", { origin: { kind: "human" } }),
+    u("[Request interrupted by user]"),
+    u("다른 세션이 보냄", { origin: { kind: "peer" } }),
+    u("끝났다는 알림", { origin: { kind: "task-notification" } }),
+    u("조율자 지시", { isSidechain: true, origin: { kind: "coordinator" } }),
+  ]), "x")!;
+  assert.equal(s.turns, 1);
+  assert.equal(s.lastPrompt, "고쳐줘");
+  assert.equal(parseClaudeSession(jl([u("한 번 물어봄", { entrypoint: "sdk-cli" })]), "x"), undefined);
+  assert.equal(parseClaudeSession(jl([u("앱에서 말함", { entrypoint: "claude-desktop", origin: { kind: "human" } })]), "x")?.turns, 1);
+});
+
+test("codex: exec 와 하위 에이전트 세션은 사람 대화가 아니라 기록하지 않는다", () => {
+  const raw = (payload: object) => jl([
+    { type: "session_meta", timestamp: "2026-10-17T01:00:00Z", payload: { id: "c9", cwd: "/r/app", ...payload } },
+    { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "점검해" }] } },
+  ]);
+  assert.equal(parseCodexSession(raw({ originator: "codex-tui", source: "cli" }), "x")?.turns, 1);
+  assert.equal(parseCodexSession(raw({ originator: "codex_exec", source: "exec" }), "x"), undefined);
+  assert.equal(parseCodexSession(raw({ originator: "codex-tui", source: { subagent: { thread_spawn: { depth: 1 } } } }), "x"), undefined);
+});
+
+test("ingestSessions: 사람이 아닌 세션이라고 새로 판정되면 이전에 남긴 노드가 지워진다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sess-auto-"));
+  const store = new Store(":memory:");
+  const dirs = { claude: join(dir, "none"), codex: dir };
+  const f = join(dir, "r.jsonl");
+  const meta = { type: "session_meta", payload: { id: "c9", cwd: "/r/app", originator: "codex_exec", source: "exec" } };
+  const msg = { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "점검해" }] } };
+  writeFileSync(f, jl([{ type: "session_meta", payload: { id: "c9", cwd: "/r/app" } }, msg]) + "\n"); // 예전 규칙으로는 사람 세션으로 읽힌 모양
+  ingestSessions(store, dirs);
+  assert.ok(store.node("session:c9"));
+  writeFileSync(f, jl([meta, msg]) + "\n");
+  utimesSync(f, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:c9"), undefined);
+  rmSync(dir, { recursive: true });
+});
