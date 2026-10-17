@@ -17,7 +17,7 @@ import { SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePh
 import { brainView, connectCard, chatLock } from '../src/brain-state.js';
 import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, sendButton, stopTargets, localState, queuedChats, queuedLabel, sentLabel } from '../src/chat.js';
 import { stamp, withDayDividers } from '../src/chat-time.js';
-import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
+import { KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
 import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, descriptionPatch, isDoing, patchToday, isToday } from '../src/todos.js';
 import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
@@ -1443,10 +1443,10 @@ const TRASH_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden=
 function doingButton(t) {
   const on = isDoing(t);
   return h(`button.ghost.row-doing${on ? '.on' : ''}`, {
-    type: 'button', text: on ? '⏸' : '▶', disabled: t.pending, 'aria-pressed': String(on),
+    type: 'button', disabled: t.pending, 'aria-pressed': String(on),
     title: on ? '진행중 표시 끄기' : '진행중으로 표시', 'aria-label': `${on ? '진행중 끄기' : '진행중으로'}: ${t.title}`,
     onclick: () => mutate({ kind: 'edit', id: t.id, patch: { doing: !on }, rule: true }, () => cy.todoEdit(t.id, { doing: !on }), '진행중 표시 실패'),
-  });
+  }, navIcon(on ? 'pause' : 'play'));
 }
 
 // 「안 해도 됨」: 할 필요가 없어서 닫는다(끝난 칸에 「안 함」 표시)
@@ -2426,11 +2426,14 @@ function renderThreadList() {
   else if (focused) thList.querySelector(`.th-row[data-id="${CSS.escape(focused)}"]`)?.focus();
 }
 
+// 대화 종류 표시: 이모지 대신 선 아이콘(대화·할 일 대화·캐릭터에게 한 말)
+const kindIcon = (kind) => navIcon({ todo: 'todos', hover: 'smile' }[kind] ?? 'chat');
+
 function threadRow(t, busy) {
   const sel = t.id === selectedId;
   const unread = isUnread(seen, t, selectedId);
   const mode = rowMode?.id === t.id ? rowMode.mode : null;
-  const icon = h('span.th-icon', { text: KIND_ICONS[t.kind] ?? '💬', title: KIND_LABELS[t.kind] ?? '' });
+  const icon = h('span.th-icon', { title: KIND_LABELS[t.kind] ?? '' }, kindIcon(t.kind));
   if (mode === 'delete' || mode === 'archive') {
     const del = mode === 'delete';
     return h('div.th-row.confirm', { dataset: { id: t.id }, role: 'option', 'aria-selected': String(sel) },
@@ -2519,7 +2522,7 @@ async function deleteThread(id) {
 // 머리말: 종류 아이콘 · 제목(눌러서 이름 바꾸기) · 할 일 대화면 그 할 일 칩
 function renderThreadHead() {
   const t = currentThread();
-  $('th-kind').textContent = t ? KIND_ICONS[t.kind] ?? '' : '💬';
+  $('th-kind').replaceChildren(kindIcon(t?.kind));
   if (thTitleInput.hidden) {
     thTitle.textContent = t ? t.title : '새 대화';
     thTitle.disabled = !t;
