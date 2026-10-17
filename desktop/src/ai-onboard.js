@@ -250,7 +250,7 @@ const OUTLOOK = [
 // Claude Code 의 Slack 공식 MCP 로그인(mode: mcp)은 docs/connect/slack.md 의 (b)로 따로 안내한다
 export const SLACK_MANIFEST = `display_information:
   name: usagi-reader
-  description: 우사기 비서가 내 DM과 나를 멘션한 글을 읽기만 합니다
+  description: 내 DM과 나를 멘션한 글을 내 컴퓨터에서 읽기만 합니다
   background_color: "#3b2a5c"
 oauth_config:
   scopes:
@@ -270,23 +270,26 @@ settings:
   socket_mode_enabled: false
   token_rotation_enabled: false
 `;
+// Slack 이 지원하는 매니페스트 미리 채우기 링크(https://docs.slack.dev/app-manifests/configuring-apps-with-app-manifests). 주석은 빼서 짧게
+export const SLACK_APP_URL = `https://api.slack.com/apps?new_app=1&manifest_yaml=${encodeURIComponent(SLACK_MANIFEST.replace(/\s+#.*$/gm, ''))}`;
 const SLACK_STEPS = [
   {
     id: 'slack-app',
     title: '읽기 전용 Slack 앱을 만드세요',
     identity: '봇 없이 **읽기 권한만** 있는 내 앱입니다. 내 DM과 나를 멘션한 글만 읽고, 쓰기는 못 합니다.',
     rows: [
-      { text: '브라우저에 **Slack 앱 만들기** 화면이 열립니다.', link: true },
-      '**Create New App** → **From a manifest** 를 누르고 워크스페이스를 고릅니다.',
-      '형식을 **YAML** 로 바꾸고, 아래 내용을 통째로 붙여 넣은 뒤 **Create** 를 누릅니다.',
+      { text: '브라우저에 아래 매니페스트가 **미리 채워진** Slack 앱 만들기 화면이 열립니다.', link: true },
+      '워크스페이스를 고르고 **Next** → 내용 확인 → **Create** 를 누릅니다.',
       '왼쪽 **Install App** → **Install to Workspace** → **허용**을 누릅니다.',
     ],
     details: [
+      '워크스페이스 앱 목록에는 앱 이름이 보입니다. 다른 이름을 쓰려면 Create 전 화면에서 `name` 을 바꾸면 됩니다.',
+      '화면에 매니페스트가 비어 있으면 **From a manifest** → **YAML** 탭에 아래 내용을 통째로 붙여 넣습니다.',
       '「관리자에게 요청」이 나오면 요청을 보내고, 승인되면 같은 화면에서 이어 갑니다. 요청 메모에는 「제 DM과 멘션을 제 컴퓨터에서만 읽는 개인 비서, 쓰기 권한 없음」이라고 적으면 됩니다.',
       '앱을 만들 수 없는 워크스페이스라면 Claude Code 의 Slack 공식 MCP 로그인으로도 읽을 수 있습니다(뇌가 Claude Code 일 때만, 지시사항 카드는 비어 있음). docs/connect/slack.md 의 (b)를 보세요.',
     ],
-    url: 'https://api.slack.com/apps?new_app=1',
-    codeLabel: '매니페스트 · YAML 탭에 붙여 넣기',
+    url: SLACK_APP_URL,
+    codeLabel: '매니페스트 · 링크로 채워지지 않았을 때 붙여 넣기',
     code: SLACK_MANIFEST,
   },
   {
