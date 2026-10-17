@@ -16,6 +16,7 @@ import { linkRef, normRef, sameItem, similarTitle } from "./todo-match.ts";
 
 test("todo-match: 참조 키 정규화·링크 키·제목 비슷함(숫자가 다르면 다른 일)", () => {
   assert.equal(normRef("slack:C1:1791772040.560799"), normRef("slack:C1:1791772040560799"));
+  assert.equal(normRef("slack:C1:p1791772040560799"), linkRef("https://x.slack.com/archives/C1/p1791772040560799"));
   assert.equal(normRef("session:cy-agent"), undefined); // 거친 키는 비교 안 함
   assert.equal(normRef("other:x"), undefined);
   assert.equal(linkRef("https://x.slack.com/archives/C1/p1791772040560799?thread_ts=1"), "slack:C1:1791772040560799");
@@ -64,6 +65,16 @@ test("store: 끝낸 일은 최근(2일) 것만 막고, 날짜가 다른 반복 �
   s.editTodo("mail:old", { status: "done" });
   s.db.prepare("UPDATE todos SET updated = '2026-01-01T00:00:00.000Z' WHERE id = 'mail:old'").run();
   assert.equal(s.upsertTodo({ id: "mail:new", title: "분기 보고서 정리하기", source: "mail", priority: 2 }), "added");
+});
+
+test("store: 끝낸 Slack 할 일과 제목이 같아도 닫은 뒤에 온 메시지면 새로 생긴다(#206)", () => {
+  const s = new Store(":memory:");
+  s.upsertTodo({ id: "slack:D1:p1792175453371419", title: "김영창 Slack DM 확인", source: "slack", priority: 2 });
+  s.editTodo("slack:D1:p1792175453371419", { status: "done" });
+  s.db.prepare("UPDATE todos SET updated = '2026-10-17T10:32:07.991Z' WHERE id = 'slack:D1:p1792175453371419'").run();
+  // 닫기 전(10:19Z) 메시지는 같은 일로 막고, 닫은 뒤(13:40Z) 메시지는 새 할 일
+  assert.equal(s.upsertTodo({ id: "slack:D1:p1792232396269049", title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "blocked");
+  assert.equal(s.upsertTodo({ id: "slack:D1:p1792244449901299", title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "added");
 });
 
 test("store: 열린 할 일과 같은 일이 새 id 로 오면 합치고, 사용자가 고친 필드는 그대로", () => {
