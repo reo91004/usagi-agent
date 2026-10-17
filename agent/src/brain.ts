@@ -399,7 +399,7 @@ export function askCwd(cfg: Config, opts: AskOpts): string {
 //   origin = 승인 카드를 띄울 자리. broker 없으면 데몬이 붙인 것(getBroker), 그것도 없으면 쓰기는 거부
 export type AskOpts = {
   system?: string; model?: string; tools?: boolean; code?: { roots: string[]; cwd?: string };
-  quick?: boolean; // 캐릭터 말 걸기: 빠른 대화 모델을 따로 안 골랐으면 뇌마다 빠른 모델(agy 는 AGY_QUICK_MODEL)
+  quick?: boolean; // 캐릭터 말 걸기: 빠른 대화 모델을 따로 안 골랐으면 뇌마다 빠른 모델(agy 는 AGY_QUICK_MODEL = Gemini Flash Low)
   interactive?: { origin: PermOrigin; broker?: PermissionBroker };
   project?: boolean; // 프로젝트 설정(.claude/commands·skills 등)도 읽는다(슬래시 명령)
   // 멈춤 손잡이(채팅 정지): SDK options.abortController 로 넘기고, 세션 창 [정지](RunControl.stop)도 이걸 abort 한다.

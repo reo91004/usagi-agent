@@ -889,7 +889,7 @@ function agyFailure(e: unknown): Error {
   return kind ? new BrainLimitError(text, "agy", kind) : new Error(text);
 }
 
-// agy 에 --model 로 넘길 이름: 고르지 않은 기본값(Claude 기본 모델 이름)이면 agy 의 기본 모델에 맡긴다
+// 사용자가 고른 agy 모델 이름. 고르지 않은 기본값(Claude 기본 모델 이름)이면 undefined
 export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: string): string | undefined {
   const m = (override ?? "").trim() || (cfg?.models?.general ?? "").trim();
   return m && m !== DEFAULT_GENERAL_MODEL ? m : undefined;
@@ -897,19 +897,20 @@ export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: str
 
 export type AgyOpts = CodexOpts & { model?: string };
 
-// 캐릭터 말 걸기(quick)에서 빠른 대화 모델을 따로 고르지 않았으면 agy 기본(Gemini Argon Medium, 모델 4~11초) 대신 이 모델.
-// 같은 내용 측정: 기본 15.2초 → 빠른 모델 7~8초(2026-10-17, .plans/measurements/latency-20261017)
-export const AGY_QUICK_MODEL = "claude-sonnet-5-5-low";
+// 모델을 고르지 않았을 때 우사기가 agy 에 주는 기본: 말 걸기(quick)는 Flash Low, 채팅·브리핑·뒤 작업은 Flash Medium.
+// agy 자체 기본(Gemini 4 Argon Medium, 모델 4~11초)보다 빠르고 사용량이 적다(측정: .plans/measurements/latency-20261017, 사용자 결정 2026-10-17)
+export const AGY_QUICK_MODEL = "gemini-3.8-flash-low";
+export const AGY_DEFAULT_MODEL = "gemini-3.8-flash-medium";
 
-async function agyQuickOr(cfg: Pick<Config, "models">, prompt: string, schema: unknown, opts: AgyOpts & { quick?: boolean }): Promise<unknown> {
-  const model = agyModel(cfg, opts.model);
-  if (model || !opts.quick) return (await agyExec(prompt, schema, { ...opts, model })).out;
+// agy 한 번: 고른 모델이 있으면 그 모델, 없으면 우사기 기본 모델. 그 이름이 agy 목록에서 없어졌을 때만 agy 자체 기본으로 한 번 더(한도·인증 오류는 자동 전환이 받는다)
+export async function agyRun(cfg: Pick<Config, "models">, prompt: string, schema: unknown, opts: AgyOpts & { quick?: boolean } = {}): Promise<{ out: unknown; usage: CodexUsage }> {
+  const chosen = agyModel(cfg, opts.model);
+  if (chosen) return agyExec(prompt, schema, { ...opts, model: chosen });
   try {
-    return (await agyExec(prompt, schema, { ...opts, model: AGY_QUICK_MODEL })).out;
+    return await agyExec(prompt, schema, { ...opts, model: opts.quick ? AGY_QUICK_MODEL : AGY_DEFAULT_MODEL });
   } catch (e) {
-    // agy 목록에서 이 모델 이름이 없어졌을 때만 기본 모델로 한 번 더(한도·인증 오류는 자동 전환이 받는다)
     if (e instanceof BrainLimitError || e instanceof BrainAuthError || !/model/i.test(String((e as Error)?.message))) throw e;
-    return (await agyExec(prompt, schema, { ...opts, model: undefined })).out;
+    return agyExec(prompt, schema, { ...opts, model: undefined });
   }
 }
 
@@ -956,6 +957,6 @@ export async function remoteJson(
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);
   if (provider === "anthropic") return anthropicJson(cfg, prompt, schema, opts);
   if (provider === "genspark") return gensparkJson(cfg, prompt, schema, opts);
-  if (provider === "agy") return agyQuickOr(cfg, prompt, schema, opts);
+  if (provider === "agy") return (await agyRun(cfg, prompt, schema, opts)).out;
   return codexJson(prompt, schema, opts);
 }

@@ -6,7 +6,7 @@ import { HOME_DIR, loadConfig, pickBrain } from "./config.ts";
 import { validateBrain } from "./settings.ts";
 import { SCHEMA, ask } from "./brain.ts";
 import { chatAskOpts } from "./chat.ts";
-import { AGY_FAILED, AGY_PROMPT_MAX_BYTES, AGY_QUICK_MODEL, MISSING_AGY, agyArgs, agyExec, agyModel, brainKeyReady, parseAgyStdout, type ExecFileLike } from "./providers.ts";
+import { AGY_DEFAULT_MODEL, AGY_FAILED, AGY_PROMPT_MAX_BYTES, AGY_QUICK_MODEL, MISSING_AGY, agyArgs, agyExec, agyModel, brainKeyReady, parseAgyStdout, type ExecFileLike } from "./providers.ts";
 import { cliStructured, featureBrain } from "./feature-brain.ts";
 
 const has = (n: string) => n === "agy";
@@ -89,7 +89,7 @@ test("ask(brain=agy): 스키마 답을 structured_output 으로 받는다", asyn
   assert.equal(out.reply_md, "본문");
 });
 
-test("cliStructured(agy): 모양 검사 · 고른 모델만 --model · 토큰 집계", async () => {
+test("cliStructured(agy): 모양 검사 · 고른 모델, 없으면 Flash 기본 · 토큰 집계", async () => {
   const schema = { type: "object", required: ["items"], properties: { items: { type: "array" } } };
   const argv: (readonly string[])[] = [];
   const good: ExecFileLike = async (_f, a) => { argv.push(a); return { stdout: ok({ structured_output: { items: [] } }) }; };
@@ -98,12 +98,12 @@ test("cliStructured(agy): 모양 검사 · 고른 모델만 --model · 토큰 �
   assert.deepEqual([r.stat.inTokens, r.stat.outTokens], [10, 7]);
   assert.ok(argv[0].includes("gemini-4-argon-medium"));
   await cliStructured(cfgOf("agy"), { system: "s", prompt: "p", schema }, { execFile: good, commandExists: has });
-  assert.ok(!argv[1].includes("--model"));
+  assert.equal(argv[1][argv[1].indexOf("--model") + 1], AGY_DEFAULT_MODEL); // 고르지 않으면 Gemini Flash Medium
   const bad: ExecFileLike = async () => ({ stdout: ok({ structured_output: { nope: 1 } }) });
   await assert.rejects(cliStructured(cfgOf("agy"), { system: "s", prompt: "p", schema }, { execFile: bad, commandExists: has }), /Antigravity 답이 형식에 맞지 않아요/);
 });
 
-test("캐릭터 말 걸기(quick): 빠른 대화 모델을 안 골랐으면 AGY_QUICK_MODEL, 골랐으면 그 모델, 일반 대화는 agy 기본", async () => {
+test("기본 모델: 말 걸기(quick)는 Flash Low, 일반 대화는 Flash Medium, 고른 모델이 있으면 그 모델", async () => {
   const body = { bubble: "안녕", reply_md: "본문", todos: [], done_todo_ids: [], proposals: [] };
   const seen: (string | undefined)[] = [];
   const execFile: ExecFileLike = async (_f, args) => { const i = args.indexOf("--model"); seen.push(i < 0 ? undefined : args[i + 1]); return { stdout: ok({ structured_output: body }) }; };
@@ -111,7 +111,8 @@ test("캐릭터 말 걸기(quick): 빠른 대화 모델을 안 골랐으면 AGY_
   await ask(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, model: "claude-sonnet-5-5", deps });
   await ask(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, model: "gemini-3.8-flash-medium", deps });
   await ask(cfgOf("agy"), "x", SCHEMA, undefined, { deps });
-  assert.deepEqual(seen, [AGY_QUICK_MODEL, "gemini-3.8-flash-medium", undefined]);
+  assert.deepEqual(seen, [AGY_QUICK_MODEL, "gemini-3.8-flash-medium", AGY_DEFAULT_MODEL]);
+  assert.deepEqual([AGY_QUICK_MODEL, AGY_DEFAULT_MODEL], ["gemini-3.8-flash-low", "gemini-3.8-flash-medium"]);
 });
 
 test("캐릭터 말 걸기(quick): 빠른 모델 이름이 agy 에서 없어졌으면 기본 모델로 한 번 더, 한도 오류는 그대로", async () => {
@@ -123,7 +124,7 @@ test("캐릭터 말 걸기(quick): 빠른 모델 이름이 agy 에서 없어졌�
     if (i >= 0) throw fail(stderr);
     return { stdout: ok({ structured_output: body }) };
   };
-  const out = await ask<typeof body>(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, deps: { commandExists: has, execFile: flaky("AGY_ERROR: unknown model claude-sonnet-5-5-low\n"), env: {} } });
+  const out = await ask<typeof body>(cfgOf("agy"), "x", SCHEMA, undefined, { quick: true, deps: { commandExists: has, execFile: flaky("AGY_ERROR: unknown model gemini-3.8-flash-low\n"), env: {} } });
   assert.equal(out.reply_md, "본문");
   assert.deepEqual(models, [AGY_QUICK_MODEL, undefined]);
   models = [];

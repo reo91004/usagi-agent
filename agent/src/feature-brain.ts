@@ -8,7 +8,7 @@
 import type { Config } from "./config.ts";
 import { brainOrder, activeBrain, isCooled, withFallback } from "./brain-fallback.ts";
 import { DEFAULT_GENERAL_MODEL } from "./config.ts";
-import { agyExec, agyModel, codexExec, commandOnPath, type ExecFileLike } from "./providers.ts";
+import { agyRun, codexExec, commandOnPath, type ExecFileLike } from "./providers.ts";
 
 export type FeatureBrain = "claude-code" | "codex" | "agy";
 export type CodexDeps = { execFile?: ExecFileLike; commandExists?: (name: string) => boolean };
@@ -107,7 +107,7 @@ export async function cliStructured<T>(
   const [head, ...rest] = cli;
   const c0 = { ...cfg, brain: { ...cfg.brain, provider: head.provider, fallback: rest }, models: head === order[0] ? cfg.models : { ...cfg.models, general: head.model ?? DEFAULT_GENERAL_MODEL } };
   return withFallback(c0, (c) => c.brain.provider !== "agy" ? codexStructured<T>(spec, deps)
-    : cliCall<T>("Antigravity", (s) => agyExec(s.prompt, s.schema, { system: s.system, execFile: deps.execFile, commandExists: deps.commandExists, timeoutMs: s.timeoutMs, model: agyModel(c) }), spec));
+    : cliCall<T>("Antigravity", (s) => agyRun(c, s.prompt, s.schema, { system: s.system, execFile: deps.execFile, commandExists: deps.commandExists, timeoutMs: s.timeoutMs }), spec));
 }
 
 async function cliCall<T>(who: string, run: (s: { system: string; prompt: string; schema: unknown; timeoutMs?: number }) => Promise<{ out: unknown; usage: { inTokens: number; outTokens: number } }>, spec: { system: string; prompt: string; schema: unknown; timeoutMs?: number }): Promise<{ out: T; stat: CodexStat }> {
