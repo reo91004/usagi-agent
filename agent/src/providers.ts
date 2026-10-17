@@ -897,6 +897,22 @@ export function agyModel(cfg: Pick<Config, "models"> | undefined, override?: str
 
 export type AgyOpts = CodexOpts & { model?: string };
 
+// 캐릭터 말 걸기(quick)에서 빠른 대화 모델을 따로 고르지 않았으면 agy 기본(Gemini Argon Medium, 모델 4~11초) 대신 이 모델.
+// 같은 내용 측정: 기본 15.2초 → 빠른 모델 7~8초(2026-10-17, .plans/measurements/latency-20261017)
+export const AGY_QUICK_MODEL = "claude-sonnet-5-5-low";
+
+async function agyQuickOr(cfg: Pick<Config, "models">, prompt: string, schema: unknown, opts: AgyOpts & { quick?: boolean }): Promise<unknown> {
+  const model = agyModel(cfg, opts.model);
+  if (model || !opts.quick) return (await agyExec(prompt, schema, { ...opts, model })).out;
+  try {
+    return (await agyExec(prompt, schema, { ...opts, model: AGY_QUICK_MODEL })).out;
+  } catch (e) {
+    // agy 목록에서 이 모델 이름이 없어졌을 때만 기본 모델로 한 번 더(한도·인증 오류는 자동 전환이 받는다)
+    if (e instanceof BrainLimitError || e instanceof BrainAuthError || !/model/i.test(String((e as Error)?.message))) throw e;
+    return (await agyExec(prompt, schema, { ...opts, model: undefined })).out;
+  }
+}
+
 // agy 는 실행마다 MCP 를 넘길 수 없어 전역 설정에 넣는다(mcp-http.ts ensureAgyMcp). 못 넣으면 도구 없이(한 번만 알림)
 let agyMcpWarned = false;
 let agyMcpHome: string | undefined; // 테스트가 가짜 홈으로 바꾼다
@@ -934,12 +950,12 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
 export async function remoteJson(
   provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide } & ProviderDeps = {},
+  opts: { system?: string; model?: string; quick?: boolean; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide } & ProviderDeps = {},
 ): Promise<unknown> {
   if (provider === "gemini") return geminiJson(cfg, prompt, schema, opts);
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);
   if (provider === "anthropic") return anthropicJson(cfg, prompt, schema, opts);
   if (provider === "genspark") return gensparkJson(cfg, prompt, schema, opts);
-  if (provider === "agy") return (await agyExec(prompt, schema, { ...opts, model: agyModel(cfg, opts.model) })).out;
+  if (provider === "agy") return agyQuickOr(cfg, prompt, schema, opts);
   return codexJson(prompt, schema, opts);
 }
