@@ -153,9 +153,11 @@ export class DailyPlanService {
     for (const op of ops) {
       const items = this.state(date).items;
       if (op.op === "add") {
-        if (op.id) {
-          const cur = this.store.getTodo(op.id);
-          if (!cur || (cur.status !== "open" && cur.status !== "done")) { errors.push(`할 일에서 "${op.id}"를 못 찾았어요`); continue; }
+        // 제목만 와도 같은 제목의 열린 할 일이 있으면 그것을 오늘로 고른다(브리핑이 한 응답에서 새 할 일과 오늘 할 일을 같이 적으면 둘이 생겼다)
+        const id = op.id ?? this.store.openTodos().find((x) => tidy(x.title) === tidy(op.title ?? ""))?.id;
+        if (id) {
+          const cur = this.store.getTodo(id);
+          if (!cur || (cur.status !== "open" && cur.status !== "done")) { errors.push(`할 일에서 "${id}"를 못 찾았어요`); continue; }
           const patch: TodoPatch = { today: date };
           if (op.priority !== undefined) patch.priority = prio(op.priority, cur.priority);
           this.ports.edit(cur.id, patch);
