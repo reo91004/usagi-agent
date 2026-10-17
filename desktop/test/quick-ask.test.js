@@ -1,4 +1,4 @@
-// AI 없이 더블클릭 → 고르는 질문 칩, 패널 연결 안내 카드 숨기기
+// AI 없이 캐릭터 한 번 클릭 → 고르는 질문 칩, 패널 연결 안내 카드 숨기기
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { QUICK_CHIPS, QUICK_ID, ASK_IDS, isAskId, quickBubble, normQuick, chipsOf, chipAction, answerBubble } from '../src/quick-ask.js';

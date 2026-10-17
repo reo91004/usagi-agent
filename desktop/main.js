@@ -370,7 +370,7 @@ function coderBubble(feature) {
   send('bubble', { id: `local-coder-${feature}`, text: coderHint(feature), kind: 'info', ttlMs: 12000 });
 }
 // ---- 뇌(말 거는 AI) 연결 상태: 데몬 GET /status(SSE status) + 이 맥의 Claude Code 확인(caps) → brain-state.js brainView ----
-// 캐릭터(더블클릭 = 말 걸기 | 춤 + 연결 안내)·패널 채팅·세션 창 입력이 이걸로 갈린다
+// 캐릭터(한 번 클릭 = 말 걸기 | 춤 + 연결 안내)·패널 채팅·세션 창 입력이 이걸로 갈린다
 let lastStatus = null;
 let lastBrain = null;
 function brainNow() {

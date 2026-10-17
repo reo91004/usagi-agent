@@ -958,7 +958,7 @@ document.addEventListener('mouseleave', (e) => {
   recheckHit();
 });
 
-// ---- 드래그 / 클릭: 왼쪽 한 번은 패널, 두 번은 말 걸기, 오른쪽 클릭은 메뉴 ----
+// ---- 드래그 / 클릭: 왼쪽 한 번은 말 걸기, 두 번은 패널, 오른쪽 클릭은 메뉴 ----
 
 wrap.addEventListener('mousedown', (e) => {
   if (e.button !== 0 || e.ctrlKey) return; // Ctrl+클릭은 macOS 에서 오른쪽 클릭(메뉴) — 드래그로 치지 않는다
@@ -968,8 +968,9 @@ wrap.addEventListener('mousedown', (e) => {
   e.preventDefault();
 });
 
-// 한 번 클릭 = 패널(공부 중이면 세션 창), 더블클릭 = 말 걸기(입력창). 두 번째 클릭이 올 때까지 잠깐 기다렸다가 패널을 연다.
-// 뇌(AI)가 아직 없으면 더블클릭 = 짧은 춤 + 고르는 질문 칩(AI 없이 답하는 것 · AI 연결하기)
+// 한 번 클릭 = 말 걸기(입력창)를 기다림 없이 바로 연다. DOUBLE_CLICK_MS 안의 두 번째 클릭 = 입력창을 닫고 패널(공부 중이면 세션 창).
+// 입력창이 열려 있을 때의 (더블이 아닌) 한 번 클릭 = 입력창 닫기.
+// 뇌(AI)가 아직 없으면 한 번 클릭 = 고르는 질문 칩(AI 없이 답하는 것 · AI 연결하기)
 const DOUBLE_CLICK_MS = 280;
 const LONG_PRESS_MS = 500; // 이보다 오래 누르고 있다 뗀 건 옮기려다 만 것 — 클릭이 아니다
 const AFTER_DRAG_MS = 600; // 옮긴 직후 들어온 클릭(드래그 잠금을 끝내는 탭 등)은 무시
@@ -979,7 +980,7 @@ let brain = { ready: true }; // 모르면 막지 않는다(main 이 GET /status 
 cy.brain?.().then((v) => { if (v) brain = v; }).catch(() => {});
 cy.onBrain?.((v) => { if (v) brain = v; if (brain.ready === false && askOpen) hideAsk(); });
 
-// 뇌 없이 더블클릭: 고르는 질문 칩(오늘 할 일·지금 할 일·다음 일정·응원·AI 연결하기). 춤은 「응원해 줘」 때만
+// 뇌 없이 한 번 클릭: 고르는 질문 칩(오늘 할 일·지금 할 일·다음 일정·응원·AI 연결하기). 춤은 「응원해 줘」 때만
 let danceOff = null;
 let chipSeq = 0; // 칩을 새로 누르면 앞선 「다시 띄우기」는 버린다
 const CHIPS_AGAIN_MS = 2000; // 답을 보여 주고 이만큼 뒤에 칩을 다시
@@ -1037,14 +1038,14 @@ function onCharacterClick() {
   if (clickTimer) {
     clearTimeout(clickTimer);
     clickTimer = null;
-    talk();
+    hideAsk(); // 첫 클릭이 연 입력창(포커스 포함)을 닫고 패널로
+    dismiss(QUICK_ID);
+    cy.togglePanel();
     return;
   }
-  clickTimer = setTimeout(() => {
-    clickTimer = null;
-    hideAsk();
-    cy.togglePanel();
-  }, DOUBLE_CLICK_MS);
+  clickTimer = setTimeout(() => { clickTimer = null; }, DOUBLE_CLICK_MS);
+  if (askOpen) hideAsk();
+  else talk();
 }
 
 window.addEventListener('mouseup', (e) => {

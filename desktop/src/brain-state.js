@@ -1,7 +1,7 @@
 // 뇌(말 거는 AI) 연결 상태 → 화면 분기. 순수 로직 — main·패널·세션 창·캐릭터가 같이 쓴다.
 // 원천은 데몬 GET /status(SSE status). 데몬이 꺼져 있으면 앱이 기억하는 AI 선택(sisa)으로 짐작한다.
-//   뇌가 있으면: 캐릭터 더블클릭 = 말 걸기, 패널·세션 창 입력
-//   없으면: 더블클릭 = 고르는 질문 칩(quick-ask.js, 「응원해 줘」만 춤), 입력 대신 연결 안내 카드(숨길 수 있다 · 정해진 말·할 일 보기는 그대로)
+//   뇌가 있으면: 캐릭터 한 번 클릭 = 말 걸기(두 번 = 패널), 패널·세션 창 입력
+//   없으면: 한 번 클릭 = 고르는 질문 칩(quick-ask.js, 「응원해 줘」만 춤), 입력 대신 연결 안내 카드(숨길 수 있다 · 정해진 말·할 일 보기는 그대로)
 
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 const tri = (v) => (v === true ? true : v === false ? false : null);
@@ -78,7 +78,7 @@ export function connectCard(view) {
     title: view?.provider === 'claude-code' && view?.known ? 'Claude Code 로그인이 필요해요' : view?.local ? '지금은 AI 없이 쓰는 중이에요' : '아직 대화할 AI(뇌)가 연결되지 않았어요',
     lines: [
       'AI는 선택이에요. 대화하고 싶으면 **Claude Code**·**Codex**·**Antigravity** 로그인, 또는 **Gemini·OpenAI·Claude API·Genspark 키** 중 하나를 연결하면 돼요.',
-      '연결하면: 캐릭터 더블클릭으로 말 걸기 · 이 채팅 · 브리핑 요약',
+      '연결하면: 캐릭터 한 번 클릭으로 말 걸기 · 이 채팅 · 브리핑 요약',
       '지금도 되는 것: 할 일 보기 · 오늘 할 일 표 · 회의 알림 · 아래 정해진 말',
     ],
     button: '연결하기',

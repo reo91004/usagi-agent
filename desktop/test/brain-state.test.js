@@ -1,4 +1,4 @@
-// 뇌(말 거는 AI) 연결 상태 → 더블클릭·패널 채팅·세션 창 입력 분기, 사용법 둘러보기
+// 뇌(말 거는 AI) 연결 상태 → 캐릭터 클릭·패널 채팅·세션 창 입력 분기, 사용법 둘러보기
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normStatus, brainView, connectCard, sameView } from '../src/brain-state.js';
@@ -131,7 +131,7 @@ test('AI 없이 쓰는 중: 연결 카드·둘러보기가 AI 를 필수로 말�
   assert.match(chat.text, /AI 없이도/);
 });
 
-test('사용법 투어: AI 없으면 두 번 눌러 질문 칩, Slack 없으면 새로고침 안내 없음', async () => {
+test('사용법 투어: AI 없으면 한 번 눌러 질문 칩, Slack 없으면 새로고침 안내 없음', async () => {
   const { tourSteps } = await import('../src/tour.js');
   const off = tourSteps({ ready: false, connected: [] });
   assert.match(off[0].text, /바로 답해 주는 질문/);

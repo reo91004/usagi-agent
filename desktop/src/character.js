@@ -157,7 +157,7 @@ export function activityReducer(s, a) {
       if (s.dancing) n = { ...n, dancing: false, endedDance: s.danceId };
       return n;
     }
-    // 앱이 스스로 추는 짧은 춤(뇌 연결 전 더블클릭 등) — 데몬과 끊겨 있어도 춘다
+    // 앱이 스스로 추는 짧은 춤(뇌 연결 전 한 번 클릭 등) — 데몬과 끊겨 있어도 춘다
     case 'localDance':
       return { ...s, localDance: !!a.on, ...(a.on ? { localClip: DANCE_CLIPS.includes(a.clip) ? a.clip : 'dance' } : {}) };
     case 'focus':
