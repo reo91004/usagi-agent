@@ -715,8 +715,7 @@ button.ghost.danger-text { color: var(--err); }
 .th-row:hover, .th-row:focus-visible { background: var(--code); }
 .th-row[aria-selected="true"] { background: var(--accent-soft); }
 .th-row[aria-selected="true"] .th-name { color: var(--accent); font-weight: 600; }
-.th-icon { flex: none; width: 18px; display: grid; place-items: center; color: var(--muted); }
-.th-icon svg, #th-kind svg { display: block; width: 14px; height: 14px; }
+.th-icon { flex: none; width: 18px; text-align: center; font-size: 13px; }
 .th-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .th-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .th-prev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--faint); }
@@ -749,7 +748,7 @@ button.ghost.danger-text { color: var(--err); }
 }
 #th-toggle[data-tip]::after { right: auto; left: 0; }
 #th-toggle:hover::after, #th-toggle:focus-visible::after, .th-sync:hover::after, .th-sync:focus-visible::after { opacity: 1; }
-#th-kind { flex: none; color: var(--muted); }
+#th-kind { flex: none; font-size: 14px; }
 .th-title {
   min-width: 0;
   max-width: 100%;
