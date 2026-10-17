@@ -84,6 +84,14 @@ export function slackChannels(store: Store): { id: string; name: string; type: s
       .map((r) => ({ id: r.id, name: r.name, type: r.type }));
   } catch { return []; } // 수집 전엔 표가 없다
 }
+// 데스크탑이 Slack permalink 를 앱 주소(slack://)로 바꿀 때 쓰는 워크스페이스. 모르면 null
+export function slackTeam(store: Store): { url: string; id: string } | null {
+  try {
+    const v = (k: string) => (store.db.prepare("SELECT value FROM slack_meta WHERE key = ?").get(k) as any)?.value as string | undefined;
+    const url = v("teamUrl"), id = v("teamId");
+    return url && id ? { url, id } : null;
+  } catch { return null; } // 수집 전엔 표가 없다
+}
 export const mutedIds = (store: Store): Set<string> => new Set(JSON.parse(mutedJson(store)) as string[]);
 // 메시지 노드 SQL 에 붙이는 조건. 인자 하나 = mutedJson(store)
 export const NOT_MUTED = "coalesce(json_extract(props, '$.channel'), '') NOT IN (SELECT value FROM json_each(?))";
@@ -309,6 +317,7 @@ export class SlackRun {
   counts: SlackIngestCounts;
   me?: string;
   teamUrl?: string;
+  teamId?: string;
   protected queue: Call[] = [];
   protected inflight = new Map<string, Call>();
   protected stages: (() => void)[];
@@ -336,6 +345,7 @@ export class SlackRun {
     this.muted = mutedIds(ing.store);
     this.me = ing.meta("me") ?? undefined;
     this.teamUrl = ing.meta("teamUrl");
+    this.teamId = ing.meta("teamId");
     this.budget = ing.deps.maxCalls;
     this.historyLeft = ing.deps.maxHistory;
     // 내 id·채널 목록을 이미 알면 첫 묶음부터 검색·history를 같이 낸다(턴 수 절약)
@@ -383,8 +393,11 @@ export class SlackRun {
 
   // ── 내 id·채널 목록(오래됐으면)
   protected discover() {
-    if (!this.me || !this.teamUrl) {
+    // teamId 는 Slack 앱 링크용. 응답에 없는 연결이면 한 번만 물어본다(teamIdTried)
+    if (!this.me || !this.teamUrl || (!this.teamId && this.ing.meta("teamIdTried") !== "1")) {
       this.push("slack_whoami", {}, (d) => {
+        this.ing.setMeta("teamIdTried", "1");
+        if (d?.team_id) { this.teamId = d.team_id; this.ing.setMeta("teamId", d.team_id); }
         if (d?.user_id) { this.me = d.user_id; this.ing.setMeta("me", d.user_id); }
         if (d?.url) { this.teamUrl = d.url; this.ing.setMeta("teamUrl", d.url); }
       });

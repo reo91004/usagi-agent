@@ -11,6 +11,7 @@ import { ASSET_SCHEME, resolveAsset, parseRange, assetCandidates, userCharacterF
 import { cleanMergeQuestion, normalizeOpen } from './src/bubbles.js';
 import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
+import { slackAppUrl } from './src/slack-link.js';
 import { contentMismatch, defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
 import { showOnCurrentSpace } from './src/spaces.js';
 import { normalizeSection, splitHost } from './src/dashboard.js';
@@ -843,6 +844,16 @@ function onSSE({ event, data }) {
   else if (event === 'status') { lastStatus = normStatus(payload?.status); pushBrain(); }
 }
 
+// 링크 열기: 내 워크스페이스의 Slack permalink 이고 Slack 앱이 있으면 앱으로, 아니면 브라우저로
+async function openLink(url) {
+  let target = url;
+  if (/^https:\/\/[^/]+\.slack\.com\//.test(url) && app.getApplicationNameForProtocol('slack://')) {
+    const r = await request('GET', '/settings').catch(() => null);
+    target = slackAppUrl(url, r?.ok ? r.data?.slackTeam : null) ?? url;
+  }
+  shell.openExternal(target).catch(() => {});
+}
+
 // 데몬 호출. POST 는 X-CY-Agent 헤더 + JSON 본문. 결과는 { ok, status, data } | { ok: false, error }
 // timeoutMs: 모델을 부르는 호출은 길게
 async function request(method, pathname, body, timeoutMs) {
@@ -1333,7 +1344,8 @@ function setupIPC() {
 
   ipcMain.on('open-link', (e, url) => {
     if (!fromOurs(e)) return;
-    if (typeof url === 'string' && isSafeLink(url)) shell.openExternal(url).catch(() => {});
+    if (typeof url !== 'string' || !isSafeLink(url)) return;
+    openLink(url);
   });
   ipcMain.handle('copy-text', (e, text) => {
     if (!fromPanel(e) || typeof text !== 'string' || !text) return denied(); // 글자 수 제한 없음

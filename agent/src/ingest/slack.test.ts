@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Store } from "../store.ts";
 import { loadConfig } from "../config.ts";
-import { SlackIngester, attentionSince, slackChannels, callKey, formatAttention, ingestErrorText, mentions, permalinkOf } from "./slack.ts";
+import { SlackIngester, attentionSince, slackChannels, slackTeam, callKey, formatAttention, ingestErrorText, mentions, permalinkOf } from "./slack.ts";
 
 const ME = "UME";
 const NOW = Date.parse("2026-10-08T12:00:00Z");
@@ -200,6 +200,7 @@ test("증분: 두 번째 사이클은 커서 이후만, whoami·채널 목록은
   assert.equal(r2.messages, 3);
   const second = f.calls.slice(before);
   assert.ok(!second.some((c) => c.tool === "slack_whoami"), "whoami cached");
+  assert.deepEqual(slackTeam(store), { url: "https://acme.slack.com/", id: "T1" });
   assert.ok(!second.some((c) => c.tool === "slack_list_accessible_channels"), "channel list cached (TTL)");
   const h = second.find((c) => c.tool === "slack_get_channel_history" && c.args.channel_id === "C1")!;
   assert.equal(h.args.oldest, ts(33), "C1 cursor = newest top-level ts");
