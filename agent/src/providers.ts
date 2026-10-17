@@ -835,6 +835,7 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
       if (code !== 0) reject(Object.assign(new Error(`${file} 실행이 실패했어요.`), { code, stderr: Buffer.concat(err).toString("utf8"), stdout: Buffer.concat(out).toString("utf8") }));
       else resolve({ stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
     });
+    child.stdin.on("error", () => {}); // 정지·시간 초과로 자식을 먼저 죽이면 stdin 쓰기가 EPIPE — 결과는 위의 close(종료 코드)가 정한다
     child.stdin.end(opts.input ?? "");
   });
 }
