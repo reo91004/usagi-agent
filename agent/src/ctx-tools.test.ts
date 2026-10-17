@@ -240,3 +240,23 @@ test("cy 도구: 숨긴 프로젝트는 세션·KG 에서 빠진다", async () =
   assert.doesNotMatch(txt(await h.kg_search({ query: "wiki" })), /\[project\] wiki/);
   assert.match(txt(await h.kg_node({ name: "wiki" })), /못 찾음/);
 });
+
+test("jobs_recent: 돌고 있음·끝·실패·끊김을 서버·폴더·명령·바뀐 파일과 함께, query 로 거른다", async () => {
+  const s = new Store(":memory:");
+  const start = Math.floor(NOW.getTime() / 1000) - 3 * 3600;
+  s.upsertNode("job:gpu1:a", "job", "resnet 학습", { host: "gpu1", cwd: "/home/u/exp", cmd: "python train.py", start, running: true }, ago(0.1));
+  s.upsertNode("job:gpu1:b", "job", "평가", { host: "gpu1", cwd: "/home/u/exp", start, seconds: 600, code: 0, files: ["out/metrics.json", "log.txt"] }, ago(2));
+  s.upsertNode("job:gpu2:c", "job", "ablation", { host: "gpu2", start, seconds: 60, code: 137 }, ago(2));
+  s.upsertNode("job:gpu2:d", "job", "죽은 학습", { host: "gpu2", start, lost: true }, ago(1));
+  s.upsertNode("job:old", "job", "옛날 것", { seconds: 1, code: 0 }, ago(24 * 10));
+  const h = ctxHandlers(cfg({ sshHosts: ["gpu1"], jobHosts: ["gpu1", "gpu2"] }), s, { now: () => NOW });
+  const text = (await h.jobs_recent({})).content[0].text;
+  assert.match(text, /\[돌고 있음\] resnet 학습 @gpu1 · .* 시작, 3시간째 · 폴더 \/home\/u\/exp · 명령 python train\.py/);
+  assert.match(text, /\[끝\] 평가 @gpu1 · .* 끝, 10분 걸림 · 폴더 \/home\/u\/exp · 실행 중 바뀐 파일\(최근 순\): out\/metrics\.json, log\.txt/);
+  assert.match(text, /\[실패\(종료 코드 137\)\] ablation @gpu2/);
+  assert.match(text, /\[끊김: 끝 기록 없이 사라짐\] 죽은 학습 @gpu2/);
+  assert.ok(!text.includes("옛날 것"));
+  assert.match(text, /remote_read\(host, "<폴더>\/<파일>"\)로\. 서버: gpu1, gpu2/);
+  const only = (await h.jobs_recent({ query: "GPU2" })).content[0].text;
+  assert.ok(!only.includes("resnet") && only.includes("ablation"));
+});

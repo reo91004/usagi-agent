@@ -39,7 +39,7 @@ import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
-import { jobBubble, pullJobs, type JobDone } from "./jobs.ts";
+import { jobBubble, jobNodeId, jobProps, pullJobs, type JobDone, type RunningJob } from "./jobs.ts";
 import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
@@ -459,13 +459,29 @@ const writeNotes = safe("research-note", async () => {
 });
 if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
 
-// 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts)는 2분마다 ssh 로 가져온다
+// 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts·sshHosts)는 2분마다 ssh 로 가져온다
+// 작업 하나가 노드 하나(job:<서버>:<id>): 도는 동안 running, 끝나면 결과로 덮고, 표시만 남고 프로세스가 없으면 lost
 function jobDone(j: JobDone) {
-  const id = `job-${randomUUID()}`;
-  store.upsertNode(`job:${id}`, "job", j.name, { seconds: j.seconds, code: j.code, ...(j.host ? { host: j.host } : {}) }); // 연구 노트(research-note.ts)가 그날 것을 읽는다
-  const b = jobBubble(j, id);
+  const id = jobNodeId(j);
+  store.upsertNode(id, "job", j.name, jobProps(j)); // 연구 노트(research-note.ts)·맥락 도구 jobs_recent 가 읽는다
+  const b = jobBubble(j, id.slice(4));
   bus.bubble(b);
   if (b.kind === "done") bus.activity.startDance(8000, "cheer");
+}
+function jobsRunning(host: string, running: RunningJob[]) {
+  const seen = new Set<string>();
+  for (const r of running) {
+    const id = jobNodeId(r);
+    seen.add(id);
+    const prev = store.node(id);
+    if (prev && !prev.props.running && !prev.props.lost) continue; // 같은 목록에서 이미 끝난 것
+    store.upsertNode(id, "job", r.name, jobProps(r, r.alive ? "running" : "lost"));
+    if (!r.alive) console.warn(`[jobs] ${host} 의 '${r.name}' 이(가) 끝 기록 없이 사라졌어요(서버 재시작·강제 종료)`);
+  }
+  // 표시가 없어졌는데 끝 기록도 없는 것(누가 표시를 지움) → lost
+  for (const n of store.nodesSince("job", new Date(Date.now() - 14 * 86400e3).toISOString(), 500)) {
+    if (n.props.running && n.props.host === host && !seen.has(n.id)) store.upsertNode(n.id, "job", n.label, { ...n.props, running: undefined, lost: true });
+  }
 }
 const jobHostDown = new Set<string>(); // 끊긴 서버는 상태가 바뀔 때만 로그
 let jobsBusy = false;
@@ -475,7 +491,9 @@ async function pollJobHosts() {
   try {
     for (const host of cfg.jobHosts) {
       try {
-        for (const j of await pullJobs(host)) jobDone(j);
+        const { done, running } = await pullJobs(host);
+        jobsRunning(host, running);
+        for (const j of done) jobDone(j);
         if (jobHostDown.delete(host)) console.log(`[jobs] ${host} 다시 연결됨`);
       } catch (e: any) {
         if (!jobHostDown.has(host)) console.warn(`[jobs] ${host} 확인 못 함: ${e?.message ?? e}`);
