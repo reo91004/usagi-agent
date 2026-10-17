@@ -139,10 +139,14 @@ test("listCmd: 공용 계정은 cwd 가 내 폴더나 그 아래인 기록만 �
   put(".claude/projects/-h/home.jsonl", { type: "user", cwd: home });
   put(".codex/sessions/2026/10/17/rollout-a.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b` } });
   put(".codex/sessions/2026/10/17/rollout-b.jsonl", { type: "session_meta", payload: { cwd: `${home}/jo` } });
+  // 프로그램이 돌린 세션은 내 폴더 것이어도 받지 않는다
+  put(".codex/sessions/2026/10/17/rollout-exec.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b`, originator: "codex_exec", source: "exec" } });
+  put(".codex/sessions/2026/10/17/rollout-sub.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b`, originator: "codex-tui", source: { subagent: { thread_spawn: {} } } } });
+  put(".claude/projects/-h-reo-a/sdk.jsonl", { type: "user", cwd: `${home}/reo/a`, entrypoint: "sdk-cli" });
   const list = (mine?: string) => parseList(execFileSync("sh", ["-c", listCmd(mine)], { env: { ...process.env, HOME: home } }).toString()).map((f) => f.rel).sort();
   assert.deepEqual(list("~/reo"), [".claude/projects/-h-reo-a/mine.jsonl", ".claude/projects/-h/moved.jsonl", ".codex/sessions/2026/10/17/rollout-a.jsonl"]);
   assert.deepEqual(list(`${home}/reo`), list("~/reo")); // 절대 경로로 적어도 같다
-  assert.equal(list().length, 6); // 개인 계정은 다
+  assert.equal(list().length, 6); // 개인 계정은 남의 폴더도 받되, 프로그램이 돌린 세션 셋은 빼고
 });
 
 test("syncRemoteSessions: 공용 계정 이름이 이상하면 ssh 전에 멈춘다", async () => {
