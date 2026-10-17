@@ -1752,7 +1752,7 @@ function setupIPC() {
       return new Promise((done) => execFile('open', ['-a', app, dir], (err) => done(err ? { ok: false, error: 'VS Code 를 열지 못했어요' } : { ok: true })));
     }
     const url = remoteUrl(host || pick, dir, sshHosts());
-    if (!url) return { ok: false, error: host || pick ? `~/.ssh/config 에서 서버 ${host || pick} 를 찾지 못했어요` : '어느 서버의 폴더인지 몰라요' };
+    if (!url) return { ok: false, error: host || pick ? `서버 ${host || pick} 를 열 수 없어요(~/.ssh/config 별칭이나 user@host 여야 해요)` : '어느 서버의 폴더인지 몰라요' };
     return shell.openExternal(url).then(() => ({ ok: true }), () => ({ ok: false, error: 'VS Code 를 열지 못했어요' }));
   });
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기 · 지우기

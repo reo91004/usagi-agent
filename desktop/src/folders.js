@@ -25,9 +25,9 @@ export function candidateHosts(dir, hosts) {
   return u ? hosts.filter((h) => h.user === u).map((h) => h.host) : [];
 }
 
-// VS Code Remote-SSH 로 여는 링크. host 는 ssh config 별칭이어야 하고 dir 은 절대 경로(조각마다 인코딩)
+// VS Code Remote-SSH 로 여는 링크. host 는 ssh config 별칭이거나 user@host(별칭이 없는 서버, 엄격히 검사)이고 dir 은 절대 경로(조각마다 인코딩)
 export function remoteUrl(host, dir, hosts) {
-  if (!hosts.some((h) => h.host === host)) return null;
+  if (!hosts.some((h) => h.host === host) && !/^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+$/.test(host)) return null;
   if (typeof dir !== 'string' || !dir.startsWith('/') || /[\0\r\n]/.test(dir)) return null;
   return `vscode://vscode-remote/ssh-remote+${host}${dir.split('/').map(encodeURIComponent).join('/')}`;
 }
