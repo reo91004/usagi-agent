@@ -1,8 +1,10 @@
 // 패널 렌더러 — 대시보드(개요·작업 폴더·할 일·오늘 할 일)와 채팅. 네트워크는 전부 메인을 거친다.
 import DOMPurify from './vendor/purify.js';
+import { h } from './h.js';
+import { ellipsize } from '../src/tool-view.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
-import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, navGroups, relativeTime, clockTime } from '../src/dashboard.js';
+import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, navGroups, relativeTime } from '../src/dashboard.js';
 import { candidateHosts } from '../src/folders.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
@@ -14,11 +16,11 @@ import { createFocusView } from './focus-view.js';
 import { connectorAction, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { CANNED, cannedReply, connectSteps, hubItem, slotOk, EXTRAS } from '../src/ai-onboard.js';
 import { SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePhase, NO_AI } from '../src/setup-plan.js';
-import { brainView, connectCard, chatLock } from '../src/brain-state.js';
+import { connectCard, chatLock } from '../src/brain-state.js';
 import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, sendButton, stopTargets, localState, queuedChats, queuedLabel, sentLabel } from '../src/chat.js';
 import { stamp, withDayDividers } from '../src/chat-time.js';
 import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
-import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, descriptionPatch, isDoing, patchToday, isToday } from '../src/todos.js';
+import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, isDoing, patchToday, isToday } from '../src/todos.js';
 import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
@@ -89,21 +91,6 @@ document.addEventListener('click', (e) => {
   cy.openLink(a.getAttribute('href'));
 });
 
-// 작은 DOM 헬퍼: h('div.card', {onclick}, '글자', child)
-function h(sel, props, ...kids) {
-  const [tag, ...cls] = sel.split('.');
-  const el = document.createElement(tag || 'div');
-  if (cls.length) el.className = cls.join(' ');
-  for (const [k, v] of Object.entries(props ?? {})) {
-    if (v == null || v === false) continue;
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'text') el.textContent = v;
-    else if (k === 'dataset') Object.assign(el.dataset, v);
-    else el.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of kids.flat()) if (c != null && c !== false) el.append(c);
-  return el;
-}
 // 집중하기: 할 일 목록의 [집중하기] · 맨 아래 「오늘 집중」 · 주·월 기록(focus-view.js)
 const focusView = createFocusView({ h, cy });
 $('focus-slot').append(focusView.bar('header')); // 머리의 [집중하기]: 어느 화면에서든(상태는 focus-view 하나)
@@ -271,7 +258,6 @@ async function enterSettings() {
 }
 
 function goto(s) {
-  const prevSection = section;
   if (s === 'models') settingsTab = 'ai'; // 예전 「모델」 탭
   section = normalizeSection(s) ?? section;
   if (!SECTIONS.includes(section)) section = 'overview';
@@ -1519,7 +1505,7 @@ function renderUndo(item) {
   undoToast.hidden = !item;
   document.body.classList.toggle('has-undo', !!item); // 맨 아래 줄(휴지통 비우기 등)을 가리지 않게 여백
   if (!item) { undoToast.replaceChildren(); return; }
-  const title = item.title.length > 22 ? `${item.title.slice(0, 21)}…` : item.title;
+  const title = ellipsize(item.title, 22);
   undoToast.replaceChildren(
     h('span.msg', { text: `'${title}' 휴지통으로 옮겼어요` }),
     h('button.undo', { type: 'button', text: '되돌리기', onclick: undoTrash }),

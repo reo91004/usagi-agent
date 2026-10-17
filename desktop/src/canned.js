@@ -3,6 +3,7 @@
 // {next} {open} {done} {total} {rest} 는 그때 숫자·제목으로 바뀐다.
 // 고른 캐릭터가 시사가 아니면 그 캐릭터 말(character-canned.js)이 기본이다. 사용자가 고친 말은 캐릭터와 상관없이 그대로.
 import { CHARACTER_CANNED } from './character-canned.js';
+import { ellipsize } from './tool-view.js';
 
 export const CANNED = [
   { id: 'today', label: '오늘 할 일 얼마나 했어요?' },
@@ -146,7 +147,7 @@ const FALLBACK = ['오늘도 천천히 해 봐요.'];
 
 export function plainTitle(t) {
   const s = String(t ?? '').replace(/[*_`~[\]()<>#|\\]/g, '').replace(/\s+/g, ' ').trim();
-  return s.length > 30 ? `${s.slice(0, 29)}…` : s;
+  return ellipsize(s, 30);
 }
 
 export function fillCanned(line, c = {}) {

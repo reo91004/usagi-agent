@@ -91,7 +91,6 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
   const lists = {};
   let note = '';
   let busy = false;
-  let personaDraft = null;
   let cannedDraft = null;
   let logins = {}; // 연결 안 된 CLI 의 설치·로그인 상태(탭을 열 때마다 확인)
   let addError = '';
@@ -145,7 +144,6 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
     busy = false;
     if (r?.ok) {
       onSisa(r);
-      if ('persona' in patch) personaDraft = null;
       if ('canned' in patch) cannedDraft = null;
       note = '저장함';
     } else {
@@ -342,7 +340,6 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
     show() {
       note = '';
       confirming = '';
-      personaDraft = null;
       cannedDraft = null;
       addError = '';
       detectLogins();

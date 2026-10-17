@@ -1,6 +1,7 @@
 // 작업 세션 창의 순수 로직 — run 목록·대화 기록 모델·도구 줄 묶기·diff·자동 스크롤·입력 키.
 // 데몬 /runs, SSE run·runs 이벤트를 받는다(docs/contract.md "작업 세션").
 import { chatTarget } from './origin.js';
+import { clockTime } from './dashboard.js';
 
 export const KIND_ICONS = {
   fix: '🛠', briefing: '📋', chat: '💬', profile: '🧠', kg: '🕸',
@@ -181,7 +182,7 @@ export function shortWhen(iso, now = Date.now()) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return '';
   const d = new Date(t);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const hm = clockTime(iso);
   const today = dayStart(now);
   if (t >= today) return hm;
   if (t >= today - 864e5) return `어제 ${hm}`;
