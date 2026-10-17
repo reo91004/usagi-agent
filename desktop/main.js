@@ -40,6 +40,7 @@ import { normStatus, brainView, sameView } from './src/brain-state.js';
 import { menuTemplate as buildMenuTemplate } from './src/menu.js';
 import { isAskId } from './src/quick-ask.js';
 import { isFocusCmd, DAY_RE, doingTodos } from './src/focus.js';
+import { dockWanted, panelClickAction } from './src/dock.js';
 import { tourSteps, tourBubble, TOUR_VERSION } from './src/tour.js';
 import { NEW_DAEMON_CONFIG, cleanSetupPatch, openSetupAtLaunch, setupView } from './src/setup-plan.js';
 import { attachConsole, assembleBundle, collectLogFiles, createRing, formatLogLine, redact, shapeConnectorsSafe } from './src/debug-share.js';
@@ -601,6 +602,8 @@ function createPanel() {
     state.panel = panel.getBounds();
     saveState();
   };
+  panel.on('show', applyDock);
+  panel.on('hide', applyDock);
   panel.on('resize', remember);
   panel.on('move', remember);
   // 닫기는 숨기기 — 편집 중인 내용 유지. 종료 때만 진짜 닫힘
@@ -636,7 +639,7 @@ function showOrigin(origin) {
 
 // 캐릭터 클릭: 안 보이면 열고, 뒤에 있으면 앞으로, 앞에 있으면 숨김
 function togglePanel() {
-  if (panel && panel.isVisible() && panel.isFocused()) panel.hide();
+  if (panelClickAction({ visible: !!panel?.isVisible(), focused: !!panel?.isFocused() }) === 'hide') panel.hide();
   else showPanel(null);
 }
 
@@ -1074,11 +1077,28 @@ function loadCharacters() {
   return charactersLoading;
 }
 
-// Dock 아이콘은 기본으로 숨긴다(번들 LSUIElement). 숨겨도 메뉴 막대 아이콘·캐릭터·패널은 그대로 — 설정 「이 앱」에서 켠다
+// Dock 아이콘은 기본으로 숨긴다(번들 LSUIElement). 숨겨도 메뉴 막대 아이콘·캐릭터·패널은 그대로.
+// 패널이 열려 있는 동안만 보여 Cmd+Tab 으로 돌아올 수 있게 하고(#121), 설정 「이 앱」에서 켜면 늘 보인다
+let dockOn = null;
 function applyDock() {
   if (process.platform !== 'darwin' || !app.dock) return;
-  if (state.showInDock === true) app.dock.show().catch(() => {});
-  else app.dock.hide();
+  const want = dockWanted({ panelVisible: !!panel && !panel.isDestroyed() && panel.isVisible(), showInDock: state.showInDock });
+  if (want === dockOn) return;
+  dockOn = want;
+  quietActivation(1500); // 앱 종류가 바뀌며 생기는 활성화로 패널·입력창이 흔들리지 않게
+  if (want) {
+    app.dock.show().catch(() => {}).then(() => { if (!dockOn) app.dock.hide(); keepOverlayAbove(); }); // 그 사이 닫혔으면 되돌린다
+  } else {
+    app.dock.hide();
+    keepOverlayAbove();
+  }
+}
+
+// Dock 표시가 바뀌면 오버레이의 항상 위·모든 데스크탑 설정이 풀릴 수 있어 다시 건다
+function keepOverlayAbove() {
+  if (!win || win.isDestroyed()) return;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 }
 
 function setupAppActivation() {
