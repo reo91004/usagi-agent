@@ -48,7 +48,7 @@ import { featureBrain, NEEDS_CLAUDE_MCP, NEEDS_CODER, withMcpBrain } from "./fea
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
-import { writeDay } from "./research-note.ts";
+import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
 import { ctxTools } from "./ctx-tools.ts";
@@ -453,14 +453,22 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
 setInterval(kgHourly, 60 * 60e3);
 
 // 연구 노트(research-note.ts): 한 시간마다 오늘·어제 페이지를 다시 만든다(바뀐 경우만 쓴다). 어제 것은 자정 넘어 끝난 세션까지 담으려고
+// 어제 페이지에는 하루가 끝났으니 요약을 한 번 붙인다(날짜마다 이 데몬에서 한 번만 시도 — 실패해도 매시간 다시 부르지 않게)
 const noteSkipped = new Set<string>(); // 사용자가 고친 페이지는 한 번만 알린다
+const summaryTried = new Set<string>();
 const writeNotes = safe("research-note", async () => {
   if (!cfg.tineGraph) return;
   const today = localDay(Date.now());
-  for (const day of [localDay(dayStart(today) - 12 * 3600e3), today]) { // 어제 낮 = 어제 날짜
+  const yesterday = localDay(dayStart(today) - 12 * 3600e3); // 어제 낮 = 어제 날짜
+  if (!summaryTried.has(yesterday)) {
+    summaryTried.add(yesterday);
+    try { if (await summarizeDay(cfg, store, await collectDay(cfg, store, yesterday, { focus }))) console.log(`[research-note] ${yesterday} 요약을 붙여요`); }
+    catch (e: any) { console.warn(`[research-note] ${yesterday} 요약 못 함: ${e?.message ?? e}`); }
+  }
+  for (const day of [yesterday, today]) {
     const { path, result } = await writeDay(cfg, store, day, { focus });
     if (result === "written") console.log(`[research-note] ${day} 썼어요`);
-    if (result === "edited" && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 페이지를 누가 고쳐서 덮지 않아요: ${path}`); }
+    if ((result === "edited" || result === "removed") && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 우사기 블록을 누가 ${result === "edited" ? "고쳐서" : "지워서"} 그대로 둬요: ${path}`); }
   }
 });
 if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
