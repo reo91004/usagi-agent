@@ -1,6 +1,6 @@
 // 긴 작업(실험·학습·빌드)이 끝나면 캐릭터가 알린다. 결과 한 건은 ops/usagi-run 이 만든다.
 //   이 맥: usagi-run 이 POST /jobs/done 으로 바로 보낸다
-//   원격(ssh·tmux): 서버의 ~/.usagi-agent/jobs/*.json 에 남기고, 데몬이 config jobHosts·sshHosts 를 2분마다 ssh 로 가져와 지운다.
+//   원격(ssh·tmux): 서버의 ~/.usagi-agent/jobs/*.json(공용 계정이면 config jobDirs 의 개인 폴더)에 남기고, 데몬이 config jobHosts·sshHosts 를 2분마다 ssh 로 가져와 지운다.
 //   도는 동안은 <id>.running 표시가 있다(가져가기만 하고 지우지 않음). 표시는 있는데 usagi-run 프로세스가 없으면 끊긴 작업
 //   서버 → 맥으로 포트를 열지 않는다(데몬 포트를 넘기면 공용 서버의 다른 사용자도 할 일·대화에 닿는다)
 import { execFile } from "node:child_process";
@@ -68,11 +68,13 @@ export function jobBubble(j: JobDone, id: string): Bubble {
 // ssh 별칭·user@host 만. 「-」로 시작(옵션으로 읽힘)·공백·셸 문자는 거절
 export const okJobHost = (h: unknown): h is string => typeof h === "string" && /^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$/.test(h);
 
-const REMOTE_DIR = "~/.usagi-agent/jobs";
+export const REMOTE_DIR = "~/.usagi-agent/jobs";
+// 서버의 결과 폴더(config jobDirs — 공용 계정이면 개인 폴더). 원격 셸에 그대로 들어가니 ~/ 나 / 로 시작하는 평범한 경로만
+export const okJobDir = (d: unknown): d is string => typeof d === "string" && /^(~\/|\/)[A-Za-z0-9_.\/-]{1,200}$/.test(d) && !d.split("/").includes("..");
 const FILE_RE = /^[A-Za-z0-9_.-]{1,80}\.(json|running)$/;
 // 끝난 것: D<TAB>파일<TAB>내용(한 줄). 도는 것: R<TAB>파일<TAB>살아 있나(1·0)<TAB>내용. 지우기는 따로 — 읽다가 끊기면 다음 차례에 다시 읽는다
 // 살아 있나는 usagi-run 프로세스(표시 속 pid)로 본다. /proc 를 먼저 보는 건 다른 계정 프로세스면 kill -0 이 거절돼서
-const LIST_CMD = `cd ${REMOTE_DIR} 2>/dev/null || exit 0
+const listCmd = (dir: string) => `cd ${dir} 2>/dev/null || exit 0
 for f in *.json; do [ -f "$f" ] || continue; printf 'D\\t%s\\t' "$f"; tr -d '\\n' < "$f"; echo; done
 for f in *.running; do [ -f "$f" ] || continue; p=$(sed -n 's/.*"pid":\\([0-9][0-9]*\\).*/\\1/p' "$f"); a=0; [ -n "$p" ] && { [ -d "/proc/$p" ] || kill -0 "$p" 2>/dev/null; } && a=1; printf 'R\\t%s\\t%s\\t' "$f" "$a"; tr -d '\\n' < "$f"; echo; done`;
 
@@ -86,9 +88,10 @@ export const runSsh: RunSsh = (args, timeoutMs) => new Promise((resolve, reject)
 });
 
 // 한 서버에서 끝난 작업과 도는 작업을 가져온다. 읽은 끝난 파일·잘못된 파일·끊긴 작업 표시만 지운다
-export async function pullJobs(host: string, run: RunSsh = runSsh): Promise<{ done: JobDone[]; running: RunningJob[] }> {
+export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_DIR): Promise<{ done: JobDone[]; running: RunningJob[] }> {
   if (!okJobHost(host)) throw new Error(`jobHosts 이름이 이상해요: ${host}`);
-  const out = await run(["--", host, LIST_CMD], 20e3);
+  if (!okJobDir(dir)) throw new Error(`jobDirs 경로가 이상해요: ${dir}`);
+  const out = await run(["--", host, listCmd(dir)], 20e3);
   const done: JobDone[] = [], running: RunningJob[] = [];
   const drop: string[] = [];
   for (const line of out.split("\n")) {
@@ -107,6 +110,6 @@ export async function pullJobs(host: string, run: RunSsh = runSsh): Promise<{ do
       if (!r || !alive) drop.push(file);
     }
   }
-  if (drop.length) await run(["--", host, `cd ${REMOTE_DIR} && rm -f -- ${drop.map((f) => `'${f}'`).join(" ")}`], 20e3);
+  if (drop.length) await run(["--", host, `cd ${dir} && rm -f -- ${drop.map((f) => `'${f}'`).join(" ")}`], 20e3);
   return { done, running };
 }

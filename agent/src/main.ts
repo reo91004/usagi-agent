@@ -567,7 +567,7 @@ async function pollJobHosts() {
   try {
     for (const host of cfg.jobHosts) {
       try {
-        const { done, running } = await pullJobs(host);
+        const { done, running } = await pullJobs(host, undefined, cfg.jobDirs[host]);
         jobsRunning(host, running);
         for (const j of done) jobDone(j);
         if (jobHostDown.delete(host)) console.log(`[jobs] ${host} 다시 연결됨`);

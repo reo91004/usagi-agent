@@ -2,7 +2,7 @@
 # 오래 걸리는 작업(실험·학습·빌드)이 끝나면 우사기가 말풍선으로 알려 준다.
 #   usagi-run [-n 이름] -- 명령 [인자…]   명령을 돌리고 끝나면 알린다. 종료 코드는 명령 그대로 돌려준다
 #   usagi-run [-n 이름] --pid PID          이미 돌고 있는 프로세스가 끝날 때까지 10초마다 본다(종료 코드는 모름)
-# 이 맥(우사기 비서가 켜져 있음)에서는 바로 알린다. ssh 서버에서는 ~/.usagi-agent/jobs/ 에 남기고,
+# 이 맥(우사기 비서가 켜져 있음)에서는 바로 알린다. ssh 서버에서는 ~/.usagi-agent/jobs/(개인 폴더에 두면 그 아래)에 남기고,
 # 맥의 우사기가 config.json "jobHosts"·"sshHosts" 에 적힌 서버를 2분마다 가져간다. 맥·리눅스 sh 공용(curl 만 있으면 된다)
 # 도는 동안은 jobs/<id>.running 표시를 두고(끝나면 지움), 끝나면 작업 폴더·명령과 실행 중 바뀐 파일 몇 개(결과 후보)를 같이 남긴다
 set -u
@@ -24,7 +24,10 @@ esc() { printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\t\r\n' '   
 
 start=$(date +%s)
 ID="$(date +%Y%m%d-%H%M%S)-$$"
-DIR=$HOME/.usagi-agent/jobs
+# 공용 계정이면 개인 폴더에 둔다: 이 파일 위 폴더에 .usagi-agent 가 있으면 거기에 남긴다(~/reo/bin/usagi-run → ~/reo/.usagi-agent/jobs).
+# 맥의 config.json "jobDirs" 에 그 서버의 폴더를 적어 둔다(README 「공용 계정 서버」)
+TOP=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd -P)
+if [ -n "$TOP" ] && [ -d "$TOP/.usagi-agent" ]; then DIR=$TOP/.usagi-agent/jobs; else DIR=$HOME/.usagi-agent/jobs; fi
 CWD=$(pwd -P 2>/dev/null || pwd)
 if [ -n "$PID" ]; then
   case $PID in *[!0-9]*) echo "usagi-run: --pid 에는 숫자를 주세요" >&2; exit 2 ;; esac

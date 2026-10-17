@@ -12,7 +12,7 @@ import { todayReminderOf, type TodayReminder } from "./daily-plan.ts";
 import { isNewStyle, onboardedOf, readSessionsOf } from "./onboarding.ts";
 import { calendarAlertOf, type CalendarAlertConfig } from "./calendar-alert.ts";
 import { START_CHARACTER } from "./characters.ts";
-import { okJobHost } from "./jobs.ts";
+import { okJobDir, okJobHost } from "./jobs.ts";
 
 export const HOME_DIR = process.env.CY_AGENT_HOME ?? join(homedir(), ".cy-agent");
 
@@ -48,6 +48,8 @@ export type Config = {
   calendarAlert?: CalendarAlertConfig;
   // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host. sshHosts 도 들어간다
   jobHosts: string[];
+  // 서버마다 usagi-run 결과 폴더. 공용 계정이면 개인 폴더(예: { "pacl-208": "~/reo/.usagi-agent/jobs" }), 없으면 ~/.usagi-agent/jobs
+  jobDirs: Record<string, string>;
   // 물어볼 때 둘러볼 실험 서버(remote-fs.ts: 폴더·파일·GPU). 주기적으로 훑지는 않는다
   sshHosts: string[];
   // Claude Code·Codex 작업 기록을 10분마다 받아 와 읽을 ssh 서버(ingest/remote-sessions.ts). readSessions 가 켜져 있을 때만
@@ -225,6 +227,14 @@ function sshHostsOf(key: string, raw: unknown, notes: string[]): string[] {
   return [...new Set(ok)];
 }
 
+// { 서버: 결과 폴더 } — 서버 이름·경로 모양이 아니면 그 줄만 빼고 알린다
+function jobDirsOf(raw: unknown, notes: string[]): Record<string, string> {
+  if (raw === undefined) return {};
+  const ok = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.entries(raw).filter(([h, d]) => okJobHost(h) && okJobDir(d)) : [];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || ok.length !== Object.keys(raw).length) notes.push("jobDirs 는 { \"서버\": \"~/폴더/.usagi-agent/jobs\" } 모양이어야 해요. 맞지 않는 줄은 뺐어요");
+  return Object.fromEntries(ok) as Record<string, string>;
+}
+
 export function minutesOf(key: string, raw: unknown, def: number, notes: string[], opts: { allowZero?: boolean } = {}): number {
   if (raw === undefined || raw === null) return def;
   const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
@@ -329,6 +339,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     jobHosts: [...new Set([...sshHostsOf("jobHosts", f.jobHosts, notes), ...sshHostsOf("sshHosts", f.sshHosts, [])])], // 실험 서버의 끝난 작업도 가져온다
     sshHosts: sshHostsOf("sshHosts", f.sshHosts, notes),
     sessionHosts: sshHostsOf("sessionHosts", f.sessionHosts, notes),
+    jobDirs: jobDirsOf(f.jobDirs, notes),
     character: typeof f.character === "string" && f.character ? f.character : START_CHARACTER,
     tineGraph: tineGraphOf(f.tineGraph, notes),
     kgModel: env.CY_AGENT_KG_MODEL ?? (f.kgModel as string) ?? (env.CY_AGENT_MODEL_LIGHT ?? (f.models as any)?.light ?? "claude-haiku-5-5"),
