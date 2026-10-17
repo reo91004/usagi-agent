@@ -392,9 +392,20 @@ html, body {
 #ask .att-tray { padding: 4px 4px 2px; --line: var(--bubble-border); --card: var(--btn-bg); --fg: var(--bubble-fg); --muted: var(--bubble-muted); --code: var(--bubble-border); }
 #ask .att-chip { max-width: 226px; height: 30px; }
 #ask .att-thumb { width: 22px; height: 22px; }
-#ask .att-pick { height: 26px; min-width: 26px; padding: 0 2px 0 6px; border: 0; background: transparent; font-size: 14px; cursor: pointer; opacity: 0.75; }
-#ask .att-pick:hover { opacity: 1; }
+/* 입력창 단추: 같은 크기 선 아이콘 + 올리면 바로 뜨는 이름표(포커스 없는 창이라 title 이 안 뜬다) */
+#ask .att-pick { position: relative; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--bubble-muted); cursor: pointer; }
+#ask .att-pick svg { width: 16px; height: 16px; display: block; }
+#ask .att-pick:hover, #ask .att-pick:focus-visible { color: var(--bubble-fg); background: color-mix(in srgb, var(--bubble-fg) 8%, transparent); outline: none; }
 #ask .att-pick[hidden] { display: none; }
+#ask .att-pick[data-tip]::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; line-height: 1.4;
+  color: var(--bubble-bg); background: var(--bubble-fg); box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease 0.2s;
+}
+#ask .att-pick:hover::after, #ask .att-pick:focus-visible::after { opacity: 1; }
+#ask-row > .att-pick:first-child::after { left: 0; transform: none; } /* 창 끝에서 잘리지 않게 양 끝은 안쪽으로 */
+#ask-row > .att-pick:last-child::after { left: auto; right: 0; transform: none; }
 #ask-input { min-width: 0; }
 /* 칩을 눌러 캐릭터가 행동·정해진 말 하는 동안 입력창을 잠깐 숨긴다(renderer.js pauseAsk) */
 #ask.paused { display: none; } /* 자리째 빼서 말풍선이 캐릭터 바로 위로 내려온다 — 그동안 포커스가 빠져도 닫지 않는다(renderer.js askPauseTimer) */
