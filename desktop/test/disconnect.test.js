@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { ipcHandlers, buildHandler, decl } from './helpers/main-calls.js';
+import { denied } from '../src/denied.js';
 import {
   disconnectBrainBody, withBrainBody, brainRows, brainDisconnectCopy, withConnectorOff, withoutHubDone, hubsOf,
   connectorDisconnectCopy, mcpRemoveCommand, connectorAction, capOfRow, reloadNote, disconnectControl, okCap, okBrainId,
 } from '../src/disconnect.js';
-import { withKey, withCli, withoutProvider, connectedProviders, activeProvider, publicView, daemonBrainPatch } from '../src/sisa-store.js';
+import { withKey, withCli, withoutProvider, connectedProviders, activeProvider, publicView, daemonBrainPatch, normalizeSisa } from '../src/sisa-store.js';
 import { shapeConnectors } from '../src/dashboard.js';
 import { setupSettings } from '../src/settings-window.js';
 import { mountModels } from '../renderer/models-view.js';
@@ -205,9 +207,94 @@ test('모델 탭: 연결된 AI 마다 [연결 해제] → 확인 → sisaDisconn
   assert.match(section.text, /Gemini 연결을 끊었어요\. 이제 「AI 없이 쓰기」예요\./);
 });
 
-test('연결 해제·복사 IPC 는 패널에서만(main 의 공용 채널)', () => {
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  for (const ch of ['sisa-get', 'sisa-disconnect', 'connector-disconnect', 'copy-text']) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', (\\(e\\) => \\(|\\(e, \\w+\\) => \\(|\\(e, \\w+\\) => \\{\\s*if \\()!?fromPanel\\(e\\)`));
+test('연결 해제·복사 IPC 는 패널에서만(main 의 공용 채널)', async () => {
+  const calls = [];
+  const h = ipcHandlers();
+  const deps = {
+    denied,
+    fromPanel: (e) => e.panel,
+    okBrainId, okCap,
+    readSisa: () => 'sisa-file', sisaPublic: (d) => ['public', d],
+    disconnectBrain: (p) => { calls.push(['brain', p]); return 'ok'; },
+    disconnectConnector: (c) => { calls.push(['conn', c]); return 'ok'; },
+    clipboard: { writeText: (t) => calls.push(['clip', t]) },
+  };
+  const run = (ch, e, ...a) => buildHandler(h.get(ch), deps)(e, ...a);
+  const other = { panel: false }, panel = { panel: true };
+  for (const [ch, args] of [['sisa-get', []], ['sisa-disconnect', ['gemini']], ['connector-disconnect', ['slack']], ['copy-text', ['claude mcp remove x']]]) {
+    assert.deepEqual(await run(ch, other, ...args), denied(), ch);
+  }
+  assert.deepEqual(calls, []);
+  assert.deepEqual(run('sisa-get', panel), ['public', 'sisa-file']);
+  // 모르는 AI·커넥터 이름, 빈 글은 패널에서 와도 거절
+  for (const [ch, args] of [['sisa-disconnect', ['../x']], ['connector-disconnect', ['evil']], ['copy-text', ['']], ['copy-text', [3]]]) {
+    assert.deepEqual(await run(ch, panel, ...args), denied(), ch);
+  }
+  assert.equal(await run('sisa-disconnect', panel, 'gemini'), 'ok');
+  assert.equal(await run('connector-disconnect', panel, 'slack'), 'ok');
+  assert.deepEqual(run('copy-text', panel, 'claude mcp remove x'), { ok: true });
+  assert.deepEqual(calls, [['brain', 'gemini'], ['conn', 'slack'], ['clip', 'claude mcp remove x']]);
+});
+
+// disconnectBrain·disconnectConnector 를 가짜 파일·데몬으로: 데몬에 보내는 요청과 앱 저장값
+function brainRun(over) {
+  const log = { requests: [], posts: [], saved: [], panel: [], edits: [] };
+  const deps = {
+    connected: true, normalizeSisa, activeProvider, withoutProvider, disconnectBrainBody, withBrainBody, withConnectorOff, withoutHubDone, reloadNote,
+    readSisa: () => over.sisa, writeSisa: (d) => log.saved.push(d), sisaPublic: (d) => ({ view: d }), sendPanel: (...a) => log.panel.push(a),
+    request: async (...a) => { log.requests.push(a); return a[0] === 'GET' ? { ok: true, data: { brain: { provider: over.daemon } } } : { ok: true }; },
+    post: async (...a) => { log.posts.push(a); return over.postRes ?? { ok: true, data: { ok: true, cap: a[1].cap } }; },
+    editDaemonConfig: (fn) => { log.edits.push(fn(over.cfg ?? {})); return log.edits.at(-1); },
+    refreshStatus() {}, pushBrain() {}, refreshCaps() {}, who: () => '시사',
+    ...over.deps,
+  };
+  return { log, deps };
+}
+
+test('disconnectBrain: 데몬이 켜져 있으면 PUT /settings 로 키를 지우고, 쓰던 뇌면 로컬로', async () => {
+  const sisa = withKey({}, 'gemini', 'AIza-secret-key-0123456789');
+  const { log, deps } = brainRun({ sisa, daemon: 'gemini' });
+  const r = await buildHandler(decl('disconnectBrain'), deps)('gemini');
+  assert.deepEqual(log.requests.at(-1), ['PUT', '/settings', { brain: { provider: 'local', keys: { gemini: null } } }]);
+  assert.equal(log.saved.length, 1);
+  assert.equal(connectedProviders(log.saved[0]).includes('gemini'), false);
+  assert.equal(r.ok, true);
+  assert.deepEqual(log.edits, [], '파일은 안 건드림');
+  // 다른 뇌를 쓰고 있으면 키만
+  const o = brainRun({ sisa, daemon: 'claude-code' });
+  await buildHandler(decl('disconnectBrain'), o.deps)('gemini');
+  assert.deepEqual(o.log.requests.at(-1), ['PUT', '/settings', { brain: { keys: { gemini: null } } }]);
+});
+
+test('disconnectBrain: 데몬이 꺼져 있으면 config.json 에 직접', async () => {
+  const sisa = withKey({}, 'gemini', 'AIza-secret-key-0123456789');
+  const { log, deps } = brainRun({ sisa, deps: { connected: false }, cfg: { brain: { provider: 'gemini', geminiApiKey: 'k', other: 1 } } });
+  const r = await buildHandler(decl('disconnectBrain'), deps)('gemini');
+  assert.deepEqual(log.requests, []);
+  assert.deepEqual(log.edits, [{ brain: { provider: 'local', other: 1 } }]);
+  assert.equal(r.offline, true);
+});
+
+test('disconnectConnector: 데몬이 켜져 있으면 POST /connectors/disconnect {cap}, 설치 마법사 완료 표시도 지운다', async () => {
+  const sisa = { done: { gcal: true, outlook: true, slack: true } };
+  const { log, deps } = brainRun({ sisa });
+  const r = await buildHandler(decl('disconnectConnector'), deps)('calendar');
+  assert.deepEqual(log.posts, [['/connectors/disconnect', { cap: 'calendar' }]]);
+  assert.deepEqual(log.saved[0].done, { slack: true });
+  assert.equal(r.ok, true);
+  assert.deepEqual(log.edits, []);
+  // 데몬이 거절하면 지우지 않고 오류
+  const bad = brainRun({ sisa, postRes: { ok: false, status: 500, data: { error: 'x' } } });
+  assert.deepEqual(await buildHandler(decl('disconnectConnector'), bad.deps)('calendar'), { ok: false, error: '끊지 못했어요: x' });
+  assert.deepEqual(bad.log.saved, []);
+});
+
+test('disconnectConnector: 데몬이 꺼져 있으면 파일에서 끄고 MCP 서버 이름을 돌려준다', async () => {
+  const { log, deps } = brainRun({ sisa: { done: {} }, deps: { connected: false }, cfg: { connectors: { slack: { mode: 'mcp', server: 'slack-mcp', token: 't' } } } });
+  const r = await buildHandler(decl('disconnectConnector'), deps)('slack');
+  assert.deepEqual(log.posts, []);
+  assert.equal(log.edits[0].connectors.slack.mode, 'off');
+  assert.deepEqual([r.offline, r.server], [true, 'slack-mcp']);
 });
 
 test('화면 연결: 패널·설정 창·마법사·프리로드·main 이 연결 해제를 부른다', () => {
@@ -224,8 +311,4 @@ test('화면 연결: 패널·설정 창·마법사·프리로드·main 이 연�
   assert.match(read('../preload-panel.cjs'), /sisaDisconnect: .*'sisa-disconnect'/);
   assert.match(read('../preload-panel.cjs'), /connectorDisconnect: .*'connector-disconnect'/);
   assert.match(read('../preload-panel.cjs'), /disconnectConnector: .*'connector-disconnect'/);
-  const main = read('../main.js');
-  assert.match(main, /ipcMain\.handle\('sisa-disconnect'/);
-  assert.match(main, /post\('\/connectors\/disconnect', \{ cap \}\)/);
-  assert.match(main, /request\('PUT', '\/settings', body\)/);
 });

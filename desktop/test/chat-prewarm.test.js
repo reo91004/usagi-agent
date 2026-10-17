@@ -1,12 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { blocks, ipcHandlers, buildHandler } from './helpers/main-calls.js';
 
-test('호버 입력창 포커스(chat-focus on)가 데몬에 POST /chat/prewarm 을 보낸다', () => {
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  const handler = main.slice(main.indexOf("ipcMain.handle('chat-focus'"));
-  const onBranch = handler.slice(handler.indexOf('if (on) {'), handler.indexOf('} else {'));
-  assert.match(onBranch, /prewarm\.schedule\(\)/);
-  assert.match(main, /createDelayed\(\(\) => \{ post\('\/chat\/prewarm', \{\}, 3000\)[^\n]*\}, 280\)/); // 280ms 늦춰서
-  assert.match(handler.slice(handler.indexOf('} else {'), handler.indexOf('return true;')), /prewarm\.cancel\(\)/); // 닫을 때는 기다리던 것을 취소
+test('호버 입력창 포커스(chat-focus on)가 prewarm 을 예약하고, 닫으면 취소한다', () => {
+  const calls = [];
+  const win = { webContents: 'overlay', setFocusable: (v) => calls.push(['focusable', v]), focus: () => calls.push(['focus']), blur: () => calls.push(['blur']) };
+  const prewarm = { schedule: () => calls.push(['schedule']), cancel: () => calls.push(['cancel']) };
+  const chatFocus = buildHandler(ipcHandlers().get('chat-focus'), { win, prewarm, keepOverlayPos: (f) => f(), quietActivation() {} });
+  assert.equal(chatFocus({ sender: 'evil' }, true), false);
+  assert.deepEqual(calls, []);
+  chatFocus({ sender: 'overlay' }, true);
+  assert.deepEqual(calls, [['schedule'], ['focusable', true], ['focus']]);
+  calls.length = 0;
+  chatFocus({ sender: 'overlay' }, false);
+  assert.deepEqual(calls, [['cancel'], ['blur'], ['focusable', false]]);
+});
+
+test('prewarm 은 280ms 늦춰 데몬에 POST /chat/prewarm 을 보낸다', () => {
+  const [args] = blocks('createDelayed(').filter((a) => a.includes('/chat/prewarm'));
+  const posts = [];
+  const [fire, delay] = buildHandler(`[${args}]`, { post: (...a) => { posts.push(a); return Promise.resolve(); } });
+  assert.equal(delay, 280);
+  fire();
+  assert.deepEqual(posts, [['/chat/prewarm', {}, 3000]]);
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sanitizeGuidelineAdd, sanitizeGuidelinePatch, okGuidelineId, shapeGuidelines, countText, mountGuidelines, SCOPES } from '../src/guidelines.js';
 import { setupSettings } from '../src/settings-window.js';
+import { requestSent } from './helpers/main-calls.js';
 
 // 아주 작은 가짜 DOM: 그리기·이벤트만
 class Node {
@@ -152,5 +153,12 @@ test('설정 창 IPC: 행동 지침은 이 창에서만, 인자는 걸러서 데
   const pre = readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8');
   for (const c of ['guidelines-get', 'guidelines-add', 'guidelines-edit', 'guidelines-delete']) assert.match(pre, new RegExp(`'${c}'`));
   assert.match(readFileSync(new URL('../renderer/settings.js', import.meta.url), 'utf8'), /mountGuidelines\(document, cy, flash\)/);
-  assert.match(readFileSync(new URL('../main.js', import.meta.url), 'utf8'), /else if \(method === 'DELETE'\) headers\['X-CY-Agent'\] = '1';/);
+});
+
+test('데몬 쓰기 요청(POST·PUT·DELETE)은 X-CY-Agent 헤더를 달고, 읽기(GET)는 달지 않는다', async () => {
+  for (const m of ['POST', 'PUT', 'DELETE']) assert.equal((await requestSent(m, '/guidelines/gl-1', {}))[1].headers['X-CY-Agent'], '1', m);
+  const [url, init] = await requestSent('GET', '/guidelines');
+  assert.equal(url, 'http://d/guidelines');
+  assert.equal(init.headers['X-CY-Agent'], undefined);
+  assert.equal(init.body, undefined);
 });
