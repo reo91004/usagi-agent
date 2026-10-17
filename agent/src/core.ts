@@ -1,5 +1,5 @@
 // 오케스트레이터: 수집·브리핑·제안·승인·실행을 묶고 말풍선(Bus)과 Slack으로 알린다.
-import { activeBrain } from "./brain-fallback.ts";
+import { activeBrain, attemptCfg } from "./brain-fallback.ts";
 import { randomUUID } from "node:crypto";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Bus } from "./bus.ts";
@@ -17,7 +17,7 @@ import { directivesSince, directiveTodo, markDirective } from "./directives.ts";
 import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, listFacts, forgetFact, factId } from "./profile.ts";
 import { think as realThink, type Thought } from "./brain.ts";
 import { briefingMilestone, briefingTask, readySources, type SourceId } from "./briefing-sources.ts";
-import { runFix as realRunFix, mergePr as realMergePr, normalizeBase, resolveRepo, type FixResult } from "./fixer.ts";
+import { runFix as realRunFix, mergePr as realMergePr, normalizeBase, resolveRepo, runCliAgent, type FixDeps, type FixResult } from "./fixer.ts";
 import { Chat, applyTodoChanges, converse as realConverse, todoThreadFor, unfinishedLine, RESTART_WHY, type Converse, type RunCommand, type SendOpts, type Sent } from "./chat.ts";
 import type { SlashCommands } from "./commands.ts";
 import type { Thread, ThreadKind } from "./store.ts";
@@ -50,6 +50,8 @@ import { AttachmentStore, type Attachment } from "./attachments.ts";
 import { Guidelines, applyGuidelineOp, guidelinesApi, setGuidelineStore, type GuidelineCtx, type GuidelinesApi } from "./guidelines.ts";
 import { WAIT_SETUP, modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 
+const cliBrain = (cfg: Config) => { const p = activeBrain(cfg); return p === "codex" || p === "agy" ? p : undefined; };
+
 export type Posted = { channel: string; ts: string; permalink?: string };
 // 팝오버 마지막 문답(GET /todos/:id/thread/last). ops·preview·rev·rule 은 아직 ✓ 할 수 있을 때만(outcome pending)
 export type LastExchange = {
@@ -80,6 +82,7 @@ export type Deps = {
   runCommand?: RunCommand; // 테스트용. 기본은 chat.ts runCommand
   prStatus: PrLookup; // 머지 승인 카드: PR 상태(gh pr view, 읽기). 테스트는 가짜
   mergeCommit: (prUrl: string) => Promise<string | undefined>; // 머지 뒤 머지 커밋 링크
+  bgFix?: FixDeps; // Codex·agy 백그라운드 에이전트의 fixer 의존성(테스트용: 가짜 codexRun·agyRun·runs)
   bgRun?: BgPorts["run"]; // 백그라운드 에이전트 한 번(테스트용). 기본은 chat.ts runBackgroundAgent(따로 SDK 세션)
   bgWorktreesDir?: string; // 격리 백그라운드 에이전트의 워크트리 폴더(테스트용). 기본 ~/.cy-agent/worktrees
   // 실제로 쓸 수 있는 커넥터 기능(브리핑이 연결 안 된 출처를 건너뛰게 — briefing-sources.ts readySources). 없거나 모르면 null
@@ -151,7 +154,11 @@ export class Agent {
     // 패널·캐릭터 대화가 띄운 서브에이전트는 답과 떼어 백그라운드로(bg-agents.ts) — 답은 바로 끝나고 다음 말이 기다리지 않는다.
     // 끝나면 결과가 그 대화에 새 답으로(+ 캐릭터 말풍선)
     this.bgAgents = new BackgroundAgents({
-      run: this.deps.bgRun ?? ((job, onRun) => runBackgroundAgent(cfg, store, job, onRun, () => this.dashboard())),
+      // 지금 뇌(fallback 으로 넘어간 뇌 포함)가 Codex·agy 면 그 CLI 로(fixer.ts runCliAgent — 격리 워크트리 안), 아니면 Claude Agent SDK 세션
+      run: this.deps.bgRun ?? ((job, onRun) => cliBrain(cfg)
+        ? runCliAgent(attemptCfg(cfg, { provider: cliBrain(cfg)! }, true), { ...job, cwd: job.cwd! }, onRun, this.deps.bgFix)
+        : runBackgroundAgent(cfg, store, job, onRun, () => this.dashboard())),
+      forceIsolation: () => !!cliBrain(cfg),
       post: (threadId, role, text) => {
         if (!this.store.thread(threadId)) return;
         this.store.addChat(role, text, undefined, undefined, threadId);

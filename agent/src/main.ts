@@ -108,7 +108,7 @@ focus.startTimer();
 const calendar = new CalendarSync(cfg, store, { wrapRun: (fn) => withRun({ kind: "calendar", title: "캘린더 동기화", model: cfg.models.light }, fn) });
 calendar.onChange = () => bus.dashboardChanged();
 // 터미널 Claude Code 에서 이어 간 대화 불러오기(세션 창 ↻·"Claude Code에서 열기" 뒤 지켜보기). 시작할 땐 아무것도 안 한다
-const cliSync = new CliSync({ runs, db: store.db, store, onThread: (id) => bus.threads({ thread: store.thread(id) }), log: (m) => console.log(m) });
+const cliSync = new CliSync({ runs, db: store.db, store, codexDir: cfg.codexSessionsDir, onThread: (id) => bus.threads({ thread: store.thread(id) }), log: (m) => console.log(m) });
 // 대화 속 서브에이전트·작업 세션 카드: 바뀌면 ≈1초 모아 SSE agents {threadId} → 패널이 다시 가져온다
 new AgentsNotifier(runs, (threadId) => bus.agents(threadId));
 let agent!: Agent;
