@@ -240,7 +240,8 @@ export function ingestSessions(
       const sshId = !opts.host && tool === "claude" ? /^ssh-(.+)$/.exec(basename(dirname(path)))?.[1] : undefined;
       const hostMark = sshId ? `ssh-host:${path}` : "";
       // 바뀌지 않았고 서버도 이미 찾아본 파일은 앱 세션 정보를 읽지 않고 건너뛴다(못 찾은 것도 0 으로 남겨 매번 다시 읽지 않는다)
-      if (store.markOf(path) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
+      const seenKey = `fold${FOLD_V}:${path}`; // 접는 규칙 버전이 올라가면 안 바뀐 파일도 다시 읽는다(예전 규칙으로 남긴 노드를 바로잡는다)
+      if (store.markOf(seenKey) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
       const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
       const id = basename(path, ".jsonl");
       const mk = tool === "claude" ? claudeFold : codexFold;
@@ -275,7 +276,7 @@ export function ingestSessions(
         recordSession(store, s);
         n++;
       }
-      store.setMark(path, mtime);
+      store.setMark(seenKey, mtime);
       if (hostMark) store.setMark(hostMark, host ? 1 : 0);
     }
   }

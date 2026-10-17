@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, mkdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../store.ts";
@@ -201,19 +201,18 @@ test("codex: exec 와 하위 에이전트 세션은 사람 대화가 아니라 �
   assert.equal(parseCodexSession(raw({ originator: "codex-tui", source: { subagent: { thread_spawn: { depth: 1 } } } }), "x"), undefined);
 });
 
-test("ingestSessions: 사람이 아닌 세션이라고 새로 판정되면 이전에 남긴 노드가 지워진다", () => {
+test("ingestSessions: 규칙 바뀌기 전에 읽어 둔(안 바뀐) 파일도 다시 읽어, 사람이 아니라고 판정된 세션의 노드를 지운다", () => {
   const dir = mkdtempSync(join(tmpdir(), "sess-auto-"));
   const store = new Store(":memory:");
   const dirs = { claude: join(dir, "none"), codex: dir };
   const f = join(dir, "r.jsonl");
   const meta = { type: "session_meta", payload: { id: "c9", cwd: "/r/app", originator: "codex_exec", source: "exec" } };
   const msg = { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "점검해" }] } };
-  writeFileSync(f, jl([{ type: "session_meta", payload: { id: "c9", cwd: "/r/app" } }, msg]) + "\n"); // 예전 규칙으로는 사람 세션으로 읽힌 모양
-  ingestSessions(store, dirs);
-  assert.ok(store.node("session:c9"));
   writeFileSync(f, jl([meta, msg]) + "\n");
-  utimesSync(f, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+  store.upsertNode("session:c9", "session", "점검해", { tool: "codex", cwd: "/r/app", turns: 1 });
+  store.setMark(f, statSync(f).mtimeMs); // 예전 규칙으로 읽고 남긴 표시(버전 없는 키)
   ingestSessions(store, dirs);
   assert.equal(store.node("session:c9"), undefined);
+  assert.equal(ingestSessions(store, dirs), 0);
   rmSync(dir, { recursive: true });
 });
