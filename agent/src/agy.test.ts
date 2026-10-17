@@ -16,6 +16,7 @@ const cfgOf = (provider: "agy" | "codex", general = "claude-sonnet-5-5") => { co
 test("agyArgs: -p 프롬프트 · json 출력 · sandbox · 스키마 · 모델(있을 때만), plan 모드 없음", () => {
   const a = agyArgs("글", { type: "object" }, "gemini-4-argon-medium");
   assert.deepEqual(a, ["-p", "글", "--output-format", "json", "--sandbox", "--json-schema", '{"type":"object"}', "--model", "gemini-4-argon-medium"]);
+  assert.ok(!agyArgs("글").includes("--json-schema")); // 스키마를 안 주면 붙이지 않는다(기본 호출)
   assert.ok(!agyArgs("글", {}).includes("--model"));
   assert.ok(!a.includes("--mode"));
 });
@@ -44,6 +45,40 @@ test("agyExec: 없으면 MISSING_AGY(exec 0번), cwd 는 데몬 brain 폴더, ar
   assert.equal(calls[0].input, undefined); // stdin 으로 안 보낸다
   assert.match(calls[0].args[1], /시스템-표식[\s\S]*프롬프트-표식/);
   assert.equal(calls[0].args[calls[0].args.indexOf("--model") + 1], "m1");
+});
+
+test("agyExec: 기본 호출은 --json-schema 없이, 스키마는 글에(고정 부분 먼저, 프롬프트 뒤). 좋은 JSON 이면 한 번", async () => {
+  const schema = { type: "object", required: ["a"], properties: { a: { type: "number" } } };
+  const calls: string[][] = [];
+  const execFile: ExecFileLike = async (_f, args) => { calls.push([...args]); return { stdout: ok({ response: '{"a":1}' }) }; };
+  const r = await agyExec("프롬프트-표식", schema, { execFile, commandExists: has, system: "시스템-표식", model: "m1" });
+  assert.deepEqual(r.out, { a: 1 });
+  assert.equal(calls.length, 1);
+  assert.ok(!calls[0].includes("--json-schema"));
+  const input = calls[0][1];
+  const at = input.indexOf(JSON.stringify(schema));
+  assert.ok(input.indexOf("시스템-표식") < at && at < input.indexOf("프롬프트-표식"));
+});
+
+test("agyExec: JSON 이 아니거나 required 키가 빠지면 --json-schema 로 한 번 더, 한도·시간 초과는 다시 안 부른다", async () => {
+  const schema = { type: "object", required: ["a"] };
+  const seq = (...outs: string[]) => { const calls: string[][] = []; const execFile: ExecFileLike = async (_f, args) => { calls.push([...args]); return { stdout: outs[calls.length - 1] }; }; return { calls, execFile }; };
+  for (const bad of [ok({ response: "그냥 글" }), ok({ response: '{"b":1}' }), ok({ response: "[1]" })]) {
+    const t = seq(bad, ok({ structured_output: { a: 2 } }));
+    const r = await agyExec("p", schema, { execFile: t.execFile, commandExists: has });
+    assert.deepEqual(r.out, { a: 2 });
+    assert.equal(t.calls.length, 2);
+    assert.ok(!t.calls[0].includes("--json-schema") && t.calls[1].includes("--json-schema"));
+  }
+  const t = seq(ok({ response: "글" }), ok({ response: "또 글" })); // 두 번째도 못 읽으면 그 오류 그대로
+  await assert.rejects(agyExec("p", schema, { execFile: t.execFile, commandExists: has }), /JSON을 읽지 못했어요/);
+  assert.equal(t.calls.length, 2);
+  for (const err of [Object.assign(new Error("x"), { code: 3, stderr: "AGY_ERROR: quota exceeded for model" }), new Error("agy 실행 시간이 초과됐어요.")]) {
+    let n = 0;
+    const execFile: ExecFileLike = async () => { n++; throw err; };
+    await assert.rejects(agyExec("p", schema, { execFile, commandExists: has }));
+    assert.equal(n, 1);
+  }
 });
 
 test("agyExec: exit 3 + AGY_ERROR 는 그 줄을, 그냥 실패는 로그인 안내를, 시간 초과는 그대로", async () => {

@@ -4,7 +4,7 @@
 //
 // Codex 는 codex exec 한 번으로 브리핑·채팅 JSON, 그리고 뒤에서 도는 정리(feature-brain.ts: 끝난 할 일 판정·진행 확인·지식그래프·프로필 학습).
 // 도구·사용자 MCP 는 붙이지 않는다(CODEX_ARGS). 코드 고치기(fixer.ts)·MCP 읽기는 provider 와 상관없이 Claude Code 경로다.
-// agy 도 같다: agy -p … --output-format json --sandbox --json-schema 한 번(agyExec). 같은 뒤쪽 기능을 돌린다.
+// agy 도 같다: agy -p … --output-format json --sandbox 한 번(agyExec, 답 형식이 틀릴 때만 --json-schema 로 한 번 더). 같은 뒤쪽 기능을 돌린다.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
@@ -855,14 +855,15 @@ export async function codexJson(prompt: string, schema: unknown, opts: CodexOpts
 }
 
 // ---- Antigravity CLI (agy) ----
-// agy -p "<글>" --output-format json --sandbox [--json-schema '<스키마>'] [--model <id>]. 프롬프트는 argv 로만 받는다(`-p -` 는 stdin 이 아니다).
+// agy -p "<글>" --output-format json --sandbox [--model <id>]. 프롬프트는 argv 로만 받는다(`-p -` 는 stdin 이 아니다).
+// 답 형식은 글 안의 지시문 + 스키마로 알린다. --json-schema 를 붙이면 agy 가 턴을 두 번 돌아(측정: 입력 토큰 2배, 3.4초 느림) 답이 형식에 안 맞을 때만 붙여 한 번 더 부른다.
 // --mode plan 은 요청을 무시하고 계획을 제안하니 쓰지 않는다. agy 는 cwd 를 작업공간으로 색인하므로 레포가 아닌 데몬 brain 폴더에서 돈다.
 export const AGY_TIMEOUT_MS = 120_000;
 export const AGY_PROMPT_MAX_BYTES = 400_000; // macOS ARG_MAX 1MiB(환경변수 포함) 아래로 넉넉히
 export const AGY_FAILED = "agy 실행이 실패했어요. 터미널에서 agy models 로 로그인돼 있는지 확인해 주세요.";
 
-export function agyArgs(prompt: string, schema: unknown, model?: string): string[] {
-  return ["-p", prompt, "--output-format", "json", "--sandbox", "--json-schema", JSON.stringify(schema), ...(model ? ["--model", model] : [])];
+export function agyArgs(prompt: string, schema?: unknown, model?: string): string[] {
+  return ["-p", prompt, "--output-format", "json", "--sandbox", ...(schema === undefined ? [] : ["--json-schema", JSON.stringify(schema)]), ...(model ? ["--model", model] : [])];
 }
 
 // stdout 은 JSON 객체 하나. --json-schema 면 structured_output 이 답이고 response 는 군더더기 글
@@ -930,22 +931,46 @@ function agyMcpReady(url: string, servers: CliMcpServer[]): boolean {
   }
 }
 
+// agy 에 보낼 글. 앞쪽은 잘 안 바뀌는 것(시스템·도구 안내·형식·스키마), 뒤쪽이 이번 프롬프트와 첨부 — 프롬프트 캐시에 맞게
+export function agyInput(prompt: string, schema: unknown, opts: AgyOpts, mcp: boolean | string | undefined): string {
+  const [system, ...rest] = cliParts(prompt, opts, "Antigravity", false, mcp ? cliToolGuide(connectorGuide(opts.servers ?? [], AGY_PREFIX)) : undefined);
+  const tail = rest.pop()!;
+  const format = `답은 아래 JSON 스키마에 맞는 JSON 객체 하나만 쓴다(코드 블록·다른 글 없이)\n${JSON.stringify(schema)}`;
+  const input = [system, tail, format, ...rest].filter(Boolean).join("\n\n");
+  if (Buffer.byteLength(input) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요. 대화나 맥락을 줄여서 다시 시도해 주세요.");
+  return input;
+}
+
+// 지시문만으로 받은 답이 스키마의 최상위 required 키를 다 갖췄는지(JSON 객체인지)
+function agyShapeOk(out: unknown, schema: unknown): boolean {
+  const o = asRecord(out);
+  if (!o) return false;
+  const req = (schema as { required?: unknown } | null)?.required;
+  return !Array.isArray(req) || req.every((k) => k in o);
+}
+
 // agy 한 번 → 답 JSON + 토큰 수. 실패는 짧은 한국어
+// 스키마 없이 부르고, 답이 JSON 으로 안 읽히거나 required 키가 빠지면 --json-schema 를 붙여 한 번만 더(한도·인증·시간 초과는 다시 부르지 않는다)
 export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
   const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
   if (!exists("agy")) throw new Error(MISSING_AGY);
   const mcp = opts.mcp && cliMcp && agyMcpReady(cliMcp, opts.servers ?? []);
-  const input = cliParts(prompt, opts, "Antigravity", false, mcp ? cliToolGuide(connectorGuide(opts.servers ?? [], AGY_PREFIX)) : undefined).filter(Boolean).join("\n\n");
-  if (Buffer.byteLength(input) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요. 대화나 맥락을 줄여서 다시 시도해 주세요.");
+  const input = agyInput(prompt, schema, opts, mcp);
   const dir = join(HOME_DIR, "brain");
   if (!opts.execFile) mkdirSync(dir, { recursive: true });
-  let stdout = "";
-  try {
-    stdout = (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, schema, opts.model), { timeout: opts.timeoutMs ?? AGY_TIMEOUT_MS, cwd: dir })).stdout;
-  } catch (e) {
-    throw agyFailure(e);
-  }
-  return parseAgyStdout(stdout);
+  const run = async (withSchema: boolean) => {
+    try {
+      return (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, withSchema ? schema : undefined, opts.model), { timeout: opts.timeoutMs ?? AGY_TIMEOUT_MS, cwd: dir })).stdout;
+    } catch (e) {
+      throw agyFailure(e);
+    }
+  };
+  const first = await run(false);
+  let r: { out: unknown; usage: CodexUsage } | undefined;
+  try { r = parseAgyStdout(first); } catch { /* 아래에서 스키마로 한 번 더 */ }
+  if (r && agyShapeOk(r.out, schema)) return r;
+  console.log("[agy] 지시문만으로는 답 형식이 맞지 않아 --json-schema 로 한 번 더 불러요");
+  return parseAgyStdout(await run(true));
 }
 
 export async function remoteJson(
