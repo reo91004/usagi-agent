@@ -1412,3 +1412,11 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .note-sum ul { margin: 4px 0 0; padding-left: 18px; }
 .note-sum li { margin: 2px 0; }
 .note-sum li.next { color: var(--muted); }
+
+/* Slack 지시사항: 연구 카드와 같은 줄 모양, 글은 두 줄까지 */
+.dir-chips { margin-top: 8px; }
+.dir-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.dir-row:first-child { border-top: 0; }
+.dir-main { flex: 1; min-width: 0; }
+.dir-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dir-acts { display: flex; gap: 6px; flex-shrink: 0; }

@@ -1,0 +1,26 @@
+# Slack 앱 매니페스트(읽기 전용, 봇 없음) — 팀 워크스페이스용. connectors.slack.mode = "api" 와 지시사항(directives.ts)에 쓴다.
+# 봇·버튼·캔버스가 필요 없으면 이쪽이 권한이 가장 적다(관리자 승인을 받을 때 설명하기 쉽다). docs/connect/slack.md 참고
+# https://api.slack.com/apps → Create New App → From a manifest → 이 파일 내용 붙여넣기 → Install to Workspace
+#   설치하면 "User OAuth Token"(xoxp-…) 하나가 생긴다 → 우사기 설치 마법사 「더 연결하기」 → Slack 에 붙여 넣는다
+#   agent/src/ingest/slack-api.ts 가 auth.test · users.conversations · conversations.history/replies/info · search.messages · users.info 만 부른다(쓰기 메서드는 코드에서 막힘)
+display_information:
+  name: usagi-reader
+  description: 우사기 비서가 내 DM과 나를 멘션한 글을 읽기만 합니다
+  background_color: "#3b2a5c"
+oauth_config:
+  scopes:
+    user:
+      - channels:history  # 공개 채널 메시지(나를 멘션한 글)
+      - groups:history    # 내가 들어간 비공개 채널 메시지
+      - im:history        # DM 메시지
+      - mpim:history      # 그룹 DM 메시지
+      - channels:read     # 채널 목록·이름
+      - groups:read
+      - im:read
+      - mpim:read
+      - users:read        # 사람 이름
+      - search:read       # 멘션·참여 스레드 검색
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

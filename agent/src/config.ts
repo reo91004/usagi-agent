@@ -24,6 +24,8 @@ export type Config = {
   slackBotToken?: string;
   slackAppToken?: string;
   slackUserId?: string; // DM 받을 내 Slack user id (U…)
+  // 지시를 줄 사람(Slack 사용자 id, directives.ts). 이 사람들의 DM·멘션은 자동 할 일 대신 지시사항 카드로
+  directiveFrom: string[];
   briefingIntervalMin: number;
   ingestIntervalMin: number;
   slackIngestIntervalMin: number;
@@ -305,6 +307,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     slackBotToken: env.SLACK_BOT_TOKEN ?? (f.slackBotToken as string),
     slackAppToken: env.SLACK_APP_TOKEN ?? (f.slackAppToken as string),
     slackUserId: env.SLACK_USER_ID ?? (f.slackUserId as string),
+    directiveFrom: Array.isArray(f.directiveFrom) ? [...new Set((f.directiveFrom as unknown[]).filter((x): x is string => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x)))].slice(0, 20) : [],
     briefingIntervalMin: minutesOf("briefingIntervalMin", f.briefingIntervalMin, 60, notes),
     ingestIntervalMin: minutesOf("ingestIntervalMin", f.ingestIntervalMin, 10, notes),
     slackIngestIntervalMin: minutesOf("slackIngestIntervalMin", f.slackIngestIntervalMin, 5, notes),

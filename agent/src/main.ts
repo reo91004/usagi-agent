@@ -50,6 +50,7 @@ import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
 import { notePathFor, researchSummary } from "./research.ts";
+import { directivesView } from "./directives.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
@@ -194,8 +195,10 @@ await bus.listen(cfg.port, {
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns)), // MCP 연결은 Claude Code 뇌일 때만 읽는다
     ...(() => { const r = researchSummary(cfg, store); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
+    ...(conns.slack.mode !== "off" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(Slack 을 연결했을 때만)
   }),
   researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
+  directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
   researchNote: (day) => notePathFor(cfg, day),
   todoDone: (id) => agent.todoDone(id),
   todoAdd: (t) => agent.addTodo(t),

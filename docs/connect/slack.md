@@ -21,6 +21,28 @@ Slack은 두 가지 용도로 씁니다.
 
 ---
 
+## 팀 워크스페이스라면: 읽기 전용 앱(봇 없음)
+
+연구실이나 회사 워크스페이스처럼 앱 설치에 관리자 승인이 필요한 곳이라면, 봇 없이 읽기 스코프만 있는 [`ops/slack-readonly-manifest.yaml`](../../ops/slack-readonly-manifest.yaml)을 쓰는 쪽이 승인을 받기 쉽습니다. 봇 DM·버튼·캔버스는 없고, 내가 볼 수 있는 DM과 나를 멘션한 글을 읽기만 합니다.
+
+1. https://api.slack.com/apps → **Create New App** → **From a manifest** → 팀 워크스페이스 고르기
+2. YAML 탭에 `ops/slack-readonly-manifest.yaml` 내용을 붙여 넣고 **Create**
+3. **Install App** → **Install to Workspace**
+   - 바로 설치되면 **User OAuth Token**(`xoxp-…`)이 생깁니다.
+   - 「관리자에게 요청」이 나오면 요청을 보내고, 승인되면 같은 화면에서 토큰이 생깁니다. 요청 메모에는 「제 DM과 멘션을 제 컴퓨터에서만 읽는 개인 비서, 쓰기 권한 없음」이라고 적으면 됩니다.
+4. 우사기 패널 「설치」 → 「더 연결하기」 → Slack 에 토큰을 붙여 넣습니다.
+
+관리자가 앱 설치를 막아 두었다면 아래 (b) mcp 모드(Slack 공식 MCP)를 시도해 볼 수 있습니다. 이쪽은 뇌가 Claude Code 일 때만 읽고, 로컬에 모으지 않아서 지시사항 카드는 채워지지 않습니다.
+
+## 지시사항(교수님·선배)
+
+Slack 을 api 모드로 연결하면 패널 「개요」에 「지시사항」 카드가 생깁니다.
+
+- 처음에는 최근 30일 DM 을 많이 보낸 사람이 나오고, 지시를 줄 사람을 누르면 고를 수 있습니다(`config.json` 의 `directiveFrom`).
+- 그 사람이 나에게 보낸 DM 과 나를 멘션한 글만 모읍니다. 「넵」 같은 짧은 맞장구는 뺍니다.
+- 이 사람들의 글은 다른 DM·멘션처럼 할 일로 바로 넣지 않고, 새로 오면 말풍선으로 알린 뒤 카드에서 「할 일로」(메모와 Slack 링크를 달아 할 일 하나)나 「괜찮아요」를 고릅니다.
+- 채팅에서도 「교수님이 뭐 시키셨지?」처럼 물으면 `slack_directives` 도구로 찾아 답합니다.
+
 ## (a) 추천: api 모드, 내 Slack 앱 하나로 봇 + 사용자 토큰
 
 앱 하나에 봇(DM용)과 읽기 전용 사용자 스코프를 같이 넣은 매니페스트 [`ops/slack-user-manifest.yaml`](../../ops/slack-user-manifest.yaml)을 씁니다. 봇 부분은 [`ops/slack-manifest.yaml`](../../ops/slack-manifest.yaml)과 똑같고, 사용자 스코프는 읽기 전용입니다.

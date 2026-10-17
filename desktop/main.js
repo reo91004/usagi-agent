@@ -1585,6 +1585,15 @@ function setupIPC() {
   ipcMain.handle('get-dashboard', (e) => (fromOurs(e) ? request('GET', '/dashboard') : denied()));
   ipcMain.handle('briefing-now', (e) => (fromOurs(e) ? post('/briefing') : denied()));
   // 연구 카드: GPU 는 누를 때만 서버에 묻는다(서버 셋이면 처음 몇 초). 노트 「열기」는 데몬이 확인한 그날 파일만 기본 앱으로
+  // Slack 지시사항 카드: [할 일로]·[괜찮아요], 지시자 목록 저장(PUT /settings directiveFrom — 데몬이 한 번 더 검사)
+  ipcMain.handle('directive-decide', (e, id, decision) => {
+    if (!fromOurs(e) || typeof id !== 'string' || !/^message:[\w.:-]{1,120}$/.test(id) || !['todo', 'dismiss'].includes(decision)) return denied();
+    return post(`/directives/${id}/${decision}`); // id 는 위에서 \w . : - 만 통과(경로에 그대로)
+  });
+  ipcMain.handle('directive-from', (e, ids) => {
+    if (!fromOurs(e) || !Array.isArray(ids) || ids.length > 20 || !ids.every((x) => typeof x === 'string' && /^[UW][A-Z0-9]{2,20}$/.test(x))) return denied();
+    return request('PUT', '/settings', { directiveFrom: ids });
+  });
   ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
   ipcMain.handle('research-note-open', async (e, day) => {
     if (!fromOurs(e) || typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return denied();

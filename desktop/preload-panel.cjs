@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('cy', {
   getDashboard: () => ipcRenderer.invoke('get-dashboard'),
   briefingNow: () => ipcRenderer.invoke('briefing-now'),
   researchGpu: () => ipcRenderer.invoke('research-gpu'), // 연구 카드: 실험 서버 GPU(누를 때만)
+  directiveDecide: (id, decision) => ipcRenderer.invoke('directive-decide', String(id), String(decision)), // 지시사항 [할 일로]·[괜찮아요]
+  directiveFrom: (ids) => ipcRenderer.invoke('directive-from', Array.isArray(ids) ? ids.map(String) : []), // 지시자 목록 저장
   researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
   refreshSources: () => ipcRenderer.invoke('refresh-sources'), // ↻: 슬랙·메일 지금 다시 읽고 할 일 반영
   openSettings: () => ipcRenderer.send('open-settings'), // ⚙ 설정 창(모델·브리핑 출처·연결 상태)
