@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   NEW_DAEMON_CONFIG, setupView, cleanSetupPatch,
-  SETUP_PHASES, SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePhase, agentFrom, setupSummary, okFolder, openSetupAtLaunch, NO_AI,
+  SETUP_PHASES, SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePhase, setupSummary, okFolder, openSetupAtLaunch, NO_AI,
 } from '../src/setup-plan.js';
 
 test('허용 phase 와 버전: 이름 → 뇌 → 키·안내 → 더 연결 → 끝', () => {
@@ -35,14 +35,6 @@ test('저장된 phase 복원: 모르는 값(예전 플랜 화면)은 처음으�
   assert.equal(restorePhase('extras'), 'extras');
   assert.equal(restorePhase('hub'), 'name');
   assert.equal(restorePhase(null), 'name');
-});
-
-test('코딩 도구: 연결 끝낸 것 또는 시사 AI 로 쓰는 것', () => {
-  assert.equal(agentFrom({ done: { claude: true } }), 'claude');
-  assert.equal(agentFrom({ connected: ['codexcli'] }), 'codex');
-  assert.equal(agentFrom({ done: { codex: true }, connected: ['claudecode'] }), 'claude');
-  assert.equal(agentFrom({}), null);
-  assert.equal(agentFrom(), null);
 });
 
 test('끝 화면 요약: 된 것과 나중에 할 것 — 캘린더·Slack 은 데몬 연결 상태, 미리알림·실험 서버·연구 노트는 있을 때만', () => {

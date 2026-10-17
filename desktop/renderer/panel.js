@@ -5,13 +5,13 @@ import { createMarkdown } from '../src/markdown.js';
 import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
-import { isFeature, isAgent, buildWalk, agentSteps } from '../src/setup-flow.js';
+import { agentSteps } from '../src/setup-flow.js';
 import { renderSetup, clearApiDraft, readSlot, clearSlot } from './setup-view.js';
 import { mountModels } from './models-view.js';
 import { createFocusView } from './focus-view.js';
 import { connectorAction, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { CANNED, cannedReply, connectSteps, hubItem, slotOk, EXTRAS } from '../src/ai-onboard.js';
-import { SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePhase, agentFrom, NO_AI } from '../src/setup-plan.js';
+import { SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePhase, NO_AI } from '../src/setup-plan.js';
 import { brainView, connectCard, chatLock } from '../src/brain-state.js';
 import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, sendButton, stopTargets, localState, queuedChats, queuedLabel, sentLabel } from '../src/chat.js';
 import { stamp, withDayDividers } from '../src/chat-time.js';
@@ -128,10 +128,7 @@ let detected = { claude: null, codex: null, agy: null }; // 이 맥에서 찾은
 // 뇌(말 거는 AI) 연결 상태 — main 이 GET /status 로 알려 준다(brain-state.js brainView). 모르면 막지 않는다
 let brain = { ready: true, known: false, connected: [] };
 let connectCardHidden = false; // AI 연결 안내 카드를 숨겼나(state.json connectCardHidden)
-let setupAgent = '';
-let setupPicked = [];
 let setupCursor = 0;
-let setupChoices = {};
 let setupLink = '';
 let keyStatus = '';
 let keyNote = ''; // 키는 맞지만 알릴 말(Genspark 무료 플랜 → 크레딧 필요)
@@ -152,17 +149,11 @@ async function loadApple() {
 let setupSlotError = null; // 저장하려다 막힌 칸 값({ id, value, text }, 예: 이미 연결된 캘린더)
 let cannedOpen = false; // 채팅: AI가 있을 때 ＋ 로 연 정해진 답 버튼 줄(renderChatLock)
 let sisa = { provider: '', hasKey: false, persona: '', canned: {}, done: {}, connected: [], chatModels: {}, codeModel: 'default' };
-// 예전 화면 위치(ai-offer·agent·pick·walk)는 불러오지 않는다
+// 예전 화면 위치(ai-offer·agent·pick·walk)는 불러오지 않는다(restorePhase 가 처음으로)
 try {
   setupPhase = restorePhase(localStorage.getItem('setupPhase'));
-  const agent = localStorage.getItem('setupAgent');
-  if (isAgent(agent)) setupAgent = agent;
-  const picked = JSON.parse(localStorage.getItem('setupPicked') || '[]');
-  if (Array.isArray(picked)) setupPicked = picked.filter(isFeature);
   const cursor = Number(localStorage.getItem('setupCursor'));
   if (Number.isInteger(cursor) && cursor >= 0) setupCursor = cursor;
-  const choices = JSON.parse(localStorage.getItem('setupChoices') || '{}');
-  if (choices && typeof choices === 'object' && !Array.isArray(choices)) setupChoices = choices;
   const link = localStorage.getItem('setupLink');
   if (typeof link === 'string') setupLink = link;
   if (localStorage.getItem('setupFlowVersion') !== SETUP_FLOW_VERSION) {
@@ -177,17 +168,9 @@ let setupKey = '';
 function saveSetup() {
   try {
     localStorage.setItem('setupPhase', setupPhase);
-    localStorage.setItem('setupAgent', setupAgent);
-    localStorage.setItem('setupPicked', JSON.stringify(setupPicked));
     localStorage.setItem('setupCursor', String(setupCursor));
-    localStorage.setItem('setupChoices', JSON.stringify(setupChoices));
     localStorage.setItem('setupLink', setupLink);
   } catch { /* 무시 */ }
-}
-
-// 지라처럼 코딩 도구 안에 등록하는 연결이 쓸 도구: 연결 끝낸 쪽
-function connectAgentNow() {
-  return agentFrom({ done: sisa.done, connected: sisa.connected });
 }
 
 // 뇌 고르기 화면에 들어갈 때: 이 맥의 Claude Code·Codex 로그인 확인 + 데몬 설정(이름·레포 폴더)
@@ -221,11 +204,9 @@ async function saveSetupSettings(patch) {
 }
 
 function stepsNow() {
-  if (setupPhase === 'agentWalk') return agentSteps(setupAgent);
   if (setupPhase === 'connect') {
-    return (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy') ? agentSteps(setupLink) : connectSteps(setupLink, connectAgentNow());
+    return (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy') ? agentSteps(setupLink) : connectSteps(setupLink);
   }
-  if (setupPhase === 'walk') return buildWalk(setupPicked, setupChoices, setupAgent || 'none');
   return [];
 }
 
@@ -643,7 +624,6 @@ let agentLoginState = { loggedIn: false, installed: null };
 let loginTimer = null;
 
 function codingAgent() {
-  if (setupPhase === 'agentWalk' && (setupAgent === 'claude' || setupAgent === 'codex')) return setupAgent;
   if (setupPhase === 'connect' && (setupLink === 'claude' || setupLink === 'codex' || setupLink === 'agy')) return setupLink;
   return '';
 }
@@ -708,7 +688,7 @@ function renderSetupView(resetScroll) {
     return;
   }
   clampSetupCursor();
-  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupAgent}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${setupPicked.join(',')}|${JSON.stringify(setupChoices)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupApple)}|${JSON.stringify(setupSlotError)}|${JSON.stringify(vm.connectors)}|${JSON.stringify(vm.research?.hosts)}|${!!vm.research?.note}`;
+  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupApple)}|${JSON.stringify(setupSlotError)}|${JSON.stringify(vm.connectors)}|${JSON.stringify(vm.research?.hosts)}|${!!vm.research?.note}`;
   if (!resetScroll && key === setupKey && $('sec-setup').childElementCount) {
     watchAgentLogin();
     return;
@@ -719,13 +699,9 @@ function renderSetupView(resetScroll) {
   const redraw = (scroll) => { setupKey = ''; renderSetupView(scroll); };
   renderSetup($('sec-setup'), {
     phase: setupPhase,
-    agent: setupAgent,
-    picked: setupPicked,
     cursor: setupCursor,
-    choices: setupChoices,
     login: agentLoginState,
     link: setupLink,
-    connectAgent: connectAgentNow(),
     keyStatus,
     done: extrasDone(),
     connected: sisa.connected,
@@ -772,7 +748,6 @@ function renderSetupView(resetScroll) {
         }
         afterConnect = id;
         setupLink = who;
-        setupAgent = who;
         setupPhase = 'connect';
         setupCursor = 0;
         agentLoginState = { loggedIn: false, installed: null };
@@ -929,31 +904,6 @@ function renderSetupView(resetScroll) {
       goto('overview');
     },
     onOpen: (url) => { try { cy.openLink(url); } catch { /* 무시 */ } },
-    onAgent: (id) => {
-      if (!isAgent(id)) return;
-      setupAgent = id;
-      saveSetup();
-      redraw(false);
-    },
-    onContinue: () => {
-      if (!setupAgent) return;
-      if (setupPhase === 'agentWalk' || setupAgent === 'none') setupPhase = 'pick';
-      else { setupPhase = 'agentWalk'; setupCursor = 0; }
-      saveSetup();
-      redraw(true);
-    },
-    onToggle: (id) => {
-      if (!isFeature(id)) return;
-      setupPicked = setupPicked.includes(id) ? setupPicked.filter((x) => x !== id) : [...setupPicked, id];
-      saveSetup();
-      redraw(false);
-    },
-    onStart: () => {
-      setupPhase = 'walk';
-      setupCursor = 0;
-      saveSetup();
-      redraw(true);
-    },
     onPrev: () => {
       if (setupCursor > 0) setupCursor -= 1;
       saveSetup();
@@ -1009,44 +959,6 @@ function renderSetupView(resetScroll) {
         redraw(true);
         return;
       }
-      if (setupPhase === 'agentWalk') {
-        const steps = agentSteps(setupAgent);
-        const step = steps[setupCursor];
-        if (step?.gate === 'login' && !agentLoginState.loggedIn) return;
-        if (setupCursor >= steps.length - 1) {
-          setupPhase = 'pick';
-          setupCursor = 0;
-          agentLoginState = { loggedIn: false, installed: null };
-        } else setupCursor += 1;
-      } else if (setupPhase === 'walk') {
-        const steps = buildWalk(setupPicked, setupChoices, setupAgent || 'none');
-        if (setupCursor >= steps.length - 1) {
-          try { localStorage.setItem('setupDone', '1'); } catch { /* 무시 */ }
-          setupPhase = 'pick';
-          saveSetup();
-          goto('overview');
-          return;
-        }
-        setupCursor += 1;
-      } else setupCursor += 1;
-      saveSetup();
-      redraw(true);
-    },
-    onChoose: (keyName, choiceId) => {
-      setupChoices = { ...setupChoices, [keyName]: choiceId };
-      const steps = buildWalk(setupPicked, setupChoices, setupAgent || 'none');
-      if (setupCursor < steps.length - 1) setupCursor += 1;
-      saveSetup();
-      redraw(true);
-    },
-    onSkip: () => {
-      const steps = buildWalk(setupPicked, setupChoices, setupAgent || 'none');
-      const feature = steps[setupCursor]?.feature;
-      let i = setupCursor + 1;
-      while (i < steps.length && steps[i].feature === feature) i += 1;
-      setupCursor = Math.min(i, Math.max(steps.length - 1, 0));
-      saveSetup();
-      redraw(true);
     },
     onBack: () => {
       setupPhase = backPhase({ phase: setupPhase, afterConnect: !!afterConnect });
@@ -1058,12 +970,6 @@ function renderSetupView(resetScroll) {
       redraw(true);
     },
     onCopy: copySetup,
-    onDone: () => {
-      try { localStorage.setItem('setupDone', '1'); } catch { /* 무시 */ }
-      setupPhase = 'pick';
-      saveSetup();
-      goto('overview');
-    },
   });
   const sc = $('sec-setup').querySelector('.setup-scroll');
   if (sc) sc.scrollTop = top;

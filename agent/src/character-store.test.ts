@@ -80,7 +80,7 @@ test("대사 칸: 모르는 칸·모르는 자리표시는 거절, 한 줄 칸�
   assert.equal(l.name, "까망");
   // 칸 목록: 시사·lines.json 의 모든 칸이 있다
   const paths = new Set(linesSchema().map((d) => d.path));
-  for (const p of ["name", "prompt.intro", "prompt.tone", "prompt.persona", "flair.lead.happy", "flair.tail.busy", "phrases.dance", "local.calThen", "cheer", "canned.today:e", "setup.welcome", "overlay.quickAi", "tour.settings_noslack"]) assert.ok(paths.has(p), p);
+  for (const p of ["name", "prompt.intro", "prompt.tone", "prompt.persona", "flair.lead.happy", "flair.tail.busy", "phrases.dance", "local.calThen", "cheer", "canned.today:e", "setup.brain", "overlay.quickAi", "tour.settings_noslack"]) assert.ok(paths.has(p), p);
   // lines.json 기본 대사는 다 검사를 통과한다
   for (const id of ["hachi", "rakko", "momonga", "usagi"]) {
     const e = JSON.parse(readFileSync(new URL("../../assets/characters/lines.json", import.meta.url), "utf8"))[id];
