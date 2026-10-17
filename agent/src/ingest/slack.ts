@@ -753,7 +753,40 @@ function mpimLabel(name: string | null): string {
 
 type MsgRow = { id: string; label: string; updated: string; props: Record<string, any> };
 
+// 닫힌(done·안 해도 됨·휴지통) 할 일이 이어진 Slack 범위 → 닫은 시각 최댓값. 범위 키는 attentionSince 묶음 키와 같다.
+// 이음: id·sourceRef·link·origin 의 slack:<채널>:p<ts> 또는 permalink, 없으면 제목에 든 DM 상대 이름(DM·답장 같은 말이 함께 있고 그런 DM 이 하나일 때만).
+// 다시 열면 닫힌 할 일에서 빠지니 처리 표시도 저절로 풀린다.
+const SLACKISH = /dm|slack|슬랙|답장|메시지/i; // 이름만 같은 다른 일(「김호은 님과 회의」)로 DM 을 숨기지 않게
+function closedScopes(store: Store, sinceIso: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const closed = store.db.prepare(`SELECT id, title, source_ref, link, origin, coalesce(trashed_at, updated) AS at FROM todos
+    WHERE (status IN ('done', 'trashed') OR trashed_at IS NOT NULL) AND coalesce(trashed_at, updated) >= ?`).all(sinceIso) as any[];
+  let dms: { channel: string; name: string }[] | undefined;
+  for (const t of closed) {
+    const text = `${t.id} ${t.source_ref ?? ""} ${t.link ?? ""} ${t.origin ?? ""}`;
+    const m = /slack:([A-Z0-9]+):p(\d{10})(\d+)/.exec(text) ?? /archives\/([A-Z0-9]+)\/p(\d{10})(\d+)(?:\?thread_ts=(\d+\.\d+))?/.exec(text);
+    let key: string | undefined;
+    if (m) {
+      const [, ch, a, b] = m;
+      const ts = `${a}.${b}`;
+      const node = store.node(`message:${ch}:${ts}`);
+      const tt = (m[4] ?? node?.props.thread_ts) as string | undefined;
+      const isDM = !!store.node(`channel:${ch}`)?.props.isDM || ch.startsWith("D");
+      key = tt && tt !== ts ? `${ch}:${tt}` : isDM ? `${ch}:` : `${ch}:${ts}`;
+    } else if (SLACKISH.test(t.title)) {
+      dms ??= (store.db.prepare("SELECT id, label FROM nodes WHERE kind = 'channel' AND json_extract(props, '$.type') = 'im'").all() as any[])
+        .map((r) => ({ channel: String(r.id).slice(8), name: String(r.label).replace(/^DM with /, "").trim().toLowerCase() }));
+      const title = String(t.title).toLowerCase();
+      const hit = dms.filter((d) => d.name.length >= 2 && title.includes(d.name));
+      if (hit.length === 1) key = `${hit[0].channel}:`;
+    }
+    if (key && t.at > (out.get(key) ?? "")) out.set(key, t.at);
+  }
+  return out;
+}
+
 // 내가 아직 답하지 않은 DM·멘션. 같은 DM 대화(또는 같은 스레드)는 하나로 묶어 최신 것만 보여준다.
+// 닫은 할 일에 이어진 범위는 닫은 시각까지 온 메시지를 처리한 것으로 보고 뺀다(닫은 뒤 새 메시지는 다시 나옴).
 // "답했다" = 그 뒤에 내가 같은 범위에 쓴 메시지가 있음
 //  - 스레드 안 메시지: 같은 스레드에 내 답글
 //  - 최상위 메시지: 같은 대화의 최상위에 내 메시지, 또는 그 메시지 스레드에 내 답글
@@ -787,11 +820,13 @@ export function attentionSince(store: Store, sinceIso: string, opts: { limit?: n
     catch { return undefined; }
   })();
   const groups = new Map<string, AttentionItem>();
+  const handled = closedScopes(store, sinceIso);
   for (const c of cands) {
     if (replied(c)) continue;
     const p = c.props;
     const inThread = p.thread_ts && p.thread_ts !== p.ts;
     const key = inThread ? `${p.channel}:${p.thread_ts}` : p.isDM ? `${p.channel}:` : `${p.channel}:${p.ts}`;
+    if (c.updated <= (handled.get(key) ?? "")) continue;
     const prev = groups.get(key);
     groups.set(key, {
       id: c.id, channel: p.channel, channelLabel: store.node(`channel:${p.channel}`)?.label ?? p.channel,
