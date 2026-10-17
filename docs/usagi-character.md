@@ -58,7 +58,7 @@ AI의 `tone`과 `persona`에는 같은 형식을 지시한다. 이는 모델 지
 
 ## 구현과 검증
 
-- 등록: agent `characters.ts`, desktop `character.js`와 `assets.js`에 같은 `usagi` id를 쓴다. 설정·SSE·앱 이름·메뉴·설치 화면은 기존 캐릭터 선택 경로를 따른다.
+- 등록: agent `characters.ts`, desktop `character.js`와 `assets.js`에 같은 `usagi` id를 쓴다. 설정·SSE·앱 이름·메뉴·초기 설정 화면은 기존 캐릭터 선택 경로를 따른다.
 - 대사: `assets/characters/lines.json`에 우사기 항목을 추가하고 `sync-character-lines.mjs`로 렌더러 사본을 생성한다. 직접 저장한 문구와 AI 말투는 기존처럼 우선한다.
 - 모션: `study`·`plan`·`dance`·`cheer`의 로컬 포스터와 투명 루프를 등록한다. 우사기는 감은 눈 자산을 사용하지 않고 연결 끊김 때도 기본 그림을 보인다.
 - 회귀 검사: 설정 저장·재시작·사용자 문구 유지, 렌더러 상태 수신, 자산 허용 목록·메타데이터·파일 존재를 검사한다. 기존 캐릭터도 같은 검사에 포함한다.
