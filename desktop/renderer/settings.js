@@ -17,7 +17,7 @@ const cy = window.cy.settings;
 const $ = (id) => document.getElementById(id);
 const root = $('sec-settings');
 // 패널이 알려 주는 이동: setup() 설치 화면 · aiTab() 설정의 AI 칸
-const nav = { setup: () => {}, aiTab: () => {} };
+const nav = { setup: () => {}, aiTab: () => {}, connectionsChanged: () => {} };
 export function setNav(n) { Object.assign(nav, n); }
 // 안내 글 속 이름(<span class="who">)도 캐릭터 이름으로
 const fillWho = () => { for (const n of root.querySelectorAll('.who')) n.textContent = who(); };
@@ -484,7 +484,14 @@ function sourceSelect(selected) {
   return sel;
 }
 
+// 새 캐릭터 초안에서 고른 파일의 미리보기 주소: 편집창을 닫거나 다시 그릴 때 해제한다
+let draftChosen = null;
+function revokeDraft() {
+  for (const c of Object.values(draftChosen ?? {})) URL.revokeObjectURL(c.url);
+  draftChosen = null;
+}
 function renderCharEditor() {
+  revokeDraft();
   const box = $('char-editor');
   box.replaceChildren();
   box.hidden = !editing;
@@ -498,6 +505,7 @@ function renderCharEditor() {
   if (editing.mode === 'new') {
     head.append(el('h3', null, '새 캐릭터 만들기'), close);
     const chosen = {};
+    draftChosen = chosen;
     const nameIn = el('input', 'ce-name');
     nameIn.type = 'text';
     nameIn.placeholder = '이름(예: 까망이)';
@@ -931,6 +939,7 @@ function rowEl(r) {
         if (!res?.ok) return { ok: false, error: res?.data?.error || res?.error || `끊지 못했어요. ${who()}에 연결되지 않았어요` };
         flash([copy.done, res.note].filter(Boolean).join(' '));
         refreshRows();
+        nav.connectionsChanged?.();
         return res;
       },
     }));
@@ -977,14 +986,37 @@ async function runCheck(id) {
   renderRows();
 }
 
-// 끊은 뒤: 연결 줄을 새로(싼 확인만)
-function refreshRows() {
-  loadCalendars();
+// 연결 줄 새로 읽기(net·gh 확인을 돌리니 짧은 캐시를 둔다. 끊은 뒤처럼 꼭 필요하면 force)
+const CONN_TTL = 60_000;
+let connAt = 0;
+function refreshConnections(force = false) {
+  if (busy.size || (!force && Date.now() - connAt < CONN_TTL)) return;
+  connAt = Date.now();
   cy.getConnections().then((c) => { if (c?.ok && Array.isArray(c.data?.rows)) { rows = mergeRows(rows, c.data.rows); renderRows(); } }).catch(() => {});
+}
+const connTabShown = () => !$('conn-core').closest('.set-pane')?.hidden;
+
+// 끊은 뒤: 연결 줄을 새로, 패널의 기능별 연결 카드도 새로(panel.js 가 nav.connectionsChanged 로 받는다)
+export function refreshRows() {
+  loadCalendars();
+  refreshConnections(true);
 }
 
 async function checkAll() {
   for (const id of ['net', 'gh', 'local', 'claude']) runCheck(id); // 따로 돌려 먼저 끝난 것부터 보이게
+}
+
+// 데몬에서 받은 설정을 반영한다(처음 불러오기·다시 불러오기 공용). 다시 불러올 때는 입력 중일 수 있는 값
+// (문구·알림 시각 칸, 고치던 캐릭터)을 이전 것으로 두고, 다른 곳(연결 도우미·채팅)에서 바뀌는 값만 새로 그린다
+function applySnapshot(data, { first = false } = {}) {
+  if (first || !settings) {
+    settings = data;
+    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderPhrases(); renderCharacter(); loadCharacters();
+    return;
+  }
+  const { phrases, todayReminder, calendarAlert, character, characters } = settings;
+  settings = { ...data, phrases, todayReminder, calendarAlert, ...(editDirty ? { character, characters } : {}) };
+  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge();
 }
 
 async function load() {
@@ -993,10 +1025,11 @@ async function load() {
   if (k && typeof k === 'object' && typeof k.claude === 'boolean') caps = { claude: k.claude, codex: k.codex === true, code: k.code };
   if (!s?.ok || !c?.ok) banner(`${who()}에 연결되지 않았어요. ${who()}가 켜져 있는지 확인해 주세요.`);
   else banner(null);
-  if (s?.ok) { settings = s.data; renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderPhrases(); renderCharacter(); loadCharacters(); }
+  if (s?.ok) applySnapshot(s.data, { first: true });
   if (c?.ok) {
     await loadCalendars();
     rows = Array.isArray(c.data?.rows) ? c.data.rows : [];
+    connAt = Date.now();
     renderRows();
     for (const id of pendingChecks(rows)) runCheck(id); // 처음 여는 거면 비싼 확인(Claude·서비스)도 한 번
   }
@@ -1016,10 +1049,13 @@ export function refresh() {
   // AI 칸에서 AI를 붙이거나 끊었으면 연결된 AI 줄도 맞춘다
   Promise.all([cy.getSisa?.().catch(() => null), cy.getSettings().catch(() => null)]).then(([v, r]) => {
     if (v && typeof v === 'object' && Array.isArray(v.connected)) sisaView = v;
-    if (r?.ok && settings) { settings = { ...settings, brain: r.data.brain ?? settings.brain, autoMerge: r.data.autoMerge ?? [] }; renderBrains(); renderAutoMerge(); } // 채팅에서 바꾼 자동 머지 레포도
+    if (r?.ok && settings) applySnapshot(r.data); // 채팅·연결 도우미에서 바꾼 뇌·자동 머지·레포 폴더·기록 읽기도
+    else renderBrains();
   });
   loadCalendars(); // 설치 화면에서 캘린더를 더하거나 뺐으면
-  if (!busy.size) cy.getConnections().then((c) => { if (c?.ok && Array.isArray(c.data?.rows)) { rows = mergeRows(rows, c.data.rows); renderRows(); } }).catch(() => {});
+  if (connTabShown()) refreshConnections();
 }
+// 설정 안쪽 탭을 바꿔 연결 탭이 보이면(캐시가 지났을 때만) 연결 상태를 새로 읽는다
+export function tabShown(t) { if (t === 'conn') refreshConnections(); }
 window.addEventListener('focus', () => { if (!root.hidden) refresh(); });
 load();
