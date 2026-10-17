@@ -35,6 +35,7 @@ export type DashTrash = { id: string; title: string; priority: number; source: s
 export type DashRule = { id: string; text: string; summary: string; enabled: boolean; hits: number; created: string };
 export type DashTodo = {
   id: string; title: string; source: string; link?: string; priority: number; note?: string; userEdited: boolean;
+  skipped?: boolean; // 안 해도 돼서 닫은 일(끝난 칸에서 「안 함」 표시)
   doneBy?: TodoDoneBy; autoReason?: string; autoEvidence?: string; // 자동 완료일 때 이유·근거 메시지 링크
   description?: string; // 있으면(브리핑이 썼거나 한 번 만들어 둔 것) — 원본은 GET /todos/:id/detail
   appliedRule?: { id: string; text: string }; // 이 할 일에 적용된 할 일 규칙
@@ -86,6 +87,7 @@ function dashTodo(t: Todo): DashTodo {
     id: t.id, title: t.title, source: t.source, ...(t.link ? { link: t.link } : {}), priority: t.priority,
     ...(t.note ? { note: t.note } : {}), userEdited: !!t.userEdited?.some((f) => f !== "status"), // 상태만 바꾼 건 표시 안 함
     ...(t.doneBy ? { doneBy: t.doneBy } : {}),
+    ...(t.skipped ? { skipped: true } : {}),
     ...(t.description ? { description: t.description } : {}),
     ...(t.appliedRule ? { appliedRule: t.appliedRule } : {}),
     ...(t.progress ? { progress: t.progress, ...(t.progressAt ? { progressAt: t.progressAt } : {}) } : {}),

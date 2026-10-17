@@ -53,6 +53,8 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   led.run(at("09:55"), "t5", "생겼다 지운 일", "added");
   led.run(at("09:56"), "t5", "생겼다 지운 일", "trashed");
   led.run(at("09:57"), "reminder:r1", "미리알림에서 가져온 생일", "added");
+  led.run(at("09:58"), "t6", "김호은 DM 확인 답장", "added");
+  led.run(at("09:59"), "t6", "김호은 DM 확인 답장", "skipped");
   const git = async (now: Date) => {
     assert.equal(now.toISOString(), at("12:00"));
     return [{ path: "/r/app", name: "app", commitsToday: [
@@ -70,6 +72,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   ]);
   assert.deepEqual(n.meetings, [{ time: "14:00", title: "랩 미팅" }]);
   assert.deepEqual(n.done, ["논문 그림 2 고치기", "생겼다 끝낸 일"]);
+  assert.deepEqual(n.skipped, ["김호은 DM 확인 답장"]);
   assert.deepEqual(n.added, ["교수님께 결과 보내기"]);
   assert.deepEqual(n.focus, { seconds: 4000, longest: 1800 });
   assert.deepEqual(n.commits, [{ repo: "app", sha: "abc1234", subject: "fix: 그림" }]);
@@ -86,7 +89,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
     "\t- 회의", "\t\t- 14:00 랩 미팅",
     "\t- 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴, 파일 2개 고침)",
     "\t\t\t- You are auditing the repository in the current di… (Codex, 2개 세션, 3턴)",
-    "\t- 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 새로 생김: 교수님께 결과 보내기",
+    "\t- 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 안 함: 김호은 DM 확인 답장", "\t\t- 새로 생김: 교수님께 결과 보내기",
     "\t- 집중 1시간 6분 (가장 길게 이어서 30분)", "",
   ].join("\n"));
 
@@ -100,7 +103,7 @@ const graphDir = (edn = "{}") => {
   writeFileSync(join(graph, "logseq", "config.edn"), edn);
   return graph;
 };
-const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], added: [], commits: [] };
+const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], skipped: [], added: [], commits: [] };
 const one: DayNote = { ...empty, done: ["a"] };
 
 test("notePath: config.edn 의 저널 폴더·파일 이름 형식, 없으면 Logseq 기본", () => {

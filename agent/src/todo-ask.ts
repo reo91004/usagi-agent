@@ -67,7 +67,7 @@ export function askPrompt(store: Store, todo: Todo, text: string, opts: { now?: 
     `- id: ${todo.id}`,
     `- 제목: ${todo.title}`,
     `- 우선순위: P${todo.priority}`,
-    `- 상태: ${todo.status === "done" ? "끝남" : "열림"}`,
+    `- 상태: ${todo.status === "done" ? (todo.skipped ? "안 해도 돼서 닫음" : "끝남") : "열림"}`,
     `- 메모: ${todo.note ?? "(없음)"}`,
     `- 출처: ${todo.source}`,
     `- 링크: ${todo.link ?? "(없음)"}`,

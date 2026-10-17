@@ -2,7 +2,7 @@
 import type { TodoPatch } from "./store.ts";
 
 export type TodoOp = {
-  op: "add" | "edit" | "done" | "reopen" | "delete";
+  op: "add" | "edit" | "done" | "skip" | "reopen" | "delete"; // skip = 안 해도 돼서 닫기(상태는 done + 안 함 표시)
   id?: string; title?: string; priority?: number; link?: string | null; note?: string | null;
   description?: string; source_ref?: string; // add 전용: 설명·원본 참조(원문은 데몬이 찾는다)
 };
@@ -43,7 +43,7 @@ function cleanPriority(v: unknown): Result<number> {
 // POST /todos/:id 본문. 모르는 키는 400
 export function parsePatch(body: Record<string, unknown>): Result<TodoPatch> {
   const out: TodoPatch = {};
-  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "status", "description", "doing", "today"].includes(k)) return fail(`unknown field: ${k}`);
+  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "status", "skipped", "description", "doing", "today"].includes(k)) return fail(`unknown field: ${k}`);
   if (body.title !== undefined) { const r = cleanTitle(body.title); if (!r.ok) return r; out.title = r.value; }
   if (body.priority !== undefined) { const r = cleanPriority(body.priority); if (!r.ok) return r; out.priority = r.value; }
   if (body.link !== undefined) { const r = cleanLink(body.link); if (!r.ok) return r; out.link = r.value; }
@@ -62,6 +62,10 @@ export function parsePatch(body: Record<string, unknown>): Result<TodoPatch> {
     // 오늘 할 일로 고르기(true)·빼기(false·null)
     if (body.today !== null && typeof body.today !== "boolean") return fail("today must be boolean or null");
     out.today = body.today === true;
+  }
+  if (body.skipped !== undefined) {
+    if (typeof body.skipped !== "boolean") return fail("skipped must be boolean");
+    out.skipped = body.skipped;
   }
   if (body.status !== undefined) {
     if (body.status !== "open" && body.status !== "done") return fail("status must be open or done");
@@ -93,13 +97,13 @@ export const PRIORITY_DESC = "1=오늘 꼭, 2=이번 주, 3=나중에(마감이 
 // 채팅·DM 구조화 출력의 todo_ops 스키마
 export const TODO_OPS_SCHEMA = {
   type: "array",
-  description: "사용자가 할 일을 추가·수정·완료·되살리기·삭제해 달라고 할 때만. delete는 휴지통으로 옮긴다(패널에서 되살릴 수 있음). id는 '현재 열린 할 일'·'최근 끝낸 할 일' 목록의 id 그대로. 바꿀 필드만 넣는다.",
+  description: "사용자가 할 일을 추가·수정·완료·안 해도 돼서 닫기(skip)·되살리기·삭제해 달라고 할 때만. delete는 휴지통으로 옮긴다(패널에서 되살릴 수 있음). id는 '현재 열린 할 일'·'최근 끝낸 할 일' 목록의 id 그대로. 바꿀 필드만 넣는다.",
   items: {
     type: "object",
     additionalProperties: false,
     required: ["op"],
     properties: {
-      op: { type: "string", enum: ["add", "edit", "done", "reopen", "delete"] },
+      op: { type: "string", enum: ["add", "edit", "done", "skip", "reopen", "delete"] },
       id: { type: "string", description: "add 외에는 필수" },
       title: { type: "string" },
       priority: { type: "integer", minimum: 1, maximum: 4, description: PRIORITY_DESC },
@@ -115,13 +119,13 @@ export const TODO_OPS_SCHEMA = {
 // 제안은 집어 든 할 일 하나에 대한 변경 + 새 할 일 추가만. 데몬은 제안 단계에서 아무것도 바꾸지 않는다.
 
 export type TodoSnap = { title: string; priority: number; note: string | null; link: string | null; status: "open" | "done" };
-export type PreviewItem = { id?: string; kind: "edit" | "delete" | "done" | "reopen" | "add"; before?: TodoSnap; after?: TodoSnap };
+export type PreviewItem = { id?: string; kind: "edit" | "delete" | "done" | "skip" | "reopen" | "add"; before?: TodoSnap; after?: TodoSnap };
 type Focus = { id: string; title: string; priority: number; note?: string; link?: string; status: string };
 
 const OPS_MAX = 20;
 const ADDS_MAX = 5;
 const OP_KEYS = ["op", "id", "title", "priority", "link", "note", "description", "source_ref"];
-const OP_KINDS = ["add", "edit", "done", "reopen", "delete"];
+const OP_KINDS = ["add", "edit", "done", "skip", "reopen", "delete"];
 
 export function todoSnap(t: Focus): TodoSnap {
   return { title: t.title, priority: t.priority, note: t.note ?? null, link: t.link ?? null, status: t.status === "done" ? "done" : "open" };
@@ -161,7 +165,7 @@ export function parseOps(v: unknown, { allowEmpty = false } = {}): Result<TodoOp
 export function focusOps(focus: Focus, ops: TodoOp[]): TodoOp[] {
   const adds: TodoOp[] = [];
   let del: TodoOp | null = null;
-  let status: "done" | "reopen" | null = null;
+  let status: "done" | "skip" | "reopen" | null = null;
   const edit: TodoPatch = {};
   const cur = todoSnap(focus);
   for (const op of (Array.isArray(ops) ? ops : []).slice(0, OPS_MAX)) {
@@ -176,7 +180,7 @@ export function focusOps(focus: Focus, ops: TodoOp[]): TodoOp[] {
     }
     if ((op.id || focus.id) !== focus.id) continue;
     if (op.op === "delete") { del = { op: "delete", id: focus.id, ...(typeof p.value.note === "string" ? { note: p.value.note } : {}) }; continue; }
-    if (op.op === "done") { if (cur.status !== "done") status = "done"; continue; }
+    if (op.op === "done" || op.op === "skip") { if (cur.status !== "done") status = op.op; continue; }
     if (op.op === "reopen") { if (cur.status === "done") status = "reopen"; continue; }
     for (const k of ["title", "priority", "link", "note"] as const) {
       if (p.value[k] === undefined) continue;
@@ -214,7 +218,7 @@ export function buildPreview(focus: Focus, ops: TodoOp[]): PreviewItem[] {
       if (op.op === "edit") {
         for (const k of ["title", "priority", "link", "note"] as const) if (op[k] !== undefined) (after as any)[k] = op[k];
       } else {
-        after.status = op.op === "done" ? "done" : "open";
+        after.status = op.op === "reopen" ? "open" : "done";
         kind = op.op;
       }
     }
@@ -229,6 +233,7 @@ export function opsSummary(ops: TodoOp[]): string {
     if (o.op === "add") return `추가 "${o.title ?? ""}"`;
     if (o.op === "delete") return "삭제";
     if (o.op === "done") return "완료";
+    if (o.op === "skip") return "안 해도 됨";
     if (o.op === "reopen") return "다시 열기";
     const f = (["title", "priority", "link", "note"] as const).filter((k) => o[k] !== undefined)
       .map((k) => (k === "priority" ? `P${o.priority}` : k === "note" ? `메모 ${o.note === null ? "지움" : `"${String(o.note).slice(0, 40)}"`}` : k === "title" ? `제목 "${String(o.title).slice(0, 40)}"` : "링크"));

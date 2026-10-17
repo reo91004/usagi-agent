@@ -173,8 +173,8 @@ export function ctxHandlers(cfg: Config, store: Store, deps: CtxDeps = {}) {
         sec.push("### 언젠가·백로그 (P4 — 급하지 않음)", ...(back.length ? back.slice(0, lim).map(todoLine) : ["(없음)"]));
       }
       if (st === "done" || st === "all") {
-        const done = store.doneTodos(Math.min(lim, 20)).filter(match);
-        sec.push("### 최근 끝낸 할 일", ...(done.length ? done.map((t) => `- id=${t.id} ${t.title}${t.updated ? ` (${t.updated.slice(0, 10)})` : ""}`) : ["(없음)"]));
+        const done = store.doneTodos(Math.min(lim, 20), true).filter(match);
+        sec.push("### 최근 끝낸 할 일", ...(done.length ? done.map((t) => `- id=${t.id} ${t.title}${t.skipped ? " [안 함]" : ""}${t.updated ? ` (${t.updated.slice(0, 10)})` : ""}`) : ["(없음)"]));
       }
       if (st === "history" || st === "all") {
         const gone = removedRecently(store, now()).filter((e) => !q || e.title.toLowerCase().includes(q));

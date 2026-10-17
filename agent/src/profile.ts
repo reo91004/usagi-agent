@@ -312,10 +312,10 @@ function gatherTransitions(store: Store, g: Gathered, budget: number, now: Date)
     g.commit.push(() => store.db.prepare("INSERT OR REPLACE INTO profile_seen (kind, id, status) VALUES (?, ?, ?)").run(kind, id, status));
 
   if (hasTable(store, "todos")) {
-    for (const t of store.db.prepare("SELECT id, title, source, status, created, priority FROM todos").all() as any[]) {
+    for (const t of store.db.prepare("SELECT id, title, source, status, created, priority, skipped FROM todos").all() as any[]) {
       const prev = seen("todo", t.id);
       const stale = t.status === "open" && now.getTime() - Date.parse(t.created) > 7 * DAY;
-      const cur = stale ? "open-stale" : t.status;
+      const cur = stale ? "open-stale" : t.status === "done" && t.skipped ? "skipped" : t.status;
       if (prev === cur) continue;
       mark("todo", t.id, cur);
       if (cur === "done") lines.push({ id: `todo:${t.id}`, line: `[todo:${t.id}] 할 일 완료: ${clip(t.title, 120)} (${t.source}, P${t.priority})` });

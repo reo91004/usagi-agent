@@ -913,7 +913,7 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
   // Slack block_id의 참조(id 또는 긴 id의 해시) → 할 일
   todoByRef(ref: string): Todo | undefined {
     if (!ref.startsWith("h:")) return this.store.getTodo(ref);
-    return [...this.store.openTodos(), ...this.store.doneTodos(50)].find((t) => todoRef(t.id) === ref);
+    return [...this.store.openTodos(), ...this.store.doneTodos(50, true)].find((t) => todoRef(t.id) === ref);
   }
 
   // 사용자가 추가하라고 한 할 일(패널·채팅·DM·팝오버). 할 일 규칙의 우선순위·메모를 적용한다.
@@ -1000,7 +1000,8 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     const before = this.store.getTodo(id);
     if (!before) return undefined;
     const after = this.store.editTodo(id, patch)!;
-    if (patch.status === "done" && before.status !== "done") recordFeedback(this.store, { kind: "todo_done", ref: id });
+    if (patch.status === "done" && before.status !== "done")
+      recordFeedback(this.store, patch.skipped ? { kind: "todo_ignored", ref: id, note: `안 해도 됨: ${before.title}` } : { kind: "todo_done", ref: id });
     if (patch.priority !== undefined && patch.priority !== before.priority)
       recordFeedback(this.store, { kind: "todo_priority", ref: id, note: `P${before.priority} → P${patch.priority}` });
     this.changed();
@@ -1114,9 +1115,9 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
         this.deleteTodo(cur.id, typeof op.note === "string" ? op.note : undefined);
         applied.push(`휴지통으로 옮겼어요: ${cur.title}`);
         trashed.push(cur.title);
-      } else if (op.op === "done" || op.op === "reopen") {
-        this.editTodo(cur.id, { status: op.op === "done" ? "done" : "open" });
-        applied.push(`${op.op === "done" ? "완료" : "다시 열기"}: ${cur.title}`);
+      } else if (op.op === "done" || op.op === "skip" || op.op === "reopen") {
+        this.editTodo(cur.id, { status: op.op === "reopen" ? "open" : "done", skipped: op.op === "skip" });
+        applied.push(`${op.op === "done" ? "완료" : op.op === "skip" ? "안 해도 됨으로 닫기" : "다시 열기"}: ${cur.title}`);
       } else {
         const { status: _s, ...patch } = p.value;
         if (!Object.keys(patch).length) { errors.push(`id=${cur.id} 수정할 내용이 없었어요`); continue; }

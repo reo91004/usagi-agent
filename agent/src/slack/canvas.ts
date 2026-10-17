@@ -73,9 +73,9 @@ export function todoCanvasMarkdown(todos: Todo[], now: Date, extras?: { done?: D
 // 완료 시각은 store에 없으니, 처음 '완료'로 본 시각을 자체 테이블에 적어 최신순으로 쓴다
 export function recentDoneTodos(store: Store, limit = 10, now = new Date()): DoneTodo[] {
   store.db.exec("CREATE TABLE IF NOT EXISTS todo_canvas_done (id TEXT PRIMARY KEY, seen TEXT NOT NULL)");
-  store.db.prepare("INSERT OR IGNORE INTO todo_canvas_done (id, seen) SELECT id, ? FROM todos WHERE status = 'done'").run(now.toISOString());
+  store.db.prepare("INSERT OR IGNORE INTO todo_canvas_done (id, seen) SELECT id, ? FROM todos WHERE status = 'done' AND skipped = 0").run(now.toISOString());
   return (store.db.prepare(`SELECT t.*, d.seen AS doneAt FROM todos t JOIN todo_canvas_done d ON d.id = t.id
-      WHERE t.status = 'done' ORDER BY d.seen DESC, t.created DESC LIMIT ?`).all(limit) as any[])
+      WHERE t.status = 'done' AND t.skipped = 0 ORDER BY d.seen DESC, t.created DESC LIMIT ?`).all(limit) as any[])
     .map((r) => ({ id: r.id, title: r.title, source: r.source, link: r.link ?? undefined, priority: r.priority, status: r.status, created: r.created, doneAt: r.doneAt }));
 }
 

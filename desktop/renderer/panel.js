@@ -1299,9 +1299,10 @@ function toggleToday(t) {
   });
 }
 
-function completeTodo(t) {
-  const item = { id: t.id, title: t.title, source: t.source, priority: t.priority, link: t.linkRaw || undefined, note: t.note || undefined, userEdited: t.userEdited };
-  mutate({ kind: 'remove', id: t.id }, () => cy.todoDone(t.id), '완료 처리 실패', () => {
+// skipped = 안 해도 돼서 닫기: 같은 끝난 칸으로 가되 「안 함」 표시가 붙는다
+function completeTodo(t, skipped = false) {
+  const item = { id: t.id, title: t.title, source: t.source, priority: t.priority, link: t.linkRaw || undefined, note: t.note || undefined, userEdited: t.userEdited, ...(skipped ? { skipped: true } : {}) };
+  mutate({ kind: 'remove', id: t.id }, () => (skipped ? cy.todoEdit(t.id, { status: 'done', skipped: true }) : cy.todoDone(t.id)), skipped ? '닫기 실패' : '완료 처리 실패', () => {
     setRawTodos(rawTodos().filter((x) => x.id !== t.id));
     raw = { ...raw, today: patchToday(raw.today, t.id, { done: true }) }; // 오늘 할 일이면 '오늘 끝냄'으로
     recentDone = [item, ...recentDone.filter((x) => x.id !== t.id)].slice(0, 5);
@@ -1331,6 +1332,7 @@ function revertAuto(item) {
 function doneRow(t) {
   return h('div.todo.is-done', { dataset: { id: t.id } },
     h('span.t', { text: t.title, title: t.auto && t.reason ? t.reason : null }),
+    t.skipped ? h('span.chip.skipped', { text: '안 함', title: '안 해도 돼서 닫았어요' }) : null,
     t.auto ? h('span.chip.ok.auto', { text: '자동', title: t.reason ? `Slack 대화를 보고 자동 완료: ${t.reason}` : 'Slack 대화를 보고 자동 완료' }) : null,
     t.doneRel ? h('span.muted', { text: t.doneRel }) : null,
     t.auto && t.evidence ? h('button.ghost', { type: 'button', text: '근거', title: '근거 메시지 열기', onclick: () => cy.openLink(t.evidence) }) : null,
@@ -1444,6 +1446,14 @@ function doingButton(t) {
     type: 'button', text: on ? '⏸' : '▶', disabled: t.pending, 'aria-pressed': String(on),
     title: on ? '진행중 표시 끄기' : '진행중으로 표시', 'aria-label': `${on ? '진행중 끄기' : '진행중으로'}: ${t.title}`,
     onclick: () => mutate({ kind: 'edit', id: t.id, patch: { doing: !on }, rule: true }, () => cy.todoEdit(t.id, { doing: !on }), '진행중 표시 실패'),
+  });
+}
+
+// 「안 해도 됨」: 할 필요가 없어서 닫는다(끝난 칸에 「안 함」 표시)
+function skipButton(t) {
+  return h('button.ghost.row-skip', {
+    type: 'button', text: '안 해도 됨', disabled: t.pending, title: '할 필요가 없어서 닫기 (끝난 칸에 「안 함」으로 남아요)',
+    'aria-label': `안 해도 됨: ${t.title}`, onclick: () => completeTodo(t, true),
   });
 }
 
@@ -1748,6 +1758,7 @@ function todoRow(t) {
   dueBadge(t),
   confirming ? null : todayButton(t),
   confirming ? null : doingButton(t),
+  confirming ? null : skipButton(t),
   confirming ? confirmBox('trash', () => trashTodo(t)) : trashButton(t));
   return open ? h('div.todo-wrap', null, row, todoDetailView(t)) : row;
 }
