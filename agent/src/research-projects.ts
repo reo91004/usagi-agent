@@ -1,4 +1,5 @@
 // 연구 탭의 연구 프로젝트(GET /dashboard 의 researchProjects, PUT /research/projects). 새 수집 없이 이미 쌓인 작업 폴더·세션·job 노드·tmux 메모리만 묶는다.
+// 세션·job 은 30일 창이다. 작업 폴더(dashboard.ts projects)의 7일 창보다 길어 일주일 넘게 쉰 연구도 작업 기록이 남는다
 // 폴더 키는 작업 폴더 path 와 같은 모양: 이 Mac 은 레포 루트 절대 경로, 서버는 「서버:/경로」
 import { existsSync } from "node:fs";
 import { cutHidden, gitRootOf, insideOf, isNoisePath, splitHost, type DashProject } from "./dashboard.ts";
@@ -62,7 +63,7 @@ function resolver(known: Iterable<string>) {
 type Item = { exp: Experiment; at: string; state: "running" | "done" | "failed" | "lost" };
 type Acc = { folders: string[]; items: Item[]; sessions: Node[]; dashActive: string[] };
 
-export function buildResearchProjects(store: Store, dash: DashProject[], sessionsOf: Map<string, Node[]>, now: Date, tmux: typeof tmuxSeen = tmuxSeen): ResearchProject[] {
+export function buildResearchProjects(store: Store, dash: DashProject[], now: Date, withSessions: boolean, tmux: typeof tmuxSeen = tmuxSeen): ResearchProject[] {
   const meta = new Map(store.researchMeta().map((m) => [m.path, m]));
   const known = new Set([...dash.map((p) => p.path), ...meta.keys(), ...[...meta.values()].flatMap((m) => (m.mergedInto ? [m.mergedInto] : []))]);
   const resolve = resolver(known);
@@ -80,11 +81,17 @@ export function buildResearchProjects(store: Store, dash: DashProject[], session
   const hidden = store.hiddenProjects();
   for (const p of dash) {
     if (p.hidden && !meta.has(p.path)) continue;
-    const a = acc(p.path);
-    a.sessions.push(...(sessionsOf.get(p.path) ?? []));
-    a.dashActive.push(p.lastActive);
+    acc(p.path).dashActive.push(p.lastActive);
   }
-  for (const j of store.nodesSince("job", new Date(now.getTime() - WINDOW).toISOString(), 5000)) { // 최근 순. 집계가 잘리지 않게 넉넉히
+  const since = new Date(now.getTime() - WINDOW).toISOString();
+  // 세션 노드는 자기 cwd 의 project 노드에 이어진다(ingest/sessions.ts). cwd 로 묶으면 질의 한 번이고, 서버 이름을 나중에 알게 돼 옛 project 노드에도 남은 간선은 저절로 빠진다
+  for (const s of withSessions ? store.nodesSince("session", since, 1000) : []) {
+    const cwd = s.props.cwd;
+    if (typeof cwd !== "string" || !cwd) continue;
+    const { host, dir } = splitHost(cwd), key = resolve(folderKey(host, dir));
+    if (!noise(key)) acc(key).sessions.push(s);
+  }
+  for (const j of store.nodesSince("job", since, 5000)) { // 최근 순. 집계가 잘리지 않게 넉넉히
     const p = j.props as Record<string, any>;
     if (!p.cwd) continue;
     const host = String(p.host ?? ""), key = resolve(folderKey(host, String(p.cwd)));
@@ -116,7 +123,7 @@ export function buildResearchProjects(store: Store, dash: DashProject[], session
     if (!m?.kind && (noise(rep) || store.isHiddenPath(rep, hidden) || !(a.items.length || a.sessions.length >= 2))) continue;
     const sessions = a.sessions.sort((x, y) => y.updated.localeCompare(x.updated));
     const done = a.items.filter((i) => i.state !== "running");
-    const last = [...a.dashActive, ...a.items.map((i) => i.at)].sort().at(-1);
+    const last = [...a.dashActive, ...a.sessions.map((s) => s.updated), ...a.items.map((i) => i.at)].sort().at(-1);
     const subs = (m?.subs ?? []) as Submission[];
     const cur = subs.at(-1);
     out.push({

@@ -131,3 +131,28 @@ test("합친 폴더의 대표가 아니에요면 그 폴더는 묶지 않은 폴
   assert.ok("error" in putResearchProject(store, { key: "/Users/x/b", mergeInto: "/Users/x/c" }, now));
   assert.deepEqual(putResearchProject(store, { key: "/Users/x/b", mergeInto: null }, now), { ok: true });
 });
+
+test("작업 기록과 세션 후보는 작업 폴더의 7일이 아니라 30일 창으로 세고, 작업 기록은 최근 5개", async () => {
+  const store = new Store(":memory:");
+  const day = (n: number) => ago(n * 24);
+  putResearchProject(store, { key: "srv:/r/old", kind: "research" });
+  for (const n of [8, 9, 10, 11, 12, 13, 31]) session(store, `o${n}`, "srv:/r/old", day(n));
+  session(store, "t1", "srv:/c/two", day(10));
+  session(store, "t2", "srv:/c/two", day(20));
+  session(store, "one", "srv:/c/one", day(10)); // 세션 하나는 후보가 아니다
+  session(store, "e1", "srv:/c/edge", day(10));
+  session(store, "e2", "srv:/c/edge", day(31)); // 30일 밖
+  for (const id of ["m1", "m2"]) { // 서버 이름을 나중에 알게 된 세션: 옛 project 노드에 남은 간선으로는 세지 않는다
+    session(store, id, "/w/m", day(15));
+    session(store, id, "srv:/w/m", day(15));
+  }
+  let d = await build(store);
+  assert.equal(d.projects.length, 0); // 작업 폴더는 7일 창 그대로
+  assert.deepEqual(d.researchProjects.map((p) => p.key), ["srv:/r/old", "srv:/c/two", "srv:/w/m"]);
+  const old = d.researchProjects[0];
+  assert.deepEqual(old.sessions.map((s) => s.title), ["세션 o8", "세션 o9", "세션 o10", "세션 o11", "세션 o12"]);
+  assert.equal(old.lastActive, day(8));
+
+  d = await buildDashboard({ ...loadConfig(), readSessions: false }, store, { now, git: async () => [], tmux: {} });
+  assert.deepEqual(d.researchProjects.map((p) => [p.key, p.sessions.length]), [["srv:/r/old", 0]]);
+});
