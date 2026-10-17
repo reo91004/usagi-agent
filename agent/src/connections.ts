@@ -16,7 +16,7 @@ import { argv as ghArgv, runGh } from "./gh.ts";
 import { CAPABILITIES, CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
 import { hasUserMcpServer } from "./mcp.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, creditFailText, type KeyProvider } from "./providers.ts";
-import { MCP_CLI_UNUSABLE, mcpBrainNote } from "./feature-brain.ts";
+import { mcpBrainNote, withMcpBrain } from "./feature-brain.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
 import { sessionsAllowed } from "./onboarding.ts";
 import { BRIEFING_SOURCES, type BriefingSource } from "./settings.ts";
@@ -216,7 +216,7 @@ export class Connections {
       const row: ConnRow = {
         id: `connector:${cap}`, label: st.label, group: "service", check: "local", checkedAt: at, doc: st.doc,
         used: st.mode !== "off", state: st.mode === "off" ? "off" : st.ready ? "ok" : "error", detail: st.detail,
-        summary: st.mode === "off" ? "연결 안 함" : st.mode === "api" ? "직접 연결(API)" : `MCP (${x.mode === "mcp" ? x.server : ""})`,
+        summary: st.mode === "off" ? "연결 안 함" : st.mode === "api" ? "직접 연결" : `MCP (${x.mode === "mcp" ? x.server : ""})`,
         briefing: brief([cap as Capability]),
         ...(x.mode === "mcp" ? { server: x.server } : {}),
       };
@@ -242,10 +242,12 @@ export class Connections {
         row.detail = bits.join(" · ");
       }
       // 브리핑의 MCP 읽기는 Claude Code 뇌로만 — Codex·agy 면 채팅에서만(넘길 수 있는 서버만), 그 밖의 뇌면 안 읽는다
+      // 넘길 수 있는 서버면 상태는 그대로 두고 「채팅에서만」만 붙인다(개요 카드·GET /status 와 같은 판정 — feature-brain.ts withMcpBrain)
       if (x.mode === "mcp" && provider !== "claude-code") {
-        row.state = row.state === "error" ? "error" : "warn";
         const cli = provider === "codex" || provider === "agy";
-        row.detail = `${cli && st.ready && !this.d.cliServers().includes(x.server) ? MCP_CLI_UNUSABLE : mcpBrainNote(provider)} · ${row.detail}`;
+        const [shown] = withMcpBrain(this.cfg, [{ cap, mode: x.mode, ready: st.ready, detail: "", server: x.server }], () => this.d.cliServers());
+        if (!shown.ready) row.state = row.state === "error" ? "error" : "warn";
+        row.detail = `${!shown.ready && cli && st.ready ? shown.detail : mcpBrainNote(provider)} · ${row.detail}`;
       }
       rows.push(row);
     }
@@ -278,8 +280,19 @@ export class Connections {
     rows.push(kgRow);
     // 작업 기록 읽기를 껐으면(마법사·설정 「작업 기록 읽지 않아요」) 꺼짐으로(onboarding.ts sessionsAllowed)
     const sessionsOn = sessionsAllowed(this.cfg);
+    const sh = this.cfg.sessionHosts ?? [];
     rows.push({ id: "sessions", label: "작업 세션(Claude Code·Codex 기록)", group: "local", check: "local", checkedAt: at,
-      state: sessionsOn ? "ok" : "off", detail: sessionsOn ? "로컬 기록을 읽어요" : this.cfg.onboarded === false ? "처음 설정을 마치기 전이라 읽지 않아요" : "읽지 않아요(설정에서 켤 수 있어요)", briefing: brief(["sessions"]) });
+      state: sessionsOn ? "ok" : "off", detail: sessionsOn ? `이 맥${sh.length ? `과 서버 ${sh.join("·")}` : ""}의 기록을 읽어요` : this.cfg.onboarded === false ? "처음 설정을 마치기 전이라 읽지 않아요" : "읽지 않아요(설정에서 켤 수 있어요)", briefing: brief(["sessions"]) });
+    // 이 Mac 의 캘린더·미리알림(eventkit.ts) — 켜고 끄기는 설치 탭 「더 연결하기」
+    const calLocal = conns.calendar.mode === "api" && !!conns.calendar.local, rem = !!this.cfg.appleReminders;
+    rows.push({ id: "apple", label: "이 Mac 캘린더·미리알림", group: "local", check: "local", checkedAt: at, state: calLocal || rem ? "ok" : "off",
+      detail: calLocal || rem ? `${[calLocal ? "캘린더" : "", rem ? "미리알림(할 일로)" : ""].filter(Boolean).join("·")}을 읽어요` : "연결 안 함(설치 탭 → 더 연결하기)" });
+    // 실험 서버(ssh): 끝난 작업 알림(jobHosts — sshHosts 포함)·물어볼 때 탐색(sshHosts). config.json 에서 고친다
+    const jh = this.cfg.jobHosts ?? [], xh = this.cfg.sshHosts ?? [];
+    rows.push({ id: "ssh", label: "실험 서버(ssh)", group: "local", check: "local", checkedAt: at, state: jh.length || xh.length ? "ok" : "off",
+      detail: jh.length || xh.length ? `${[...new Set([...xh, ...jh])].join("·")} · 끝난 실험 알림${xh.length ? "·물어보면 폴더·결과·GPU" : ""}` : "서버 없음(config.json 의 sshHosts)" });
+    rows.push({ id: "research-note", label: "연구 노트(Tine)", group: "local", check: "local", checkedAt: at, state: this.cfg.tineGraph ? "ok" : "off",
+      detail: this.cfg.tineGraph ? "그날 한 일을 「우사기 연구 노트」 페이지에 써요" : "안 씀(config.json 의 tineGraph)" });
     return rows;
   }
 

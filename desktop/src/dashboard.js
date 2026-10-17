@@ -133,7 +133,7 @@ function shapeProject(p, now) {
 // GET /dashboard 의 connectors: 기능마다 어디서 읽는지(api·mcp·off)와 준비 상태
 export const CONNECTOR_CAPS = ['slack', 'calendar', 'mail', 'issues'];
 const CONNECTOR_DEFAULT_LABELS = { slack: 'Slack', calendar: '캘린더', mail: '메일', issues: '이슈' };
-export const CONNECTOR_MODE_LABELS = { api: 'API', mcp: 'MCP', off: '꺼짐' };
+export const CONNECTOR_MODE_LABELS = { api: '직접', mcp: 'MCP', off: '꺼짐' };
 
 // 모르는 기능·모드나 모양이 이상한 항목은 건너뛴다. 같은 기능이 두 번 오면 앞의 것
 export function shapeConnectors(list) {

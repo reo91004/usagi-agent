@@ -1,14 +1,14 @@
 // 지금 무엇이 연결됐나 — 한 곳에서(GET /status). 데스크톱이 이걸로 화면을 가른다:
 //   뇌가 준비됐으면 말 걸기(더블클릭·패널 채팅·세션 창 입력)·브리핑 요약, 아니면 연결 안내 + 정해진 말(local-mode)
-//   Claude Code 가 있어야만 되는 것(코드 고치기·워크트리·백그라운드 에이전트·세션 이어 하기)은 coder.claude 로
+//   코드 고치기·이어 하기는 features.code(뇌가 Codex·agy 면 그 명령, 아니면 Claude Code), 워크트리·백그라운드 에이전트는 coder.claude 로
 //   뒤에서 혼자 도는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)는 features.background — Claude Code 나 Codex 뇌
 //   MCP 커넥터(메일·이슈·Slack·캘린더 MCP)는 Claude Code 뇌, Codex·agy 뇌면 채팅에서만(넘길 수 있는 서버만 — cli-mcp.ts) — features.mcp, connectors[].needs
 // 비밀값(키·토큰·ICS 주소)은 넣지 않는다. 있나 없나만.
 import type { Config } from "./config.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, commandOnPath, creditFailText, type KeyProvider } from "./providers.ts";
-import { CAPABILITIES, CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
+import { CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
 import { BRAIN_LABEL } from "./connections.ts";
-import { NEEDS_CODER, featureBrain, type FeatureBrain } from "./feature-brain.ts";
+import { NEEDS_CODER, featureBrain, withMcpBrain, type FeatureBrain } from "./feature-brain.ts";
 import { cliMcpServers } from "./cli-mcp.ts";
 import { WAIT_SETUP } from "./onboarding.ts";
 
@@ -22,7 +22,7 @@ export type BrainStatus = {
 export type Features = {
   // 끝난 할 일 판정·할 일 진행 확인·지식그래프·프로필 학습. by = 돌리는 뇌(null = 안 돎)
   background: { by: FeatureBrain | null; ready: boolean | null; detail: string };
-  mcp: boolean;          // MCP 커넥터를 읽나(Claude Code 뇌만)
+  mcp: boolean;          // MCP 커넥터를 읽나(Claude Code 뇌, Codex·agy 뇌는 채팅에서만)
   code: boolean | null;  // 코드 고치기: 뇌가 Codex·agy 면 그 명령, 아니면 Claude Code 로그인(워크트리·백그라운드 에이전트는 Claude 만)
 };
 export type Status = {
@@ -68,7 +68,7 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     : `${KEY_LABEL[provider] ?? label} API 키가 없어요`;
   const local = provider === "local";
   const conns = cfg.connectors ?? CONNECTORS;
-  const st = connectorStatus(conns, deps.hasServer);
+  const st = withMcpBrain(cfg, connectorStatus(conns, deps.hasServer), () => deps.cliServers?.() ?? cliMcpServers(conns).map((s) => s.name));
   const codex = commandOnPath("codex", env);
   const agy = commandOnPath("agy", env);
   const by = featureBrain(cfg, (n) => (n === "agy" ? agy : codex));
@@ -79,17 +79,14 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     : { by: null, ready: false, detail: cfg.onboarded === false ? WAIT_SETUP : provider === "codex" ? "Codex 를 찾을 수 없어요" : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요" : NEEDS_CODER };
   const cliBrain = provider === "codex" || provider === "agy";
   const mcp = provider === "claude-code" || cliBrain;
-  const usable = cliBrain ? new Set(deps.cliServers?.() ?? cliMcpServers(conns).map((s) => s.name)) : undefined;
   return {
     brain: { provider, label, ready, local, detail },
     chat: local ? false : ready,
     coder: { claude: claude ?? null, codex, agy },
     features: { background, mcp, code: provider === "codex" ? codex : provider === "agy" ? agy : claude ?? null },
-    connectors: CAPABILITIES.map((cap) => {
-      const x = st.find((s) => s.cap === cap)!;
-      const needs = x.mode === "mcp" && !mcp;
-      const cliOk = !usable || x.mode !== "mcp" || usable.has(x.server ?? "");
-      return { cap, label: x.label, mode: x.mode, ready: x.mode !== "off" && x.ready && !needs && cliOk, ...(needs ? { needs: "claude-code" as const } : {}) };
+    connectors: st.map((x) => {
+      const needs = x.mode === "mcp" && (!mcp || (x.cap === "calendar" && provider !== "claude-code"));
+      return { cap: x.cap, label: x.label, mode: x.mode, ready: x.mode !== "off" && x.ready, ...(needs ? { needs: "claude-code" as const } : {}) };
     }),
     user: cfg.user?.name ? { name: cfg.user.name } : {},
     onboarded: cfg.onboarded !== false,

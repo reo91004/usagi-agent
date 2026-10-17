@@ -31,14 +31,15 @@ export function withCalendarAdded(cfg, url) {
   return { cfg: { ...c, connectors: conns }, added: true };
 }
 
-// 주소 하나 빼기: icsUrl·icsUrls 어디에 있든 그 주소만 지운다. 남은 게 없으면 { mode: 'off' }(연결 해제와 같은 모양)
+// 주소 하나 빼기: icsUrl·icsUrls 어디에 있든 그 주소만 지운다. 남은 게 없으면 { mode: 'off' }(연결 해제와 같은 모양) —
+// 이 Mac 캘린더(local)를 같이 쓰고 있으면 그것만 남긴다
 export function withCalendarRemoved(cfg, url) {
   const c = obj(cfg) ?? {};
   const conns = { ...(obj(c.connectors) ?? {}) };
   const cal = obj(conns.calendar);
   if (!cal) return c;
   const left = calendarUrls(c).filter((u) => u !== url);
-  if (!left.length) conns.calendar = { mode: 'off' };
+  if (!left.length) conns.calendar = cal.local === true ? { mode: 'api', local: true, ...(cal.timeZone ? { timeZone: cal.timeZone } : {}) } : { mode: 'off' };
   else {
     const next = { ...cal, icsUrls: left };
     delete next.icsUrl;
@@ -108,7 +109,7 @@ export const CALENDAR_DUP = '이미 연결된 캘린더예요. 다른 주소를 
 export function calendarRemoveCopy(row, last) {
   return {
     ask: `${row?.title ?? '캘린더'} 「${row?.label ?? ''}」를 뺄까요?`,
-    note: last ? '마지막 캘린더라서 빼면 캘린더 연결이 꺼져요.' : '이 주소만 시사 설정에서 지워요. 다른 캘린더는 그대로예요.',
+    note: last ? '마지막 주소라서 빼면 주소로 읽는 캘린더는 꺼져요. 이 Mac 캘린더를 연결해 두었으면 그건 그대로예요.' : '이 주소만 설정에서 지워요. 다른 캘린더는 그대로예요.',
     done: '캘린더를 뺐어요.',
     label: '빼기',
   };
@@ -116,8 +117,8 @@ export function calendarRemoveCopy(row, last) {
 
 // 데몬 응답(POST /connectors/reload) → 한 줄 안내. 꺼져 있으면 다음에 켤 때, 바뀌었는데 다시 켜지지 않으면 다시 켜야 한다고
 export function calendarReloadNote(reload, offline) {
-  if (offline) return '시사가 꺼져 있어서 다음에 켤 때 적용돼요.';
-  if (reload?.restarting) return '시사가 잠깐 다시 켜지며 적용돼요.';
-  if (reload?.changed) return '시사를 다시 켜면 적용돼요.';
+  if (offline) return '지금 꺼져 있어서 다음에 켤 때 적용돼요.';
+  if (reload?.restarting) return '잠깐 다시 켜지며 적용돼요.';
+  if (reload?.changed) return '다시 켜면 적용돼요.';
   return '';
 }

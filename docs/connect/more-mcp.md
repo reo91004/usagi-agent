@@ -8,7 +8,7 @@ cy-agent는 Claude Code에 등록된 MCP 서버로 글을 읽습니다. 여기 �
 
 그리고 여기 있는 서버를 등록한다고 해서 브리핑의 Slack·캘린더·메일·이슈 자리에 저절로 들어가지는 않습니다.
 
-시사는 Claude Code에 등록된 서버를 전부 쓰지 않습니다. 브리핑과 채팅은 커넥터(`connectors`)로 연결한 서버만 쓰고, 다른 일에 쓰려고 등록해 둔 서버나 claude.ai 커넥터는 읽기 도구여도 막습니다. 여기 있는 서버를 채팅에서 쓰려면 `~/.cy-agent/config.json`에 이름을 적어 주세요.
+시사는 Claude Code에 등록된 서버를 전부 쓰지 않습니다. 브리핑과 채팅은 커넥터(`connectors`)로 연결한 서버만 쓰고, 다른 일에 쓰려고 등록해 둔 서버나 claude.ai 커넥터는 읽기 도구여도 막습니다. 여기 있는 서버를 채팅에서 쓰려면 `~/.cy-agent/config.json`에 이름을 적어 주세요. `allowMcp` 는 뇌가 Claude Code일 때만 씁니다(Codex·Antigravity 채팅에는 커넥터 서버만 넘깁니다).
 
 ```json
 { "allowMcp": ["notion"] }
@@ -21,11 +21,11 @@ cy-agent는 Claude Code에 등록된 MCP 서버로 글을 읽습니다. 여기 �
 | 무엇 | 어떻게 | 문서 |
 |---|---|---|
 | Slack | `api`가 추천. MCP는 `slack-mcp-server`. 공식 Slack 원격 MCP는 프리셋 없음 | [slack.md](slack.md) |
-| 캘린더 | ICS `api`가 추천. `google-calendar`, `ms-365` | [calendar.md](calendar.md) |
+| 캘린더 | 이 Mac 캘린더(`local`)나 ICS `api`가 추천. `google-calendar`, `ms-365` | [calendar.md](calendar.md) |
 | 메일 | `gmail`(보관된 서버), `ms-365` | [mail.md](mail.md) |
 | 이슈 | GitHub 공식 MCP 읽기 전용. Atlassian Rovo·Linear는 도구 이름이 문서에 없어 프리셋 없음 | [issues.md](issues.md) |
 | 오늘 할 일 | 이 맥의 로컬 표. MCP 없음 | 없음 |
-| 뇌 | 기본은 Claude Code 로그인. `brain.provider`로 codex·gemini·openai·anthropic·local | [brain.md](brain.md) |
+| 뇌 | 기본은 Claude Code 로그인. `brain.provider`로 codex·agy·gemini·openai·anthropic·genspark·local | [brain.md](brain.md) |
 
 ---
 

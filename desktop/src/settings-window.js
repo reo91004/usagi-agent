@@ -2,6 +2,7 @@
 // 모델·브리핑 출처 저장(PUT /settings) · 연결 상태(GET /connections, POST /connections/check) · 패널의 설치 안내·모델 탭 열기.
 import { sanitizeSettingsPatch, sanitizeAppPrefs, okCheckId, okPanelTarget, sanitizeCharacterBody, okMediaSlot } from './settings.js';
 import { okCharacterId } from './character.js';
+import { REPO_SLUG } from './update-check.js';
 import { cleanUpload } from './attachments.js';
 import { sanitizeGuidelineAdd, sanitizeGuidelinePatch, okGuidelineId } from './guidelines.js';
 import { okBrainId, okCap } from './disconnect.js';
@@ -82,6 +83,9 @@ export function setupSettings(deps) {
   // [설치 안내]·[AI 고르기] → 패널의 그 탭
   ipcMain.on('settings-open-panel', (e, section) => {
     if (isMine(e) && okPanelTarget(section)) deps.openPanel?.(section);
+  });
+  ipcMain.on('settings-open-doc', (e, doc) => {
+    if (isMine(e) && typeof doc === 'string' && /^docs\/connect\/[a-z0-9-]+\.md$/.test(doc)) deps.shell?.openExternal(`https://github.com/${REPO_SLUG}/blob/main/${doc}`).catch(() => {});
   });
 
   // 「이 앱」: 로그인할 때 켜기 · 새 버전 알림(앱의 state.json)

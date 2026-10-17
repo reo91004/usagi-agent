@@ -13,7 +13,9 @@ import { applyCharacters, effectiveLines, defaultsOf } from '../src/character-re
 import { editorSections, flattenLines, unflattenLines, fieldText, fieldProblem, linesFromTexts, diffLines, slotRows, okMediaName, previewKind, missingRequired, sourceOptions, ACCEPT } from '../src/character-edit.js';
 import { who, setWho, onWho } from './who.js';
 // 안내 글 속 이름(<span class="who">)도 캐릭터 이름으로
-onWho(() => { for (const n of document.querySelectorAll('.who')) n.textContent = who(); });
+const fillWho = () => { for (const n of document.querySelectorAll('.who')) n.textContent = who(); };
+onWho(fillWho);
+fillWho(); // 처음 캐릭터가 기본값과 같으면 onWho 가 안 불려 HTML 의 「시사」가 남았다
 import { brainRows, brainDisconnectCopy, connectorAction, capOfRow, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { calendarRemoveCopy } from '../src/calendars.js';
 
@@ -72,11 +74,12 @@ function renderModels() {
   const box = $('models');
   box.replaceChildren();
   if (!settings) return;
-  // Claude 세부 모델은 Claude Code 가 있을 때만(목록도 Claude 모델이다)
-  const show = caps.claude !== false && (settings.modelOptions ?? []).length > 0;
+  // Claude 세부 모델은 뇌가 Claude Code 일 때만(목록도 Claude 모델이다. agy·Codex 뇌는 같은 칸을 자기 모델로 쓴다 — 패널 [모델] 탭)
+  const provider = settings.brain?.provider ?? 'claude-code';
+  const show = provider === 'claude-code' && caps.claude !== false && (settings.modelOptions ?? []).length > 0;
   $('models-note').hidden = !show;
   $('models-hint').hidden = show;
-  $('models-hint').textContent = show ? '' : 'Claude Code 를 쓰면 일마다 다른 Claude 모델을 고를 수 있어요. 지금은 패널의 [모델] 탭에서 고른 AI 하나로 다 해요.';
+  $('models-hint').textContent = show ? '' : provider === 'claude-code' ? 'Claude Code 에 로그인하면 일마다 다른 Claude 모델을 고를 수 있어요.' : '지금 AI의 모델은 패널의 [모델] 탭에서 골라요. 일마다 다른 Claude 모델은 뇌가 Claude Code 일 때 고를 수 있어요.';
   if (!show) return;
   $('config-path').textContent = settings.configPath ? `(${settings.configPath} 에 저장)` : '';
   for (const { role, label } of settings.modelRoles ?? []) {
@@ -585,7 +588,7 @@ function renderCharEditor() {
   const fillBtn = el('button', 'small ghost', '이 캐릭터 대사로 채우기');
   fillBtn.type = 'button';
   fill.append(el('span', null, '대사 가져오기'), fillSel, fillBtn);
-  box.append(el('h3', null, '대사'), el('p', 'hint', custom ? '비운 칸은 시사 말로 나와요. 저장하면 바로 바뀌어요.' : '고친 칸만 따로 저장해요(앱 파일은 그대로). 「기본값으로」를 누르면 처음으로 돌아가요.'), fill);
+  box.append(el('h3', null, '대사'), el('p', 'hint', custom ? '비운 칸은 기본 대사로 나와요. 저장하면 바로 바뀌어요.' : '고친 칸만 따로 저장해요(앱 파일은 그대로). 「기본값으로」를 누르면 처음으로 돌아가요.'), fill);
   let editor = linesEditor(entry, values, base, custom);
   box.append(editor.box);
   fillBtn.addEventListener('click', () => {
@@ -638,7 +641,7 @@ function renderCharEditor() {
     const del = el('button', 'small ghost danger', '이 캐릭터 지우기');
     del.type = 'button';
     del.addEventListener('click', async () => {
-      if (!window.confirm(`${name}을(를) 지울까요? 올린 그림도 같이 지워져요. 지금 쓰는 캐릭터면 시사로 돌아가요.`)) return;
+      if (!window.confirm(`${name}을(를) 지울까요? 올린 그림도 같이 지워져요. 지금 쓰는 캐릭터면 기본 캐릭터로 돌아가요.`)) return;
       const r = await cy.deleteCharacter(entry.id).catch(() => null);
       if (!r?.ok) { status.textContent = r?.data?.error ?? '지우지 못했어요'; return; }
       editing = null;
@@ -748,8 +751,8 @@ $('cal-custom').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e
 function renderAutoMerge() {
   const box = $('am-list');
   box.replaceChildren();
-  // 머지는 코드 고치기(Claude Code)가 있어야 쓸 일이 있다
-  const can = caps.claude !== false;
+  // 머지는 코드 고치기(뇌에 따라 Claude Code·Codex·agy)가 있어야 쓸 일이 있다
+  const can = (caps.code ?? caps.claude) !== false;
   $('am-hint').hidden = can;
   for (const id of ['am-list', 'am-err']) $(id).hidden = !can;
   document.querySelector('#am-card .gl-add').hidden = !can;
@@ -882,6 +885,10 @@ function loadCalendars() {
   return cy.getCalendars?.().then((r) => { if (r?.ok && Array.isArray(r.items)) { calendars = r.items; renderRows(); } }).catch(() => {});
 }
 
+// 설치 탭 「더 연결하기」에 있는 연결(Slack·캘린더)은 거기로, 그 밖(메일·이슈)은 안내 문서로
+const hasSetupStep = (r) => !r.doc || ['slack', 'calendar'].includes(capOfRow(r));
+const howToConnect = (r) => (hasSetupStep(r) ? cy.openPanel('setup') : cy.openDoc?.(r.doc));
+
 function rowEl(r) {
   const n = el('div', 'conn');
   n.dataset.id = r.id;
@@ -905,8 +912,8 @@ function rowEl(r) {
   if (action === 'connect') {
     const b = el('button', 'small primary', '연결하기');
     b.type = 'button';
-    b.title = '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요';
-    b.addEventListener('click', () => cy.openPanel('setup'));
+    b.title = hasSetupStep(r) ? '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   } else if (action === 'disconnect') {
     const cap = capOfRow(r);
@@ -926,8 +933,8 @@ function rowEl(r) {
   if (needsSetupHint(r)) {
     const b = el('button', 'small primary', '설치 안내');
     b.type = 'button';
-    b.title = '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요';
-    b.addEventListener('click', () => cy.openPanel('setup'));
+    b.title = hasSetupStep(r) ? '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   }
   const again = el('button', 'small ghost', '다시 확인');
@@ -977,7 +984,7 @@ async function checkAll() {
 async function load() {
   const [s, c, k, v] = await Promise.all([cy.getSettings().catch(() => null), cy.getConnections().catch(() => null), cy.getCaps?.().catch(() => null), cy.getSisa?.().catch(() => null)]);
   if (v && typeof v === 'object' && Array.isArray(v.connected)) sisaView = v;
-  if (k && typeof k === 'object' && typeof k.claude === 'boolean') caps = { claude: k.claude, codex: k.codex === true };
+  if (k && typeof k === 'object' && typeof k.claude === 'boolean') caps = { claude: k.claude, codex: k.codex === true, code: k.code };
   if (!s?.ok || !c?.ok) banner(`${who()}에 연결되지 않았어요. ${who()}가 켜져 있는지 확인해 주세요.`);
   else banner(null);
   if (s?.ok) { settings = s.data; renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderPhrases(); renderCharacter(); loadCharacters(); }

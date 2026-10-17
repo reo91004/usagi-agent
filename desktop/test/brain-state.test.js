@@ -95,7 +95,10 @@ test('세션 창 입력: 뇌가 없으면 막고 [연결하기], 수정 작업 �
   const cont = composerMode({ id: 'r2', kind: 'fix', status: 'done' });
   assert.equal(cont.mode, 'continue');
   assert.deepEqual([gateComposer(cont, { ready: true, coder: false }).locked], ['coder']);
-  assert.match(gateComposer(cont, { ready: true, coder: false }).placeholder, /Claude Code 를 설치하면/);
+  assert.match(gateComposer(cont, { ready: true, coder: false }).placeholder, /코드를 고칠 수 있는 AI를 연결하면/);
+  // 뇌가 Codex·agy 면 Claude Code 가 없어도 이어 한다(데몬 features.code → brainView.code)
+  assert.equal(gateComposer(cont, { ready: true, coder: false, code: true }).locked, undefined);
+  assert.equal(gateComposer(cont, { ready: true, coder: true, code: false }).locked, 'coder');
   assert.equal(gateComposer(composerMode(null), { ready: false }).locked, undefined, '꺼진 입력은 그대로');
 });
 

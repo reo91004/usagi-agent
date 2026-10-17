@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "./config.ts";
 import { Connections, redact, CHECK_IDS, type ConnRow } from "./connections.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Bus } from "./bus.ts";
 import type { Run } from "./runs.ts";
 
@@ -103,10 +106,11 @@ test("Connections: 꺼진 커넥터·등록 안 된 MCP 서버·키 없는 뇌",
   assert.match(byId(rows, "brain").detail!, /Gemini API 키가 없어요/);
 });
 
-test("Connections: 뇌가 Codex 면 MCP 커넥터 줄은 경고 + 「채팅에서만」(못 넘기는 서버는 그 이유), API 커넥터는 그대로", async () => {
+test("Connections: 뇌가 Codex 면 넘길 수 있는 MCP 커넥터는 그대로 + 「채팅에서만」(개요 카드와 같은 판정), 못 넘기는 서버는 경고 + 그 이유, API 커넥터는 그대로", async () => {
   const { c } = make({ cliServers: () => ["mail"] }, { brain: { provider: "codex" } });
   const { rows } = await c.list();
-  assert.equal(byId(rows, "connector:mail").state, "warn");
+  assert.equal(byId(rows, "connector:mail").state, "ok");
+  assert.equal(byId(rows, "connector:issues").state, "error"); // 서버가 등록 안 됨(원래 이유)
   assert.match(byId(rows, "connector:mail").detail!, /^Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요.* · /);
   assert.match(byId(rows, "connector:issues").detail!, /^Codex·Antigravity 로 읽으려면 connectors 의 tools 에/);
   assert.equal(byId(rows, "connector:slack").state, "ok");
@@ -173,7 +177,21 @@ test("Connections: 작업 기록 읽기를 끄면 「작업 세션」 줄은 off
   assert.equal(off.detail, "읽지 않아요(설정에서 켤 수 있어요)");
   const on = (await make({}, { onboarded: true, readSessions: true }).c.list()).rows.find((r) => r.id === "sessions")!;
   assert.equal(on.state, "ok");
-  assert.equal(on.detail, "로컬 기록을 읽어요");
+  assert.equal(on.detail, "이 맥의 기록을 읽어요");
+  const remote = (await make({}, { onboarded: true, readSessions: true, sessionHosts: ["gpu1", "gpu2"] }).c.list()).rows.find((r) => r.id === "sessions")!;
+  assert.equal(remote.detail, "이 맥과 서버 gpu1·gpu2의 기록을 읽어요");
   const wait = (await make({}, { onboarded: false }).c.list()).rows.find((r) => r.id === "sessions")!;
   assert.equal(wait.state, "off");
+});
+
+test("Connections: 이 Mac 캘린더·미리알림·실험 서버·연구 노트 줄(설정 창에 새 기능 상태가 보이게)", async () => {
+  const none = (await make().c.list()).rows;
+  for (const id of ["apple", "ssh", "research-note"]) assert.equal(byId(none, id).state, "off", id);
+  const g = mkdtempSync(join(tmpdir(), "tine-"));
+  mkdirSync(join(g, "logseq"));
+  writeFileSync(join(g, "logseq", "config.edn"), "{}");
+  const on = (await make({}, { connectors: { calendar: { mode: "api", local: true } }, appleReminders: true, sshHosts: ["gpu1"], jobHosts: ["gpu2"], tineGraph: g }).c.list()).rows;
+  assert.deepEqual([byId(on, "apple").state, byId(on, "apple").detail], ["ok", "캘린더·미리알림(할 일로)을 읽어요"]);
+  assert.match(byId(on, "ssh").detail!, /^gpu1·gpu2 · 끝난 실험 알림·물어보면 폴더·결과·GPU$/);
+  assert.equal(byId(on, "research-note").state, "ok");
 });

@@ -75,7 +75,7 @@ export const AI_PROVIDERS = [
       { text: '브라우저에 **Genspark** 가 열립니다. 계정이 없으면 가입합니다.', link: true },
       '아래 **요금제 열기**에서 유료 플랜을 고릅니다. 무료 플랜은 API 를 쓸 수 없습니다.',
       '터미널에서 아래 명령으로 공식 CLI 를 깔고 로그인합니다. 키가 이 맥에 저장됩니다.',
-      '아래 **gsk login 한 키 쓰기**를 누르면 그 키를 씁니다. 키는 시사 설정에 따로 저장하지 않습니다.',
+      '아래 **gsk login 한 키 쓰기**를 누르면 그 키를 씁니다. 키는 설정 파일에 따로 저장하지 않습니다.',
       { keys: [MOD, 'V'], text: '키를 직접 붙여 넣어도 됩니다. **gsk-** 로 시작합니다. 붙인 뒤 **확인**을 누릅니다.' },
     ],
     stuck: [
@@ -110,15 +110,15 @@ export const CLI_PROVIDERS = [CLI_PROVIDER, CODEX_PROVIDER, AGY_PROVIDER];
 // AI 는 선택이다: 「AI 없이 쓰기」(none)를 고르면 로컬 뇌로 정하고 다음 단계로 간다
 export const BRAIN_CHOICES = [
   { id: 'claudecode', agent: 'claude', title: 'Claude Code', blurb: '이 맥에 로그인된 Claude Code 로 이야기해요. 키가 필요 없고, 코드 고치기·작업 세션도 돼요.' },
-  { id: 'codexcli', agent: 'codex', title: 'Codex', blurb: '이 맥에 로그인된 Codex 로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 Codex 로 돌아요. 코드 고치기·슬랙·지라(MCP)는 Claude Code 가 있어야 해요.' },
-  { id: 'agycli', agent: 'agy', title: 'Antigravity (agy)', blurb: '이 맥에 로그인된 Antigravity CLI(agy)로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 agy 로 돌아요. 모델은 `agy models` 에서 고를 수 있어요. 코드 고치기·슬랙·지라(MCP)는 Claude Code 가 있어야 해요.' },
+  { id: 'codexcli', agent: 'codex', title: 'Codex', blurb: '이 맥에 로그인된 Codex 로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프·코드 고치기도 Codex 로 돌아요. Claude Code 안에서 로그인한 연결(Slack 공식·Jira 등)은 Claude Code 뇌일 때만 읽혀요.' },
+  { id: 'agycli', agent: 'agy', title: 'Antigravity (agy)', blurb: '이 맥에 로그인된 Antigravity CLI(agy)로 이야기해요. 키가 필요 없고, 할 일 정리·지식그래프도 agy 로 돌아요. 모델은 패널의 [모델] 탭에서 고를 수 있어요. 코드 고치기도 agy 로 해요. Claude Code 안에서 로그인한 연결(Slack 공식·Jira 등)은 Claude Code 뇌일 때만 읽혀요.' },
   { id: 'gemini', title: 'Gemini 키', blurb: '구글 AI 키를 붙여 넣어요. 카드 없이 무료로 만들 수 있어요.' },
   { id: 'openai', title: 'OpenAI(GPT) 키', blurb: 'OpenAI 플랫폼 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'claude', title: 'Claude API 키', blurb: 'Anthropic 콘솔 키를 붙여 넣어요. 크레딧이 있어야 대답해요.' },
   { id: 'genspark', title: 'Genspark', blurb: 'gsk login 한 키를 쓰거나 키를 붙여 넣어요. Claude·GPT 등 여러 모델을 고를 수 있어요. 유료 플랜이 있어야 대답해요.' },
-  { id: 'none', local: true, title: 'AI 없이 쓰기', blurb: '준비물도 결제도 필요 없어요. 할 일, 오늘 할 일 표, 캘린더(ICS) 회의 알림, 인사와 응원은 그대로 돼요. AI는 나중에 설정에서 언제든 연결할 수 있어요.' },
+  { id: 'none', local: true, title: 'AI 없이 쓰기', blurb: '준비물도 결제도 필요 없어요. 할 일, 오늘 할 일 표, 캘린더 회의 알림, 인사와 응원은 그대로 돼요. AI는 나중에 설정에서 언제든 연결할 수 있어요.' },
 ];
-// 「더 연결하기」(선택): 캘린더 ICS · Slack · 레포 폴더
+// 「더 연결하기」(선택): 캘린더 주소(구글·Outlook) · Slack · 레포 폴더. 이 Mac 캘린더·미리알림과 작업 기록 읽기는 같은 화면의 따로 칸
 export const EXTRAS = ['gcal', 'outlook', 'slack', 'repos'];
 
 // 「더 연결하기」의 작업 기록 읽기(선택, 처음엔 꺼짐). 켜야만 데몬이 이 맥(과 sessionHosts 서버)의 세션 기록을 읽는다
@@ -137,13 +137,13 @@ export { CANNED, cannedReply, resetCanned } from './canned.js';
 
 export const HUB = [
   { id: 'claude', title: 'Claude Code', blurb: '코드 작업을 맡길 때 씁니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
-  { id: 'codex', title: 'Codex', blurb: '대화·브리핑·할 일 정리를 Codex 로 돌립니다. 코드 고치기는 Claude Code 가 있어야 합니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
-  { id: 'gcal', title: '구글 캘린더', blurb: '내 일정을 시사가 읽습니다. 캘린더마다 비밀 주소를 붙여 넣으면 되고, 여러 개 붙일 수 있습니다.', kind: 'done' },
-  { id: 'outlook', title: 'Outlook 캘린더', blurb: '내 일정을 시사가 읽습니다. 여러 개 붙일 수 있고 구글 캘린더와 같이 써도 됩니다. 회사가 일정 게시를 막았으면 쓸 수 없습니다.', kind: 'done' },
-  { id: 'slack', title: 'Slack', blurb: '슬랙 글을 시사가 읽습니다. 슬랙 공식 로그인만 쓰고 쿠키는 복사하지 않습니다. 회사처럼 관리자 승인이 필요한 곳은 막힐 수 있습니다. Claude Code가 먼저 필요합니다.', kind: 'done', needsAgent: 'claude' },
-  { id: 'jira', title: 'Jira', blurb: '나한테 온 이슈를 시사가 읽습니다. 브라우저 로그인만 합니다. Claude Code가 먼저 필요합니다.', kind: 'done', needsAgent: 'claude' },
-  { id: 'repos', title: '레포 폴더', blurb: '코드를 고치게 할 레포가 모인 폴더(예: 홈의 code 폴더)를 알려 주세요. 적은 폴더만 읽고, 그 안 레포의 내 커밋을 개요에 보여 줘요. 코드 고치기는 Claude Code 가 있을 때 돼요.', kind: 'folder' },
-  { id: 'github', title: 'GitHub', blurb: 'GitHub에 로그인해 두면, 시사가 고친 코드를 변경 요청으로 올릴 수 있습니다. Claude Code나 Codex가 먼저 필요합니다.', kind: 'done', needsAgent: true },
+  { id: 'codex', title: 'Codex', blurb: '대화·브리핑·할 일 정리·코드 고치기를 Codex 로 돌립니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
+  { id: 'gcal', title: '구글 캘린더', blurb: '내 일정을 읽습니다. 캘린더마다 비밀 주소를 붙여 넣으면 되고, 여러 개 붙일 수 있습니다.', kind: 'done' },
+  { id: 'outlook', title: 'Outlook 캘린더', blurb: '내 일정을 읽습니다. 여러 개 붙일 수 있고 구글 캘린더와 같이 써도 됩니다. 회사가 일정 게시를 막았으면 쓸 수 없습니다.', kind: 'done' },
+  { id: 'slack', title: 'Slack', blurb: '내 DM과 나를 멘션한 글을 읽습니다. 읽기 전용 Slack 앱을 하나 만들어 토큰을 붙입니다. 어떤 뇌든 되고, 팀 워크스페이스는 관리자 승인이 필요할 수 있습니다.', kind: 'done' },
+  { id: 'jira', title: 'Jira', blurb: '나한테 온 이슈를 읽습니다. 브라우저 로그인만 합니다. Claude Code가 먼저 필요합니다.', kind: 'done', needsAgent: 'claude' },
+  { id: 'repos', title: '레포 폴더', blurb: '코드를 고치게 할 레포가 모인 폴더(예: 홈의 code 폴더)를 알려 주세요. 적은 폴더만 읽고, 그 안 레포의 내 커밋을 개요에 보여 줘요. 코드 고치기는 Claude Code·Codex·Antigravity 중 하나가 있을 때 돼요.', kind: 'folder' },
+  { id: 'github', title: 'GitHub', blurb: 'GitHub에 로그인해 두면, 고친 코드를 변경 요청(PR)으로 올릴 수 있습니다. Claude Code·Codex·Antigravity 중 하나가 먼저 필요합니다.', kind: 'done', needsAgent: true },
 ];
 
 // 설치 마법사에서 고르는 네 가지 플랜. hub 는 그 플랜에서 보여 줄 연결 목록(순서대로).
@@ -151,7 +151,7 @@ export const PLANS = [
   { id: 'calendar', title: '일정 관리만 하기', need: '준비물이 없습니다. 결제도 필요 없습니다', blurb: '내 일정과 오늘 할 일을 정해진 말로 알려 드립니다.', ai: 'none', hub: ['gcal', 'outlook'] },
   { id: 'chat', title: '채팅 + 일정 관리', need: 'AI 키가 필요합니다. 무료로 만들 수 있습니다', blurb: '시사와 자유롭게 대화하고, 내 일정도 함께 봅니다.', ai: 'key', hub: ['gcal', 'outlook'] },
   { id: 'tools', title: '채팅 + 일정 관리 + 다른 기능', need: 'Claude Code가 필요합니다(Codex 는 대화·할 일 정리까지)', blurb: '대화와 일정에 더해, 슬랙과 지라의 소식도 함께 봅니다.', ai: 'cli', hub: ['gcal', 'outlook', 'slack', 'jira'] },
-  { id: 'code', title: '코딩까지 전부 다', need: 'Claude Code와 GitHub 연결이 필요합니다', blurb: '위의 모든 기능에 더해, 시사가 코드를 고쳐 변경 요청까지 올립니다.', ai: 'cli', hub: ['gcal', 'outlook', 'slack', 'jira', 'github'] },
+  { id: 'code', title: '코딩까지 전부 다', need: 'Claude Code와 GitHub 연결이 필요합니다', blurb: '위의 모든 기능에 더해, 코드를 고쳐 변경 요청까지 올립니다.', ai: 'cli', hub: ['gcal', 'outlook', 'slack', 'jira', 'github'] },
 ];
 
 export function planById(id) {
@@ -190,6 +190,10 @@ const SLOT_RULES = {
     ok: /^https:\/\/calendar\.google\.com\/calendar\/ical\/\S+\.ics(\?\S*)?$/,
     bad: '주소가 **https://calendar.google.com/calendar/ical/** 로 시작하고 **.ics** 로 끝나야 합니다. **iCal 형식의 비공개 주소**를 복사했는지 보세요.',
   },
+  slack: {
+    ok: /^xoxp-[0-9A-Za-z-]{20,300}$/,
+    bad: '토큰이 **xoxp-** 로 시작해야 합니다. **User OAuth Token** 을 복사했는지 보세요(xoxb-·xapp- 는 아닙니다).',
+  },
   outlook: {
     ok: /^https:\/\/\S+\.ics(\?\S*)?$/,
     bad: '주소가 **https://** 로 시작하고 **.ics** 로 끝나야 합니다. **HTML** 이 아니라 **ICS** 주소를 복사하세요.',
@@ -211,7 +215,7 @@ export function connectSteps(id, agent) {
   if (id === 'gcal') return GCAL;
   if (id === 'outlook') return OUTLOOK;
   if (id === 'jira') return jiraSteps(agent);
-  if (id === 'slack') return slackSteps(agent);
+  if (id === 'slack') return SLACK_STEPS;
   if (id === 'github') return githubSteps(agent);
   return [];
 }
@@ -252,7 +256,7 @@ const GCAL = [
     title: '복사한 주소를 붙이세요',
     identity: '맞는 주소가 들어오면 **다음**이 켜집니다.',
     slots: [{ id: 'gcal', placeholder: 'https://calendar.google.com/calendar/ical/...', label: '비공개 주소', hint: '복사한 주소를 여기에 붙이기' }],
-    slotNote: '이 맥의 시사 설정 파일에만 저장합니다. 서버로 보내지 않습니다.',
+    slotNote: '이 맥의 설정 파일(~/.cy-agent/config.json)에만 저장합니다. 서버로 보내지 않습니다.',
   },
 ];
 
@@ -287,7 +291,7 @@ const OUTLOOK = [
     title: '복사한 주소를 붙이세요',
     identity: '맞는 주소가 들어오면 **다음**이 켜집니다.',
     slots: [{ id: 'outlook', placeholder: 'https://outlook.office365.com/owa/calendar/...ics', label: 'ICS 주소', hint: '복사한 주소를 여기에 붙이기' }],
-    slotNote: '이 맥의 시사 설정 파일에만 저장합니다. 서버로 보내지 않습니다.',
+    slotNote: '이 맥의 설정 파일(~/.cy-agent/config.json)에만 저장합니다. 서버로 보내지 않습니다.',
   },
 ];
 
@@ -332,7 +336,7 @@ function jiraSteps(agent) {
       code: 'claude',
       details: [
         '로그인 화면이 안 열리면 회사 관리자가 Atlassian의 Rovo MCP를 막은 것입니다. 관리자에게 허용을 부탁하거나, 이 기능은 건너뛰세요.',
-        '여러 사이트가 있으면 시사가 볼 사이트만 허용하세요.',
+        '여러 사이트가 있으면 읽게 할 사이트만 허용하세요.',
       ],
     },
     {
@@ -352,88 +356,58 @@ function jiraSteps(agent) {
   ];
 }
 
-const SLACK_URL = 'https://mcp.slack.com/mcp';
-// 슬랙이 Claude Code용으로 미리 등록해 둔 번호(슬랙 공식 플러그인 설정에 적혀 있다)
-const SLACK_CLIENT_ID = '1601185624273.8899143856786';
-const SLACK_PORT = '3118';
-
-function slackSteps(agent) {
-  if (agent !== 'claude') {
-    return [{
-      id: 'slack-need-claude',
-      gate: 'blocked',
-      title: '먼저 Claude Code를 연결하세요',
-      identity: '슬랙 공식 로그인은 **Claude Code** 로만 안내합니다. Codex 는 슬랙이 따로 등록해 둔 번호가 없어서 안 됩니다.',
-      rows: [
-        '아래 **목록**을 눌러 돌아갑니다.',
-        '**Claude Code** 를 먼저 연결합니다.',
-        '연결되면 다시 **Slack** 을 누릅니다.',
-      ],
-    }];
-  }
-  return [
-    {
-      id: 'slack-what',
-      title: '슬랙 공식 로그인으로 연결합니다',
-      identity: '크롬 쿠키나 토큰을 **복사하지 않습니다.** 슬랙이 정한 방법대로 **브라우저 로그인**만 합니다.',
-      rows: [
-        '내가 앱을 깔 수 있는 워크스페이스(개인용, 내가 관리자인 곳)는 바로 됩니다.',
-        '회사처럼 **앱 설치에 관리자 승인**이 필요한 곳은, 승인될 때까지 로그인 단계에서 막힙니다. 그때는 이 기능을 건너뛰세요.',
-      ],
-    },
-    {
-      id: 'slack-add',
-      title: '슬랙 공식 주소를 등록하세요',
-      identity: '방법이 둘 있습니다. **하나만** 하면 됩니다. 시사 연결 카드까지 켜려면 **방법 1** 입니다.',
-      rows: [
-        TERMINAL,
-        { keys: [MOD, 'V'], text: '**방법 1**: 아래 첫 번째 명령을 터미널에 붙이고 **↩** 를 누릅니다.' },
-        '**방법 2**: 터미널에 **claude** 를 쳐서 들어간 뒤, 아래 두 번째 글을 치고 **↩** 를 누릅니다. 설치가 끝나면 **/exit** 로 나왔다가 **claude** 를 다시 켭니다.',
-      ],
-      details: [
-        '방법 1은 슬랙이 정해 둔 번호(client-id)를 같이 넣습니다. 번호가 없으면 dynamic client registration 오류가 납니다.',
-        '방법 2는 슬랙 공식 플러그인입니다. Claude Code 안에서는 슬랙이 되지만, 시사의 연결 카드는 초록으로 안 켜집니다.',
-        '이미 있다고 나오면 예전에 같은 이름으로 등록한 것이 남아 있는 것입니다. 터미널에 claude mcp remove slack --scope user 를 먼저 치고, 명령을 다시 붙이세요.',
-      ],
-      codeLabel: '방법 1 · 터미널에 붙여 넣기',
-      code: `claude mcp add --scope user --transport http --client-id ${SLACK_CLIENT_ID} --callback-port ${SLACK_PORT} slack ${SLACK_URL}`,
-      configLabel: '방법 2 · claude 안에서 치기',
-      config: '/plugin install slack@claude-plugins-official',
-    },
-    {
-      id: 'slack-login',
-      title: '슬랙에 로그인하세요',
-      identity: '로그인은 한 번만 하면 됩니다.',
-      rows: [
-        { keys: [MOD, 'V'], text: '아래 **claude** 를 터미널에 붙이고 **↩** 를 누릅니다.' },
-        'claude 안에서 **/mcp** 를 치고 **↩** 를 누릅니다.',
-        '목록에서 **slack** 을 고르고 **↩** 를 누른 뒤, **Authenticate** (로그인)를 고릅니다. 방법 2로 깔았다면 이름이 **plugin:slack:slack** 입니다.',
-        '브라우저가 열리면 **슬랙 워크스페이스**를 고르고 **허용**을 누릅니다.',
-        '성공했다는 글이 나오면 **/exit** 를 치고 **↩** 를 눌러 나옵니다.',
-      ],
-      details: [
-        'dynamic client registration 오류가 나오면 등록할 때 번호가 빠진 것입니다. 터미널에 claude mcp remove slack --scope user 를 치고, 앞 화면의 명령을 다시 붙이세요.',
-        '관리자 승인이 필요하다고 나오면, 그 워크스페이스는 앱 설치에 승인을 요구하는 곳입니다. 승인이 날 때까지 이 기능은 건너뛰세요.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'claude',
-    },
-    {
-      id: 'slack-check',
-      title: '연결되었는지 확인하세요',
-      identity: '터미널에 목록이 나온 뒤, **slack** 이 들어 있는 줄만 봅니다.',
-      rows: [
-        PASTE_ENTER('아래 명령'),
-        '**Checking MCP server health…** 가 끝날 때까지 기다립니다. 그 전에 나오는 영어 경고는 무시합니다.',
-        '**slack:** (방법 2는 **plugin:slack:slack:**) 줄 끝에 **✔ Connected** 가 있으면 연결된 것입니다. **다음**을 누릅니다.',
-        '**Needs authentication** 이 있으면 로그인이 안 끝난 것입니다. **이전**으로 돌아가 다시 로그인합니다.',
-        '**✘ Failed to connect** 가 있으면 연결이 안 된 것입니다. 오류 글을 보고 앞 단계로 돌아갑니다.',
-      ],
-      codeLabel: '터미널에 붙여 넣기',
-      code: 'claude mcp list',
-    },
-  ];
-}
+// Slack: 읽기 전용 앱(봇 없음, ops/slack-readonly-manifest.yaml)의 사용자 토큰(xoxp-)을 붙인다 → connectors.slack { mode: "api", userToken }.
+// 어떤 뇌든 되고, 데몬이 5분마다 내 DM·멘션만 모아 두어 지시사항 카드·할 일로 쓴다(agent/src/ingest/slack-api.ts — 쓰기 메서드는 막힘).
+// Claude Code 의 Slack 공식 MCP 로그인(mode: mcp)은 docs/connect/slack.md 의 (b)로 따로 안내한다
+export const SLACK_MANIFEST = `display_information:
+  name: usagi-reader
+  description: 우사기 비서가 내 DM과 나를 멘션한 글을 읽기만 합니다
+  background_color: "#3b2a5c"
+oauth_config:
+  scopes:
+    user:
+      - channels:history  # 공개 채널 메시지(나를 멘션한 글)
+      - groups:history    # 내가 들어간 비공개 채널 메시지
+      - im:history        # DM 메시지
+      - mpim:history      # 그룹 DM 메시지
+      - channels:read     # 채널 목록·이름
+      - groups:read
+      - im:read
+      - mpim:read
+      - users:read        # 사람 이름
+      - search:read       # 멘션·참여 스레드 검색
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
+`;
+const SLACK_STEPS = [
+  {
+    id: 'slack-app',
+    title: '읽기 전용 Slack 앱을 만드세요',
+    identity: '봇 없이 **읽기 권한만** 있는 내 앱입니다. 내 DM과 나를 멘션한 글만 읽고, 쓰기는 못 합니다.',
+    rows: [
+      { text: '브라우저에 **Slack 앱 만들기** 화면이 열립니다.', link: true },
+      '**Create New App** → **From a manifest** 를 누르고 워크스페이스를 고릅니다.',
+      '형식을 **YAML** 로 바꾸고, 아래 내용을 통째로 붙여 넣은 뒤 **Create** 를 누릅니다.',
+      '왼쪽 **Install App** → **Install to Workspace** → **허용**을 누릅니다.',
+    ],
+    details: [
+      '「관리자에게 요청」이 나오면 요청을 보내고, 승인되면 같은 화면에서 이어 갑니다. 요청 메모에는 「제 DM과 멘션을 제 컴퓨터에서만 읽는 개인 비서, 쓰기 권한 없음」이라고 적으면 됩니다.',
+      '앱을 만들 수 없는 워크스페이스라면 Claude Code 의 Slack 공식 MCP 로그인으로도 읽을 수 있습니다(뇌가 Claude Code 일 때만, 지시사항 카드는 비어 있음). docs/connect/slack.md 의 (b)를 보세요.',
+    ],
+    url: 'https://api.slack.com/apps?new_app=1',
+    codeLabel: '매니페스트 · YAML 탭에 붙여 넣기',
+    code: SLACK_MANIFEST,
+  },
+  {
+    id: 'slack-token',
+    title: 'User OAuth Token 을 붙이세요',
+    identity: '설치가 끝나면 **OAuth & Permissions** 화면에 **User OAuth Token**(xoxp-…)이 생깁니다. **Copy** 를 눌러 붙입니다.',
+    slots: [{ id: 'slack', placeholder: 'xoxp-...', label: 'User OAuth Token', hint: '복사한 토큰을 여기에 붙이기' }],
+    slotNote: '이 맥의 설정 파일(~/.cy-agent/config.json)에만 저장합니다. 읽기 권한만 있는 토큰이고 서버로 보내지 않습니다.',
+  },
+];
 
 // 시사 데몬은 코드를 고친 뒤 gh(GitHub 공식 명령 도구)로 변경 요청(PR)을 만들고, 승인하면 머지한다.
 // (agent/src/fixer.ts 의 gh pr create · gh pr merge, reactions.ts 의 gh pr view)
@@ -456,7 +430,7 @@ function githubSteps(agent) {
     {
       id: 'github-install',
       title: 'GitHub 도구(gh)를 설치하세요',
-      identity: '시사가 고친 코드를 GitHub에 올릴 때 이 프로그램을 씁니다.',
+      identity: '고친 코드를 GitHub에 올릴 때 이 프로그램을 씁니다.',
       rows: [
         PASTE_ENTER('터미널에 아래 명령'),
         WIN ? '**이미 설치되어 있다**는 글이 나오면 바로 **다음**을 누릅니다.' : '글자 한 줄로 **gh 의 위치**가 나오면 이미 설치된 것입니다. 바로 **다음**을 누릅니다.',
@@ -487,7 +461,7 @@ function githubSteps(agent) {
       details: [
         '브라우저가 안 열리면 터미널에 나온 주소를 복사해 크롬에 붙이세요.',
         '회사 GitHub 조직의 코드를 쓴다면, 브라우저에서 그 조직을 **승인**하라고 할 수 있습니다. 안내대로 하고, 안 되면 조직 관리자에게 물어보세요.',
-        '**Authenticate Git** 질문에 Y 를 고르면, 시사가 코드를 GitHub에 올릴 때 같은 로그인을 쓰게 해 줍니다.',
+        '**Authenticate Git** 질문에 Y 를 고르면, 고친 코드를 GitHub에 올릴 때 같은 로그인을 쓰게 해 줍니다.',
       ],
       codeLabel: '터미널에 붙여 넣기',
       code: 'gh auth login',

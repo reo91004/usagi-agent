@@ -104,7 +104,8 @@ export function keyMove(todos, id, key) {
 
 // ---- 상세(펼침) ----
 const str = (v) => (typeof v === 'string' ? v : '');
-const KIND_LABEL = { slack: 'Slack', commit: '커밋', mail: '메일', session: '작업 세션', calendar: '일정', jira: 'Jira', user: '직접 추가', other: '기타' };
+// 할 일 출처(source) → 화면 이름. 할 일 줄 칩과 펼침이 같이 쓴다
+export const SOURCE_LABELS = { slack: 'Slack', commit: '커밋', mail: '메일', session: '작업 세션', calendar: '일정', jira: 'Jira', issues: '이슈', reminders: '미리알림', user: '직접 추가', other: '기타' };
 
 const KST = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 function when(iso, now) {
@@ -123,7 +124,7 @@ export function detailView(d, now = Date.now()) {
   const link = str(r.link) && isSafeLink(r.link) ? r.link : null;
   let source = null;
   if (s) {
-    const kind = KIND_LABEL[s.kind] ? s.kind : 'other';
+    const kind = SOURCE_LABELS[s.kind] ? s.kind : 'other';
     const meta = [];
     if (kind === 'slack') meta.push(str(s.author), str(s.channel), when(s.at, now));
     else if (kind === 'commit') meta.push(str(s.repo).split('/').filter(Boolean).at(-1) ?? '', str(s.sha).slice(0, 7), str(s.author), when(s.at, now));
@@ -131,7 +132,7 @@ export function detailView(d, now = Date.now()) {
     else if (s.kind === 'user') meta.push(when(s.at, now)); // 직접 추가: 안쪽 id 는 보이지 않게
     else meta.push(str(s.title) || str(s.ref).replace(/^[a-z]+:/, ''), when(s.at, now));
     const permalink = str(s.permalink) && isSafeLink(s.permalink) ? s.permalink : null;
-    source = { kind, kindLabel: KIND_LABEL[kind], meta: meta.filter(Boolean), excerpt: str(s.excerpt), quote: kind === 'slack' || kind === 'session', permalink };
+    source = { kind, kindLabel: SOURCE_LABELS[kind], meta: meta.filter(Boolean), excerpt: str(s.excerpt), quote: kind === 'slack' || kind === 'session', permalink };
   }
   return { description: str(r.description), link: link ?? source?.permalink ?? null, source };
 }

@@ -76,7 +76,8 @@ test('확인 문구: CLI 로그인은 남는다, 지금 쓰는 AI 면 AI 없이 
   assert.match(cli.note, /로그인은 이 맥에 그대로 남아요/);
   assert.match(cli.note, /「AI 없이 쓰기」로 바뀌어요/);
   const key = brainDisconnectCopy('gemini', false);
-  assert.match(key.note, /키를 시사에서 지워요/);
+  assert.match(key.note, /저장해 둔 키를 지워요/);
+  assert.doesNotMatch(key.note, /시사/, '캐릭터 이름을 박지 않는다');
   assert.doesNotMatch(key.note, /AI 없이/);
   const src = readFileSync(new URL('../src/disconnect.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /—/);
@@ -98,12 +99,12 @@ test('커넥터 연결 해제: config 값·마법사 표시·안내 문구', () 
   assert.match(mcp.note, /MCP 서버 「atlassian」는 그대로 남아요/);
   const cal = connectorDisconnectCopy('calendar');
   assert.equal(cal.cmd, '');
-  assert.match(cal.note, /구글·Outlook 모두/);
+  assert.match(cal.note, /붙여 넣은 주소\(구글·Outlook\)를 지우고 이 Mac 캘린더도 더 읽지 않아요/);
   assert.equal(mcpRemoveCommand('evil; rm -rf ~'), '');
   assert.ok(okCap('mail'));
   assert.equal(okCap('github'), false);
-  assert.equal(reloadNote({ ok: true, reload: { changed: true, restarting: true } }), '시사가 잠깐 다시 켜지며 적용돼요.');
-  assert.equal(reloadNote({ ok: true, offline: true }), '시사가 꺼져 있어서 다음에 켤 때 적용돼요.');
+  assert.equal(reloadNote({ ok: true, reload: { changed: true, restarting: true } }), '잠깐 다시 켜지며 적용돼요.');
+  assert.equal(reloadNote({ ok: true, offline: true }), '지금 꺼져 있어서 다음에 켤 때 적용돼요.');
   assert.equal(reloadNote({ ok: true, reload: { changed: true, restarting: false } }), '바로 적용돼요.');
   assert.equal(reloadNote({ ok: false }), '');
 });

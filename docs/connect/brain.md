@@ -1,27 +1,27 @@
 # 뇌(대화하는 AI) 고르기
 
-뇌(AI)는 선택입니다. 뇌가 없어도 할 일 보기, 오늘 할 일 표, 정해진 말(인사·응원), 회의 알림(ICS)은 동작합니다. 말 걸기·채팅·브리핑 요약까지 쓰고 싶을 때 뇌를 하나 연결하면 됩니다.
+뇌(AI)는 선택입니다. 뇌가 없어도 할 일 보기, 오늘 할 일 표, 정해진 말(인사·응원), 회의 알림(이 Mac 캘린더·ICS)은 동작합니다. 말 걸기·채팅·브리핑 요약까지 쓰고 싶을 때 뇌를 하나 연결하면 됩니다.
 
-가장 쉬운 방법은 설치 마법사의 「뇌 고르기」입니다. 패널 「설치」 탭이나 설정(⚙)의 「설치 다시 하기」에서 열 수 있습니다.
+가장 쉬운 방법은 설치 마법사의 「뇌 고르기」입니다. 패널 「설치」 탭이나 설정(⚙)의 「설치 화면 열기」에서 열 수 있습니다.
 
-이 맥에 Claude Code나 Codex가 로그인돼 있으면 「찾았어요 ✓」로 떠서 누르기만 하면 됩니다. API 키는 붙여 넣는 순간 맞는 키인지 확인해 줍니다. AI 없이 쓰려면 「AI 없이 쓰기」를 고르세요. 뇌가 `local`로 정해지고 마법사는 다음 단계로 이어집니다.
+이 맥에 Claude Code·Codex·Antigravity(agy)가 로그인돼 있으면 「찾았어요 ✓」로 떠서 누르기만 하면 됩니다. API 키는 붙여 넣는 순간 맞는 키인지 확인해 줍니다. AI 없이 쓰려면 「AI 없이 쓰기」를 고르세요. 뇌가 `local`로 정해지고 마법사는 다음 단계로 이어집니다.
 
 고른 뇌는 `~/.cy-agent/config.json`의 `brain`에 저장되고, 데몬을 다시 켜지 않아도 바로 적용됩니다(`PUT /settings`).
 
 | 뇌 | `brain.provider` | 필요한 것 | 할 수 있는 것 |
 |---|---|---|---|
 | Claude Code | `claude-code`(기본) | Claude Code 설치·로그인(Pro·Max·Team·Enterprise 또는 Console), [claude-code.md](claude-code.md) 참고 | 전부: 대화·브리핑, 할 일 자동 완료·진척, 지식그래프, mcp 연결, 코드 고치기·작업 세션·자동 머지 |
-| Codex | `codex` | Codex CLI 설치·로그인(ChatGPT 유료 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만) |
-| Antigravity | `agy` | Antigravity CLI(`agy`) 설치·로그인(Google 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만) |
+| Codex | `codex` | Codex CLI 설치·로그인(ChatGPT 유료 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만), 코드 고치기·이어 하기·자동 머지 |
+| Antigravity | `agy` | Antigravity CLI(`agy`) 설치·로그인(Google 계정) | 대화·브리핑, 할 일 자동 완료·진척, 지식그래프·나에 대해 배우기, mcp 연결(채팅에서만), 코드 고치기·이어 하기·자동 머지 |
 | Gemini | `gemini` | Google AI Studio 키 | 대화·브리핑 |
 | OpenAI | `openai` | OpenAI 플랫폼 키(크레딧 필요) | 대화·브리핑 |
 | Claude API | `anthropic` | Anthropic 콘솔 키(크레딧 필요) | 대화·브리핑 |
 | Genspark | `genspark` | Genspark 유료 플랜 + `gsk login` 한 키 또는 붙여 넣은 `gsk-` 키 | 대화·브리핑 |
 | 없음(AI 없이 쓰기) | `local` | 없음 | 정해진 말, 할 일, 오늘 할 일 표, 회의 알림 |
 
-코드 고치기, 워크트리, 백그라운드 에이전트, 작업 세션의 「새 작업」·「이어서 하기」, 자동 머지는 뇌를 무엇으로 골랐든 Claude Code로 돌아갑니다. Claude Code가 없으면 이 버튼들은 아예 보이지 않습니다.
+코드 고치기, 작업 세션의 「새 작업」·「이어서 하기」, 자동 머지는 뇌가 Codex·Antigravity 면 그 CLI 로, 그 밖에는 Claude Code 로 돌아갑니다. 고칠 수 있는 AI 가 없으면(키·로컬 뇌에 Claude Code 도 없음) 이 버튼들은 보이지 않습니다. 워크트리와 백그라운드 에이전트는 Claude Code 로만 돕니다.
 
-Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 받습니다. 그래서 브리핑도 Slack(api)이나 캘린더(ICS)처럼 시사가 직접 모아 둔 자료만 가지고 합니다.
+Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 받습니다. 그래서 브리핑도 Slack(api)이나 캘린더(이 Mac 캘린더·ICS)처럼 앱이 직접 모아 둔 자료만 가지고 합니다.
 
 ## Codex·Antigravity 뇌에서 mcp 연결 읽기
 
@@ -34,7 +34,7 @@ Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 �
 
 ## Antigravity(agy)
 
-키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. mcp 연결은 채팅에서만 읽고([위](#codexantigravity-뇌에서-mcp-연결-읽기)), 코드 고치기·워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.
+키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. mcp 연결은 채팅에서만 읽고([위](#codexantigravity-뇌에서-mcp-연결-읽기)), 코드 고치기·이어 하기도 agy 로 합니다. 워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.
 
 1. Antigravity CLI를 설치하고 터미널에서 `agy`를 실행해 로그인한 뒤 나옵니다.
 2. 로그인됐는지는 `agy models`로 확인합니다. 종료 코드 0과 함께 `<id>  <이름>` 목록이 나오면 됩니다. 목록이 비거나 실패하면 로그인 전으로 봅니다.

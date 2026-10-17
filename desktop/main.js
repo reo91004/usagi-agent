@@ -29,6 +29,7 @@ import { disconnectBrainBody, withBrainBody, withConnectorOff, withoutHubDone, r
 import { ATTACH_SCHEME, resolveAttachUrl, cleanAttachIds, cleanUpload, okStoredName } from './src/attachments.js';
 import { agentLogin } from './src/agent-login.js';
 import { createCapsProbe, hasCoder, sameCaps, coderHint } from './src/caps.js';
+import { slotOk } from './src/ai-onboard.js';
 import { checkLlm, listModels, gskLoginKey, KEY_REQ } from './src/llm-check.js';
 import { KEY_PROVIDERS, normalizeSisa, publicView, withKey, withCli, withGsk, withSkip, withoutProvider, activeProvider, withModels, withVoice, connectedProviders, daemonBrainPatch, withDaemonBrain, settingsBrainBody } from './src/sisa-store.js';
 import { personaFor } from './src/persona.js';
@@ -108,7 +109,7 @@ function writeSisa(data) {
   fs.writeFileSync(file, JSON.stringify(data), { mode: 0o600 });
 }
 
-// 시사 데몬이 읽는 설정(~/.cy-agent/config.json)에 연결을 넣는다. 다른 칸은 건드리지 않는다.
+// 데몬이 읽는 설정(~/.cy-agent/config.json)에 연결을 넣는다(캘린더 주소·Slack 사용자 토큰). 다른 칸은 건드리지 않는다.
 // 파일이 깨져 있으면 아무것도 쓰지 않는다. 캘린더는 덮어쓰지 않고 더한다(개수 상한 없음). 이미 있는 주소면 'dup'
 function writeConnector(id, url) {
   const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
@@ -130,8 +131,7 @@ function writeConnector(id, url) {
     if (conns.issues && typeof conns.issues === 'object' && conns.issues.mode) return false;
     conns.issues = { mode: 'mcp', server: 'atlassian' };
   } else if (id === 'slack') {
-    if (conns.slack && typeof conns.slack === 'object' && conns.slack.mode) return false;
-    conns.slack = { mode: 'mcp', server: 'slack' };
+    conns.slack = { mode: 'api', userToken: url }; // 읽기 전용 앱의 사용자 토큰(xoxp-) — 붙여 넣은 걸로 바꾼다
   } else {
     return false;
   }
@@ -208,12 +208,13 @@ function readDaemonConfig() {
 const calendarList = () => calendarRows(readDaemonConfig(), calendarId);
 
 // 캘린더 하나 빼기: 그 주소만 config.json 에서 지우고, 연결을 더할 때처럼 데몬에 다시 읽게 알린다.
-// 마지막 하나면 [연결 해제](캘린더 전체)와 같다
+// 마지막 하나면 [연결 해제](캘린더 전체)와 같다 — 이 Mac 캘린더를 같이 쓰면 그건 남긴다(withCalendarRemoved)
 async function removeCalendar(id) {
-  const url = calendarUrlById(readDaemonConfig(), id, calendarId);
+  const cfg0 = readDaemonConfig();
+  const url = calendarUrlById(cfg0, id, calendarId);
   if (!url) return { ok: false, error: '그 캘린더를 찾지 못했어요. 이미 빠졌을 수 있어요.', items: calendarList() };
-  const before = calendarUrls(readDaemonConfig());
-  if (before.length <= 1) {
+  const before = calendarUrls(cfg0);
+  if (before.length <= 1 && cfg0.connectors?.calendar?.local !== true) {
     const r = await disconnectConnector('calendar');
     return { ...r, items: calendarList() };
   }
@@ -354,14 +355,16 @@ async function refreshCaps(force = false) {
   const before = capsProbe.get();
   const now = await capsProbe.refresh(force);
   if (!sameCaps(before, now)) {
-    sendPanel('caps', now);
+    sendPanel('caps', capsNow());
     pushBrain();
     rebuildTrayMenu();
     createAppMenu();
   }
-  return now;
+  return capsNow();
 }
-const coder = () => hasCoder(capsProbe.get());
+// 코드 고치기를 할 수 있나: 데몬이 뇌에 맞춰 알려 준다(features.code — Codex·agy 뇌도 고친다). 끊겼으면 Claude Code 로그인으로 짐작
+const capsNow = () => ({ ...capsProbe.get(), code: brainNow().code });
+const coder = () => hasCoder(capsNow());
 function coderBubble(feature) {
   send('bubble', { id: `local-coder-${feature}`, text: coderHint(feature), kind: 'info', ttlMs: 12000 });
 }
@@ -375,7 +378,9 @@ function brainNow() {
 function pushBrain() {
   const v = brainNow();
   if (sameView(v, lastBrain)) return;
+  const codeChanged = lastBrain && v.code !== lastBrain.code;
   lastBrain = v;
+  if (codeChanged) { sendPanel('caps', capsNow()); rebuildTrayMenu(); createAppMenu(); } // 뇌를 바꿔 코드 고치기 가능 여부가 바뀜
   send('brain', v);
   sendPanel('brain', v);
   sendSession('brain', v);
@@ -1236,7 +1241,7 @@ function setupIPC() {
   // 설정 창: 모델·브리핑 출처·연결 상태(트레이 "설정…", 패널 ⚙, ⌘,)
   settingsUi = setupSettings({
     BrowserWindow, ipcMain, shell, request, fromOurs, debug: DEBUG,
-    openPanel: (section) => showPanel(section),
+    openPanel: (section) => showPanel(section, section === 'setup' ? 'extras' : undefined), // 설정 창의 연결하기·설치 안내는 「더 연결하기」로(마친 사람의 끝 요약이 아니라)
     startTour: () => startTour(),
     caps: () => refreshCaps(false),
     sisa: () => sisaPublic(readSisa()),
@@ -1343,6 +1348,7 @@ function setupIPC() {
   ipcMain.handle('sisa-mark', async (e, id, url) => {
     if (!fromOurs(e) || !HUB_IDS.has(id)) return denied();
     if ((id === 'gcal' || id === 'outlook') && !(typeof url === 'string' && /^https:\/\/\S+\.ics(\?\S*)?$/.test(url) && url.length <= 2000)) return denied();
+    if (id === 'slack' && !(typeof url === 'string' && slotOk('slack', url))) return denied();
     const prev = normalizeSisa(readSisa());
     const wrote = writeConnector(id, url);
     const done = { ...prev.done, [id]: true };

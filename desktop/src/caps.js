@@ -1,7 +1,6 @@
 // 이 컴퓨터에서 쓸 수 있는 코딩 도구(Claude Code·Codex·Antigravity) — 순수 로직. 확인 자체(agent-login.js)는 main 이 한다.
-// 코드 고치기·작업 세션·백그라운드 에이전트·워크트리는 Claude Code 가 있어야 돈다.
-// 없으면(Gemini·GPT 키, 로컬 — Codex 뇌여도 마찬가지) 그 버튼은 숨기고, 누를 길이 남아 있으면 쉬운 말로 안내한다.
-// Codex 뇌는 대화·브리핑·뒤에서 하는 정리(할 일 판정·진행 확인·지식그래프·프로필 학습)까지 — 데몬 GET /status 의 features 참고.
+// 코드 고치기·작업 세션·이어 하기는 뇌가 Codex·agy 면 그 CLI, 아니면 Claude Code 로 돈다(데몬 GET /status 의 features.code).
+// 워크트리·백그라운드 에이전트는 Claude Code 만. 고칠 수 없으면(키·로컬 뇌에 Claude Code 도 없음) 버튼은 숨기고, 누를 길이 남아 있으면 쉬운 말로 안내한다.
 
 // 모르면(아직 확인 전) 있다고 본다 — 예전처럼 다 보이고, 확인이 끝나면 맞춘다
 export const UNKNOWN_CAPS = Object.freeze({ claude: null, codex: null, agy: null });
@@ -11,13 +10,14 @@ export function normCaps(claude, codex, agy) {
   return { claude: claude?.loggedIn === true, codex: codex?.loggedIn === true, agy: agy?.loggedIn === true };
 }
 
-export const hasCoder = (caps) => caps?.claude !== false;
-export const sameCaps = (a, b) => a?.claude === b?.claude && a?.codex === b?.codex && a?.agy === b?.agy;
+// 코드 고치기(작업 세션·새 작업·이어 하기·자동 머지)를 할 수 있나: main 이 데몬 features.code 를 code 로 붙여 준다(없으면 Claude Code 로그인)
+export const hasCoder = (caps) => (caps?.code ?? caps?.claude) !== false;
+export const sameCaps = (a, b) => a?.claude === b?.claude && a?.codex === b?.codex && a?.agy === b?.agy && a?.code === b?.code;
 
 // 기능별 안내(누를 수 있는 곳에서 Claude Code 가 없을 때)
 export const CODER_HINTS = {
-  session: '작업 세션은 Claude Code 로 코드를 고칠 때 생겨요. 지금은 대화·브리핑·할 일만 써요.',
-  code: '코드 고치기는 Claude Code 가 있어야 해요. 설치 탭에서 연결할 수 있어요.',
+  session: '작업 세션은 코드를 고칠 때 생겨요. 코드 고치기는 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 지금은 대화·브리핑·할 일만 써요.',
+  code: '코드 고치기는 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 설치 탭에서 연결할 수 있어요.',
 };
 export const coderHint = (feature) => CODER_HINTS[feature] ?? CODER_HINTS.code;
 

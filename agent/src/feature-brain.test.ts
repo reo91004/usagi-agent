@@ -7,7 +7,7 @@ import { Bus } from "./bus.ts";
 import { Agent, type SlackPort } from "./core.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { CODEX_ARGS, codexExec, parseCodexUsage, type ExecFileLike } from "./providers.ts";
-import { codexStructured, featureBrain, NEEDS_CODER, resetSkipNotes, shapeError, skipQuietly } from "./feature-brain.ts";
+import { CAL_MCP_CLAUDE_ONLY, codexStructured, featureBrain, NEEDS_CODER, resetSkipNotes, shapeError, skipQuietly, withMcpBrain } from "./feature-brain.ts";
 import { checkProgress } from "./todo-progress.ts";
 import { detectCompletions } from "./todo-auto.ts";
 import { learnFrom } from "./profile.ts";
@@ -317,4 +317,12 @@ test("withMcpBrain: 패널 연결 카드 — Codex·agy 는 넘길 수 있는 �
   for (const p of ["codex", "agy"]) assert.deepEqual(withMcpBrain(withBrain(p), list, usable).map((c) => [c.ready, c.detail]), [[true, `MCP gmail · ${MCP_CHAT_ONLY}`], [false, "등록 안 됨"], [true, "ICS 1개"]]);
   assert.deepEqual(withMcpBrain(withBrain("codex"), list).map((c) => [c.ready, c.detail]), [[false, MCP_CLI_UNUSABLE], [false, "등록 안 됨"], [true, "ICS 1개"]]);
   assert.deepEqual(withMcpBrain(withBrain("gemini"), list, usable).map((c) => [c.ready, c.detail]), [[false, NEEDS_CLAUDE_MCP], [false, NEEDS_CLAUDE_MCP], [true, "ICS 1개"]]);
+});
+
+test("withMcpBrain: Codex·agy 뇌면 캘린더 MCP 는 동기화가 안 돌아 준비 안 됨(개요·상태·설정이 같이 쓴다)", () => {
+  const list = [{ cap: "calendar", mode: "mcp", ready: true, detail: "MCP gcal", server: "gcal" }, { cap: "mail", mode: "mcp", ready: true, detail: "MCP mail", server: "mail" }];
+  const [cal, mail] = withMcpBrain({ brain: { provider: "agy" } } as any, list, () => ["gcal", "mail"]);
+  assert.deepEqual([cal.ready, mail.ready], [false, true]);
+  assert.equal(cal.detail, CAL_MCP_CLAUDE_ONLY);
+  assert.deepEqual(withMcpBrain({ brain: { provider: "claude-code" } } as any, list).map((c) => c.ready), [true, true]);
 });
