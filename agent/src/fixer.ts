@@ -398,6 +398,7 @@ export const codexRun: CodexRun = (args, o) => new Promise((resolve, reject) => 
   child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
   child.on("error", () => reject(new Error(MISSING_CODEX)));
   child.on("close", (code) => { o.signal.removeEventListener("abort", kill); resolve({ code, stderr }); });
+  child.stdin.on("error", () => {}); // 중단으로 자식을 먼저 죽이면 stdin 쓰기가 EPIPE — 결과는 close(종료 코드)가 정한다
   child.stdin.end(o.input);
 });
 
