@@ -15,6 +15,7 @@ import { gskLoginKey } from "./providers.ts";
 import { AUTO_MERGE_MAX, inAutoMerge, normSlug } from "./auto-merge.ts";
 import { STEP_HEAD } from "./briefing-sources.ts";
 import { PHRASES, defaultLines, phraseDef, phraseLines, setPhrases, unknownVars } from "./phrases.ts";
+import { okJobDir, okJobHost } from "./jobs.ts";
 import { characterOptions, isCharacterId, setCharacter, DEFAULT_CHARACTER, type CharacterId } from "./characters.ts";
 
 export const MODEL_ROLES = ["quick", "general", "code", "light"] as const;
@@ -70,6 +71,10 @@ export type SettingsView = {
   onboarded: boolean;
   readSessions: boolean;
   slackMuted: string[];
+  // 실험 서버(ssh): GPU·tmux·작업 결과 보기 / 작업 기록 받기 / 서버별 결과 폴더(공용 계정이면 <내 폴더>/.usagi-agent/jobs)
+  sshHosts: string[];
+  sessionHosts: string[];
+  jobDirs: Record<string, string>;
   configPath: string;
 };
 export type BrainKey = "gemini" | "openai" | "anthropic" | "genspark";
@@ -89,6 +94,7 @@ export type SettingsPatch = {
   character?: CharacterId;
   directiveFrom?: string[];
   slackMuted?: string[];
+  sshHosts?: string[]; sessionHosts?: string[]; jobDirs?: Record<string, string>; // 목록·맵 통째로
 };
 const MODEL_ID = /^[A-Za-z0-9._:/-]{1,100}$/;
 export type PutResult = { ok: true; settings: SettingsView; applied: "live"; restartNeeded: false; note?: string } | { ok: false; status: 400 | 409 | 500; error: string };
@@ -101,7 +107,7 @@ export class ConfigFileError extends Error {}
 export function validatePatch(body: unknown, cfg: Pick<Config, "models">): SettingsPatch {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsError("json object required");
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
+  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted", "sshHosts", "sessionHosts", "jobDirs"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
   const out: SettingsPatch = {};
   if (b.directiveFrom !== undefined) {
     if (!Array.isArray(b.directiveFrom) || b.directiveFrom.length > 20 || !b.directiveFrom.every((x) => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("directiveFrom: Slack 사용자 id(U…) 목록, 20개까지");
@@ -110,6 +116,16 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
   if (b.slackMuted !== undefined) {
     if (!Array.isArray(b.slackMuted) || b.slackMuted.length > 2000 || !b.slackMuted.every((x) => typeof x === "string" && /^[CG][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("slackMuted: Slack 채널 id(C… G…) 목록, 2000개까지");
     out.slackMuted = [...new Set(b.slackMuted as string[])];
+  }
+  for (const k of ["sshHosts", "sessionHosts"] as const) {
+    if (b[k] === undefined) continue;
+    if (!Array.isArray(b[k]) || (b[k] as unknown[]).length > 50 || !(b[k] as unknown[]).every(okJobHost)) throw new SettingsError(`${k}: ssh 별칭(~/.ssh/config 의 Host) 목록, 50개까지`);
+    out[k] = [...new Set(b[k] as string[])];
+  }
+  if (b.jobDirs !== undefined) {
+    const e = b.jobDirs && typeof b.jobDirs === "object" && !Array.isArray(b.jobDirs) ? Object.entries(b.jobDirs) : null;
+    if (!e || e.length > 50 || !e.every(([h, d]) => okJobHost(h) && okJobDir(d))) throw new SettingsError("jobDirs: { 서버: \"~/폴더/.usagi-agent/jobs\" } 모양");
+    out.jobDirs = Object.fromEntries(e) as Record<string, string>;
   }
   if (b.models !== undefined) {
     if (!b.models || typeof b.models !== "object" || Array.isArray(b.models)) throw new SettingsError("models must be an object");
@@ -246,7 +262,7 @@ function mergePhrases(cur: Record<string, unknown>, patch: Record<string, string
 }
 
 // config.json 에 합쳐 쓰기: 다른 키는 그대로, models·briefing 은 키 단위로 합친다. 원자적(임시 파일 → rename)
-export function mergeConfigFile(path: string, patch: SettingsPatch): void {
+export function mergeConfigFile(path: string, patch: SettingsPatch): Record<string, unknown> {
   let cur: Record<string, unknown> = {};
   if (existsSync(path)) {
     const raw = readFileSync(path, "utf8");
@@ -269,6 +285,9 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): void {
   if (patch.autoMerge) next.autoMerge = patch.autoMerge; // 빈 목록도 그대로 쓴다(씨앗으로 돌아가지 않게)
   if (patch.directiveFrom) next.directiveFrom = patch.directiveFrom;
   if (patch.slackMuted) next.slackMuted = patch.slackMuted;
+  if (patch.sshHosts) next.sshHosts = patch.sshHosts;
+  if (patch.sessionHosts) next.sessionHosts = patch.sessionHosts;
+  if (patch.jobDirs) next.jobDirs = patch.jobDirs;
   if (patch.brain) {
     const br = { ...obj(cur.brain) };
     if (patch.brain.provider) br.provider = patch.brain.provider;
@@ -307,6 +326,7 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): void {
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
   renameSync(tmp, path);
+  return next;
 }
 
 // 브리핑 과제 글: 뺀 출처는 확인하지도, 말하지도 않게 그 번호 줄을 빼고(번호는 다시 매김) 한 줄로 못 박는다. 뺀 게 없으면 원래 글 그대로.
@@ -377,6 +397,7 @@ export class Settings {
       onboarded: c.onboarded !== false,
       readSessions: c.readSessions !== false,
       slackMuted: [...(c.slackMuted ?? [])],
+      sshHosts: [...c.sshHosts], sessionHosts: [...c.sessionHosts], jobDirs: { ...c.jobDirs },
       configPath: this.path,
     };
   }
@@ -386,7 +407,8 @@ export class Settings {
     let patch: SettingsPatch;
     try { patch = validatePatch(body, this.cfg); } catch (e: any) { return { ok: false, status: 400, error: String(e?.message ?? e) }; }
     if (patch.onboarded !== undefined) patch = this.withCurrentDefaults(patch);
-    try { mergeConfigFile(this.path, patch); } catch (e: any) {
+    let file: Record<string, unknown>;
+    try { file = mergeConfigFile(this.path, patch); } catch (e: any) {
       if (e instanceof ConfigFileError) return { ok: false, status: 409, error: e.message };
       return { ok: false, status: 500, error: `설정 파일을 쓰지 못했어요(${e?.code ?? "오류"}). 폴더 권한·남은 공간을 확인해 주세요` };
     }
@@ -399,6 +421,13 @@ export class Settings {
     if (patch.autoMerge) this.cfg.autoMerge = [...patch.autoMerge];
     if (patch.directiveFrom) this.cfg.directiveFrom = [...patch.directiveFrom];
     if (patch.slackMuted) this.cfg.slackMuted = [...patch.slackMuted]; // main 의 onChange 가 DB 로 옮긴다 — 다음 읽기부터
+    if (patch.sshHosts) this.cfg.sshHosts = [...patch.sshHosts];
+    if (patch.sessionHosts) this.cfg.sessionHosts = [...patch.sessionHosts];
+    if (patch.jobDirs) this.cfg.jobDirs = { ...patch.jobDirs };
+    if (patch.sshHosts) { // jobHosts = config.json 의 jobHosts + sshHosts (config.ts 와 같은 합침). main 의 폴이 cfg 를 매번 읽는다
+      const own = Array.isArray(file.jobHosts) ? file.jobHosts : typeof file.jobHosts === "string" ? [file.jobHosts] : [];
+      this.cfg.jobHosts = [...new Set([...own.filter(okJobHost), ...patch.sshHosts])];
+    }
     if (patch.brain) {
       const b = { ...this.cfg.brain };
       if (patch.brain.provider) b.provider = patch.brain.provider;

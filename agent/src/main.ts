@@ -180,6 +180,8 @@ const settings = new Settings(cfg, { onChange: (keys) => {
   if (keys.includes("onboarded") && modelWorkAllowed(cfg)) setTimeout(() => onboardedNow(), 0); // 마법사를 막 마침 → 첫 정리
   else if (keys.includes("readSessions") && sessionsAllowed(cfg)) setTimeout(() => ingest(), 0);
   if (keys.includes("slackMuted")) syncMuted(store, cfg.slackMuted);
+  if (keys.some((k) => k === "sshHosts" || k === "jobDirs")) setTimeout(pollJobHosts, 30e3).unref(); // 새 서버는 2분을 기다리지 않고 곧 한 번
+  if (keys.some((k) => k === "sessionHosts" || k === "jobDirs")) setTimeout(pollSessionHosts, 30e3).unref();
   if (keys.includes("calendarAlert")) calendar.check(); // 알림 시각을 바로 다시 잡는다
   if (keys.includes("character")) bus.characterChanged(); // 앱 그림·영상을 바로 바꾼다
 } });
@@ -612,7 +614,8 @@ async function pollJobHosts() {
     }
   } finally { jobsBusy = false; }
 }
-if (cfg.jobHosts.length) { setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref(); }
+// 목록이 비어도 타이머는 건다(비면 바로 끝). 설정 화면에서 서버를 켜면 재시작 없이 다음 차례부터 돈다
+setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref();
 
 // ssh 서버의 작업 기록(ingest/remote-sessions.ts): sessionHosts 에서 늘어난 만큼 받아 와 이 맥 기록과 같이 읽는다
 const sessionHostDown = new Set<string>();
@@ -638,7 +641,7 @@ async function pollSessionHosts() {
     if (got) await ingest();
   } finally { remoteBusy = false; }
 }
-if (cfg.sessionHosts.length) { setTimeout(pollSessionHosts, 30e3).unref(); setInterval(pollSessionHosts, 10 * 60e3).unref(); }
+setTimeout(pollSessionHosts, 30e3).unref(); setInterval(pollSessionHosts, 10 * 60e3).unref();
 
 // 연결 상태가 바뀔 때만 한 번씩 알린다. 다시 연결되면 바로 훑어본다
 let mcpState = "ok";
