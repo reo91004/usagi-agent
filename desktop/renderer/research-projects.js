@@ -9,6 +9,8 @@ export function createResearchProjects(ctx) {
   let detailKey = null; // 열어 본 항목(목록으로 돌아가면 null)
   let msg = null; // 마지막 저장 실패 { card, text }: 상세에서는 그 카드 안에 보인다
   let mergeOpen = false;
+  let candOpen = false; // 후보는 앞의 몇 개만 펼친다(다운로드·강의 폴더 같은 것이 섞인다)
+  const CAND_SHOWN = 3;
   let renaming = false, linkOpen = false;
   let subForm = null; // 제출 폼: 'edit'(지금 제출) | 'new'(학회 없음) | 'next'(거절·철회 뒤)
 
@@ -157,7 +159,7 @@ export function createResearchProjects(ctx) {
         ? h('div.row.rp-edit', null, sel,
           h('button.primary.small', { type: 'button', text: '합치기', onclick: () => sel.value && (mergeOpen = false, save(sel.value, { mergeInto: p.key })) }),
           h('button.ghost.small', { type: 'button', text: '닫기', onclick: set(() => { mergeOpen = false; }) }))
-        : h('button.ghost.small', { type: 'button', text: '다른 폴더 합치기', onclick: set(() => { mergeOpen = true; }) }),
+        : h('div.row', null, h('button.ghost.small', { type: 'button', text: '다른 폴더 합치기', onclick: set(() => { mergeOpen = true; }) })),
       h('div.row.rp-link', null,
         linkOpen
           ? [url, h('button.primary.small', { type: 'button', text: '저장', onclick: saveUrl }), h('button.ghost.small', { type: 'button', text: '취소', onclick: set(() => { linkOpen = false; }) })]
@@ -187,7 +189,7 @@ export function createResearchProjects(ctx) {
   function view(vm, tab) {
     const open1 = detailKey && find(vm, detailKey);
     if (!open1?.kind) detailKey = null;
-    else return showsDetail(open1, tab) ? detail(open1, vm) : [];
+    else if (showsDetail(open1, tab)) return detail(open1, vm); // 다른 탭의 상세가 열려 있으면 이 탭은 목록을 그린다
     const list = vm.researchProjects;
     const fail = msg ? h('div.result.err', { role: 'status', text: msg.text }) : null;
     if (tab === 'projects') {
@@ -198,7 +200,9 @@ export function createResearchProjects(ctx) {
     return [
       fail,
       research.length ? [h('h2', null, h('span', { text: '연구' })), h('div.card.rp-list', null, research.map(listRow))] : null,
-      cand.length ? [h('h2', null, h('span', { text: '연구로 볼까요?' }), h('span.muted.small', { text: ' 최근 실험이나 작업이 있던 폴더예요' })), h('div.card.rp-list', null, cand.map(candidateRow))] : null,
+      cand.length ? [h('h2', null, h('span', { text: '연구로 볼까요?' }), h('span.muted.small', { text: ' 최근 실험이나 작업이 있던 폴더예요' })),
+        h('div.card.rp-list', null, (candOpen ? cand : cand.slice(0, CAND_SHOWN)).map(candidateRow),
+          cand.length > CAND_SHOWN ? h('button.ghost.small.rp-more', { type: 'button', text: candOpen ? '접기' : `후보 ${cand.length - CAND_SHOWN}개 더 보기`, 'aria-expanded': String(candOpen), onclick: () => { candOpen = !candOpen; ctx.render(true); } }) : null)] : null,
     ];
   }
 

@@ -1626,3 +1626,4 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-sess { display: flex; align-items: center; gap: 8px; padding: 3px 0; min-width: 0; }
 .rp-sess .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-chip { margin-left: 6px; }
+.rp-more { margin: 4px 0 2px; }

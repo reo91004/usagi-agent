@@ -1167,10 +1167,10 @@ function renderProjects(force) {
   if (rp.inDetail(vm, 'projects')) return el.replaceChildren(...top);
   const free = vm.projects.filter((p) => !p.byResearch);
   const hidden = vm.hiddenProjects;
-  const kids = [...top, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' })];
+  const kids = [...top, top.length ? h('h2', null, h('span', { text: '최근 작업 폴더' })) : null, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' })];
   if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
   if (free.length) kids.push(projectRows(free));
-  else kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
+  else kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : vm.projects.length ? '나머지 작업 폴더가 없어요' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
   if (hidden.length) {
     kids.push(h('div.hidden-projects', null,
       h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(hiddenOpen), onclick: toggleHiddenGroup },
@@ -1183,7 +1183,7 @@ function renderProjects(force) {
           h('button.ghost', { type: 'button', text: '다시 보이기', 'aria-label': `다시 보이기: ${p.name}`, onclick: () => setHidden(p, false) }))))
         : null));
   }
-  el.replaceChildren(...kids);
+  el.replaceChildren(...kids.filter((k) => k != null));
 }
 
 function projectRows(list) {
