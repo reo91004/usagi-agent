@@ -25,11 +25,12 @@ Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 �
 
 ## Codex·Antigravity 뇌에서 mcp 연결 읽기
 
-`connectors` 를 `mcp` 모드로 둔 메일·이슈·캘린더·Slack 은 Codex·Antigravity 뇌일 때 채팅에서만 읽습니다. 브리핑과 캘린더 동기화에서 MCP 를 읽는 것은 지금도 Claude Code 뇌일 때만입니다.
+`connectors` 를 `mcp` 모드로 둔 메일·이슈·캘린더·Slack 은 Codex·Antigravity 뇌일 때 채팅에서만 씁니다. Codex 는 쓰기 도구도 승인 카드를 거쳐 쓰고, Antigravity 는 읽기만 합니다. 브리핑과 캘린더 동기화에서 MCP 를 읽는 것은 지금도 Claude Code 뇌일 때만입니다.
 
-- 서버 정의는 Claude Code 에 등록한 것(`~/.claude.json`)을 그대로 씁니다. stdio 서버와 http 서버만 넘길 수 있고, sse 서버나 `headersHelper` 를 쓰는 서버, 이름에 영문·숫자·`_`·`-` 밖의 글자가 있는 서버·도구는 넘기지 못합니다. Codex 는 env 가 Codex 자신의 환경변수(PATH·HOME 등)와 다른 값이면 그 서버를 붙이지 않습니다. Claude Code 안에서 OAuth 로 로그인한 http 서버는 넘기더라도 Codex·agy 가 그 로그인을 쓰지 못해 읽지 못합니다.
-- 도구는 하나하나 열어야 해서, 커넥터 매핑(프리셋이나 `tools`)에 적힌 읽기 도구만 엽니다. 매핑이 비어 있으면 그 연결은 붙이지 않고 패널에 이유를 보여 줍니다. 쓰기 이름(보내기·만들기·고치기 등)은 매핑에 적어도 열리지 않습니다.
-- Codex 는 채팅할 때마다 `-c mcp_servers.<이름>.…` 로 붙입니다. `enabled_tools` 로 그 읽기 도구만 보이게 하고, 그 도구만 `approval_mode = "approve"` 입니다. env 와 헤더 값은 명령줄 인자가 아니라 Codex 프로세스의 환경변수로 넘깁니다.
+- 서버 정의는 Claude Code 에 등록한 것(`~/.claude.json`)을 그대로 씁니다. stdio 서버와 http 서버만 넘길 수 있고, sse 서버나 `headersHelper` 를 쓰는 서버, 이름에 영문·숫자·`_`·`-` 밖의 글자가 있는 서버·도구는 넘기지 못합니다. Claude Code 안에서 OAuth 로 로그인한 http 서버는 넘기더라도 Codex·agy 가 그 로그인을 쓰지 못해 읽지 못합니다.
+- 커넥터 매핑(프리셋이나 `tools`)에 읽기 도구가 하나도 없으면 그 연결은 붙이지 않고 패널에 이유를 보여 줍니다. 쓰기 이름(보내기·만들기·고치기 등)은 매핑에 적어도 읽기 도구로 열리지 않습니다.
+- Codex 에는 서버를 직접 붙이지 않습니다. 채팅할 때마다 `-c mcp_servers.<이름>.url` 로 데몬 주소(`/mcp/<토큰>/<열쇠>/<이름>`, 열쇠는 그 codex 실행 동안만 있습니다)를 주고, 데몬이 진짜 서버에 대신 붙습니다. Codex 는 그 서버의 도구를 모두 보지만, 부를 때마다 Claude Code 뇌와 같은 승인 판정을 거칩니다. 읽기 도구와 [항상 허용] 규칙에 맞는 호출은 바로 넘기고, 보내기·만들기 같은 쓰기 도구는 채팅에 승인 카드를 띄운 뒤 [허용]을 눌러야 진짜 서버로 넘깁니다. 거부하거나 10분 동안 답이 없거나 대화를 멈추면 그 호출은 거절되고 Codex 는 그 결과를 보고 이어서 답합니다. env 와 헤더 값은 데몬만 쓰고 Codex 프로세스에는 넘기지 않습니다.
+- 카드를 기다리는 동안에도 Codex 는 모델을 여러 번 다시 불러 기다리는 중이라고 적습니다. 오래 기다릴수록 Codex 사용량이 늘어납니다(Codex 0.163 시험에서 도구 하나를 75초 기다렸을 때 입력 토큰이 약 20만, 330초 기다렸을 때 약 84만이었고 그중 96%가 캐시였습니다). Codex 의 MCP 도구 기본 대기는 300초라서 서버마다 `tool_timeout_sec` 를 720초로 늘리고, 승인 카드가 붙는 채팅은 codex 실행 시간 상한도 2분에서 12분으로 늘립니다.
 - Antigravity 는 실행마다 MCP 를 넘길 수 없어서 전역 설정에 넣습니다. `~/.gemini/config/mcp_config.json` 에 `usagi-<이름>` 서버(`enabledTools` 는 읽기 도구만)를, `~/.gemini/antigravity-cli/settings.json` 의 `permissions.allow` 에 `mcp(usagi-<이름>/<도구>)` 를 하나씩 넣습니다. env·헤더에 비밀값이 있으면 `mcp_config.json` 권한을 600 으로 바꿉니다. 커넥터에서 빠진 `usagi-…` 항목은 다음 채팅 때 지웁니다. 전역 설정이라 터미널에서 agy 를 직접 쓸 때나 뒤에서 하는 정리 때도 이 읽기 도구가 묻지 않고 허용되고, 뇌를 다른 것으로 바꿔도 항목은 남습니다.
 
 ## Antigravity(agy)

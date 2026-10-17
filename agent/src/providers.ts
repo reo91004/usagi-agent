@@ -11,7 +11,8 @@ import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { findOnPath, spawnSpec } from "./plat.ts";
-import { MCP_NAME, cliToolGuide, ensureAgyMcp } from "./mcp-http.ts";
+import { MCP_NAME, cliToolGuide, ensureAgyMcp, openGate, type GateDecide } from "./mcp-http.ts";
+import { PERMISSION_TTL_MS } from "./permissions.ts";
 import { AGY_PREFIX, codexMcpArgs, connectorGuide, type CliMcpServer } from "./cli-mcp.ts";
 import type { ContentBlock } from "./attachments.ts";
 import { DEFAULT_GENERAL_MODEL, HOME_DIR, type BrainProvider, type Config } from "./config.ts";
@@ -737,7 +738,7 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
 }
 
 // codex exec 인자. 사용자 Codex 설정(~/.codex/config.toml — MCP 서버·플러그인)은 읽지 않는다(--ignore-user-config, 로그인은 그대로).
-// 그 MCP 엔 쓰기 도구(메일 보내기 등)가 섞여 있어 붙이지 않는다. 채팅엔 커넥터의 읽기 도구만 따로 -c 로 붙인다(cli-mcp.ts).
+// 그 MCP 엔 승인 없이 도는 쓰기 도구(메일 보내기 등)가 섞여 있어 붙이지 않는다. 채팅엔 커넥터의 서버를 데몬 문지기로만 붙인다(cli-mcp.ts).
 // 셸은 읽기 전용 샌드박스, 세션 파일은 남기지 않는다(--ephemeral).
 export const CODEX_ARGS = ["exec", "--skip-git-repo-check", "--json", "--sandbox", "read-only", "--ephemeral", "--ignore-user-config", "-"] as const;
 export const CODEX_TIMEOUT_MS = 120_000;
@@ -770,8 +771,8 @@ function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: stri
 }
 
 // mcp: 맥락 도구를 붙인다(채팅처럼 사용자에게 바로 답하는 실행만 — 뒤에서 하는 정리는 도구 없이 빨리)
-// servers: mcp 일 때 함께 붙일 사용자 MCP 연결(cli-mcp.ts cliMcpServers — 읽기 도구만)
-export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean; servers?: CliMcpServer[] };
+// servers: mcp 일 때 함께 붙일 사용자 MCP 연결(cli-mcp.ts cliMcpServers). gate: 그 부르기를 판정할 승인 브로커(brain.ts) — 없으면 안 붙인다
+export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide };
 
 // codex exec 한 번 → 마지막 답의 JSON + 토큰 수. 실패는 짧은 한국어(출력 본문은 넣지 않는다)
 export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
@@ -779,17 +780,20 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   if (!exists("codex")) throw new Error(MISSING_CODEX);
   const exec = opts.execFile ?? defaultExecFile;
   const mcp = opts.mcp ? cliMcp : undefined;
-  // 사용자 Codex 설정은 여전히 안 읽고(--ignore-user-config) 우사기 도구 서버와 커넥터의 사용자 MCP(읽기 도구만)를 -c 로 붙인다
-  const user = mcp ? codexMcpArgs(opts.servers ?? []) : undefined;
-  const input = [...cliParts(prompt, opts, "Codex", true, mcp ? cliToolGuide(connectorGuide(user!.used)) : undefined), JSON.stringify(schema)].filter(Boolean).join("\n\n");
-  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, ...user!.args, "-"] : CODEX_ARGS;
-  const env = user && Object.keys(user.env).length ? { ...process.env, ...user.env } : undefined; // 비밀값은 argv 가 아니라 환경변수로
+  // 사용자 Codex 설정은 여전히 안 읽고(--ignore-user-config) 우사기 도구 서버와, 데몬 문지기를 거치는 커넥터의 사용자 MCP 를 -c 로 붙인다
+  const user = mcp && opts.gate ? opts.servers ?? [] : [];
+  const gate = user.length ? openGate(user, opts.gate!) : undefined;
+  const input = [...cliParts(prompt, opts, "Codex", true, mcp ? cliToolGuide(connectorGuide(user, "", true)) : undefined), JSON.stringify(schema)].filter(Boolean).join("\n\n");
+  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, ...(gate ? codexMcpArgs(user, `${mcp}/${gate.key}`) : []), "-"] : CODEX_ARGS;
+  // shortcut: 승인 카드 한 장(10분)까지 기다릴 만큼 늘린다. 한 답에서 카드 여러 장을 오래 두면 끝까지 못 기다린다 — 그런 일이 잦으면 대기 중엔 시계를 멈춘다
+  const timeout = opts.timeoutMs ?? (gate ? CODEX_TIMEOUT_MS + PERMISSION_TTL_MS : CODEX_TIMEOUT_MS);
   let stdout = "";
   try {
-    const result = await exec("codex", args, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir(), ...(env ? { env } : {}) });
-    stdout = result.stdout;
+    stdout = (await exec("codex", args, { input, timeout, cwd: tmpdir() })).stdout;
   } catch (e) {
     throw new Error(/초과/.test(String((e as Error)?.message ?? "")) ? "codex 실행 시간이 초과됐어요." : "codex 실행이 실패했어요.");
+  } finally {
+    gate?.close(); // 열쇠를 지우고, 기다리던 카드는 취소, 띄운 서버는 닫는다
   }
   return { out: parseCodexStdout(stdout), usage: parseCodexUsage(stdout) };
 }
@@ -874,7 +878,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
 export async function remoteJson(
   provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[] } & ProviderDeps = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide } & ProviderDeps = {},
 ): Promise<unknown> {
   if (provider === "gemini") return geminiJson(cfg, prompt, schema, opts);
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);

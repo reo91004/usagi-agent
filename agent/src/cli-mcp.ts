@@ -1,12 +1,15 @@
 // 사용자가 Claude Code 에 등록한 MCP 연결(connectors mode "mcp" — 메일·이슈·캘린더·Slack)을 Codex·agy 채팅에도 붙인다(#15 3단계).
-//   서버 정의(command/args/env 또는 url/headers)는 ~/.claude.json 에서, 열 도구는 커넥터 매핑 중 읽기 도구(guard.ts isReadOnlyCall)만.
-//   Codex: 실행마다 -c mcp_servers.<이름>.… — enabled_tools 로 그 도구만 보이고, 그 도구만 approval_mode "approve"(나머지는 exec 가 거절)
-//   agy:   전역 mcp_config.json 의 "usagi-<이름>"(enabledTools) + settings.json permissions.allow "mcp(usagi-<이름>/<도구>)"(mcp-http.ts ensureAgyMcp)
-//          headless agy 는 허용 규칙이 없는 MCP 호출을 자동 거절한다(2026-10-17 agy 1.4.0 확인)
+//   서버 정의(command/args/env 또는 url/headers)는 ~/.claude.json 에서, 읽기 도구는 커넥터 매핑 중 guard.ts isReadOnlyCall 을 통과하는 것.
+//   Codex: 서버를 직접 붙이지 않고 데몬의 문지기 주소(mcp-http.ts openGate)를 -c mcp_servers.<이름>.url 로 준다(#65). 데몬이 진짜 서버에 붙어
+//          서버의 도구를 다 보여 주고, 부르기는 승인 브로커(permissions.ts)를 거친다 — 읽기는 바로, 쓰기는 Claude Code 뇌와 같은 승인 카드.
+//          그래서 Codex 쪽 승인은 "approve"(codex exec 는 승인 정책 never 라 prompt 면 바로 거절), 비밀값은 codex 프로세스에 가지 않는다
+//   agy:   전역 mcp_config.json 의 "usagi-<이름>"(enabledTools — 읽기 도구만) + settings.json permissions.allow "mcp(usagi-<이름>/<도구>)"(mcp-http.ts ensureAgyMcp)
+//          headless agy 는 허용 규칙이 없는 MCP 호출을 자동 거절한다(2026-10-17 agy 1.4.0 확인). 쓰기 승인 카드는 못 붙인다(#42)
 // 도구별로 열 수 없는 서버(매핑이 비었거나 sse·headersHelper)는 붙이지 않는다. 비밀값(env·헤더 값)은 argv·로그·프롬프트에 넣지 않는다.
 import { CAP_LABELS, CAPABILITIES, CONNECTORS, mcpTool, type Connectors } from "./connectors.ts";
 import { isReadOnlyCall } from "./guard.ts";
 import { readClaudeJson } from "./mcp.ts";
+import { PERMISSION_TTL_MS } from "./permissions.ts";
 
 export type CliMcpDef = { command: string; args: string[]; env: Record<string, string> } | { url: string; headers: Record<string, string> };
 export type CliMcpServer = { name: string; caps: string[]; tools: string[]; def: CliMcpDef };
@@ -57,40 +60,16 @@ export function cliMcpServers(conns: Connectors = CONNECTORS, claudeJson: () => 
 
 // ── Codex ──────────────────────────────────────────────
 const toml = (s: string) => JSON.stringify(s); // JSON 문자열은 TOML 기본 문자열로도 읽힌다
-const tomlArr = (a: string[]) => `[${a.map(toml).join(",")}]`;
 
-// -c 인자와 codex 프로세스에 더할 환경변수. 비밀값은 env 로만: stdio 는 env_vars(이름만 넘기면 codex 가 값을 서버에 전달),
-// http 헤더는 env_http_headers(헤더 → 환경변수 이름). 셸 도구에는 그 값이 안 가게 inherit "core".
-// used: 실제로 붙인 서버. 같은 이름 환경변수를 다른 값으로 쓰는 서버는 뺀다 — 앞 서버와 섞이면 다른 계정으로 읽고,
-// codex 자신의 환경(base: PATH·HOME·CODEX_HOME 등)을 덮으면 채팅째 깨진다
-export function codexMcpArgs(servers: CliMcpServer[], base: NodeJS.ProcessEnv = process.env): { args: string[]; env: Record<string, string>; used: CliMcpServer[] } {
-  const args: string[] = [];
-  const env: Record<string, string> = {};
-  const used: CliMcpServer[] = [];
-  for (const s of servers) {
+// 도구 하나를 기다리는 시간: 승인 카드 10분 + 허용 뒤 실제 호출. codex 기본값으로는 카드를 다 못 기다린다
+export const CODEX_TOOL_TIMEOUT_S = PERMISSION_TTL_MS / 1000 + 120;
+
+// -c 인자. gate: 이 실행의 문지기 주소(mcp-http.ts openGate — <맥락 도구 주소>/<열쇠>), 서버마다 <gate>/<이름>
+export function codexMcpArgs(servers: CliMcpServer[], gate: string): string[] {
+  return servers.flatMap((s) => {
     const k = `mcp_servers.${s.name}`;
-    const set: string[] = [];
-    if ("command" in s.def) {
-      const e = s.def.env;
-      if (Object.entries(e).some(([n, v]) => (n in env && env[n] !== v) || (base[n] !== undefined && base[n] !== v))) continue;
-      set.push(`${k}.command=${toml(s.def.command)}`, `${k}.args=${tomlArr(s.def.args)}`);
-      if (Object.keys(e).length) set.push(`${k}.env_vars=${tomlArr(Object.keys(e))}`);
-      Object.assign(env, e);
-    } else {
-      set.push(`${k}.url=${toml(s.def.url)}`);
-      const hs = Object.entries(s.def.headers).map(([h, v]) => {
-        const n = `USAGI_MCP_H${Object.keys(env).length}`;
-        env[n] = v;
-        return `${toml(h)}=${toml(n)}`;
-      });
-      if (hs.length) set.push(`${k}.env_http_headers={${hs.join(",")}}`);
-    }
-    set.push(`${k}.enabled_tools=${tomlArr(s.tools)}`, `${k}.default_tools_approval_mode="prompt"`, ...s.tools.map((t) => `${k}.tools.${t}.approval_mode="approve"`));
-    for (const x of set) args.push("-c", x);
-    used.push(s);
-  }
-  if (Object.keys(env).length) args.push("-c", `shell_environment_policy.inherit="core"`);
-  return { args, env, used };
+    return ["-c", `${k}.url=${toml(`${gate}/${s.name}`)}`, "-c", `${k}.tool_timeout_sec=${CODEX_TOOL_TIMEOUT_S}`, "-c", `${k}.default_tools_approval_mode="approve"`];
+  });
 }
 
 // ── agy ────────────────────────────────────────────────
@@ -113,9 +92,10 @@ export function agyMcpEntries(servers: CliMcpServer[]): { servers: Record<string
   return { servers: out, allow, secret };
 }
 
-// 채팅 프롬프트 안내(서버·도구 이름만 — 정의·비밀값은 넣지 않는다). prefix: agy 는 "usagi-"
-export function connectorGuide(servers: CliMcpServer[], prefix = ""): string {
+// 채팅 프롬프트 안내(서버·도구 이름만 — 정의·비밀값은 넣지 않는다). prefix: agy 는 "usagi-". write: 쓰기 도구도 승인 카드로 부른다(Codex)
+export function connectorGuide(servers: CliMcpServer[], prefix = "", write = false): string {
   if (!servers.length) return "";
   const list = servers.map((s) => `${s.caps.join("·")} ${prefix}${s.name}(${s.tools.join(", ")})`).join(" · ");
+  if (write) return `- 연결된 업무 도구(MCP): ${list}. 메일·이슈·일정·Slack 을 물으면 이걸로 찾는다. 그 서버의 보내기·게시·일정 바꾸기 같은 쓰기 도구도 부를 수 있다 — 부르면 사용자 화면에 승인 카드가 뜨고, 사용자가 허용해야 실행된다. 거부되거나 취소되면 같은 호출을 되풀이하지 말고 그렇다고 답한다.\n`;
   return `- 연결된 업무 도구(MCP, 읽기만): ${list}. 메일·이슈·일정·Slack 을 물으면 이걸로 찾는다. 보내기·게시·일정 바꾸기 같은 쓰기는 이 연결로 못 하니 사용자에게 직접 하라고 말한다.\n`;
 }
