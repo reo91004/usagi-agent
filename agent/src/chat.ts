@@ -18,7 +18,11 @@ import { inRunContext, type RunOrigin } from "./runs.ts";
 import { fixBranch } from "./fixer.ts";
 import { worktreeSummary } from "./agent-worktrees.ts";
 import { repoLocks, repoName, type RepoLocks } from "./repo-lock.ts";
-import { contextHeader, CTX_GUIDE, fmtTime, inlineContext, type CtxDeps } from "./ctx-tools.ts";
+import { contextHeader, CTX_GUIDE, fmtTime, inlineContext as configInline, type CtxDeps } from "./ctx-tools.ts";
+import { cliMcpReady } from "./providers.ts";
+import { TITLE_RUN_TITLE } from "./todo-progress.ts";
+import { cliMcpServers } from "./cli-mcp.ts";
+import { CONNECTORS } from "./connectors.ts";
 import type { Dashboard } from "./dashboard.ts";
 import { GUIDELINE_SCHEMA, GUIDELINE_GUIDE, guidelinesFor, type GuidelineCtx } from "./guidelines.ts";
 import { phrase } from "./phrases.ts";
@@ -312,6 +316,31 @@ export function focusBlock(t: Todo): string {
   ].join("\n");
 }
 
+// 모델 답 하나의 규칙·할 일 편집을 같은 순서(규칙 → between(새 할 일) → 편집)와 같은 오류 수집으로 적용한다 — Slack(core.absorb)·패널(Chat) 공용.
+// 규칙을 먼저 저장해야 새 할 일에도 적용된다. 반환 reply 는 규칙 한 줄·휴지통 안내·오류를 덧붙인 것
+export function applyTodoChanges(reply: string, c: { rule?: unknown; ops?: TodoOp[] }, io: { addRule?: (rule: unknown) => string; todoOps?: (ops: TodoOp[]) => ReturnType<NonNullable<ChatPorts["todoOps"]>>; between?: () => void }): { reply: string; applied: string[]; added: Todo[] } {
+  if (c.rule && io.addRule) reply += `\n\n${io.addRule(c.rule)}`;
+  io.between?.();
+  let applied: string[] = [], added: Todo[] = [];
+  if (c.ops?.length && io.todoOps) {
+    const res = io.todoOps(c.ops);
+    applied = res.applied;
+    added = res.added ?? [];
+    const trash = trashedNote(res.trashed, reply);
+    if (trash) reply += `\n\n${trash}`;
+    if (res.errors.length) reply += `\n\n${res.errors.map((e) => `⚠️ ${e}`).join("\n")}`;
+  }
+  return { reply, applied, added };
+}
+
+// 채팅 프롬프트가 큰 맥락을 붙이나. Codex·agy 는 데몬 MCP(맥락 도구)가 실제로 준비됐으면 작은 머리말 + 필요할 때 조회, 준비 안 됐거나 contextMode inline 이면 예전처럼 inline
+export function inlineContext(cfg: Config): boolean {
+  if (!configInline(cfg)) return false;
+  const p = cfg.brain?.provider ?? "claude-code";
+  if (cfg.contextMode === "inline" || (p !== "codex" && p !== "agy")) return true;
+  return !cliMcpReady(p, cliMcpServers(cfg.connectors ?? CONNECTORS));
+}
+
 const meeting = (store: Store) => meetingsContext(store);
 
 // 채팅 프롬프트. contextMode tools(기본): 작은 머리말(시각·사용자·이 대화·대상 할 일) + 이 대화의 최근 흐름 + 집어 든 할 일 + 코드 + 지금 한 말 —
@@ -389,7 +418,7 @@ export async function suggestTitle(cfg: Config, text: string, reply: string, thr
   const prompt = `아래 대화의 제목을 지어라.\n\n사용자: """${text.slice(0, 600)}"""\n${character().name}: """${reply.slice(0, 600)}"""`;
   const r = await ask<{ title: string }>(cfg, prompt, TITLE_SCHEMA, undefined, {
     model: cfg.models.light, tools: false, system: "너는 대화 목록에 붙일 짧은 제목을 짓는 도우미다.",
-    run: { kind: "chat", title: "대화 제목 짓기", ...(threadId ? { ref: threadId } : {}) },
+    run: { kind: "chat", title: TITLE_RUN_TITLE, ...(threadId ? { ref: threadId } : {}) },
   });
   const t = typeof r?.title === "string" ? r.title.replace(/["'“”‘’.]/g, "").trim() : "";
   return t || undefined;
@@ -413,7 +442,7 @@ export type ChatPorts = {
   changed(): void; // 대시보드 다시 불러오라는 신호
   // 코드 작업 → 바로 수정 run(데몬은 승인 없이 시작, 머지만 승인). threadId: 이 대화(수정 run 의 원래 화면). 못 올렸으면 undefined
   propose(pr: Thought["proposals"][number], threadId?: string): Promise<unknown>;
-  todoOps?(ops: TodoOp[]): { applied: string[]; errors: string[]; trashed?: string[] }; // 할 일 편집 적용(잘못된 건 이유, 휴지통으로 옮긴 제목)
+  todoOps?(ops: TodoOp[]): { applied: string[]; errors: string[]; trashed?: string[]; added?: Todo[] }; // 할 일 편집 적용(잘못된 건 이유, 휴지통으로 옮긴 제목)
   planOps?(ops: PlanOp[]): { applied: string[]; errors: string[] };
   memoryOps?(ops: MemoryOp[]): { applied: string[]; errors: string[] };
   addRule?(rule: unknown): string; // 지속 규칙 저장 + 기존 할 일 적용 → 답에 덧붙일 한 줄
@@ -793,14 +822,9 @@ export class Chat {
       let reply = r.reply_md?.trim() || r.bubble || "(답이 비었어)";
       // 집어 든 할 일이 있으면 id 빠진 op는 그 할 일로
       const ops = (r.todo_ops ?? []).map((op) => (focus && op.op !== "add" && !op.id ? { ...op, id: focus.id } : op));
-      const lines: string[] = []; // 적용한 변경 — 스레드에 시스템 줄로
-      if (ops.length && this.ports.todoOps) {
-        const res = this.ports.todoOps(ops);
-        lines.push(...res.applied.map((a) => `✓ ${a}`));
-        const trash = trashedNote(res.trashed, reply);
-        if (trash) reply += `\n\n${trash}`;
-        if (res.errors.length) reply += `\n\n${res.errors.map((e) => `⚠️ ${e}`).join("\n")}`;
-      }
+      const applied = applyTodoChanges(reply, { rule: r.rule, ops }, { addRule: this.ports.addRule, todoOps: this.ports.todoOps });
+      reply = applied.reply;
+      const lines = applied.applied.map((a) => `✓ ${a}`); // 적용한 변경 — 스레드에 시스템 줄로
       if ((r.plan_ops ?? []).length && this.ports.planOps) {
         const res = this.ports.planOps(r.plan_ops!);
         if (res.errors.length) reply += `\n\n${res.errors.map((e) => `⚠️ ${e}`).join("\n")}`;
@@ -810,7 +834,6 @@ export class Chat {
         if (res.errors.length) reply += `\n\n${res.errors.map((e) => `⚠️ ${e}`).join("\n")}`;
         if (res.applied.length) this.ports.changed();
       }
-      if (r.rule && this.ports.addRule) reply += `\n\n${this.ports.addRule(r.rule)}`;
       // 행동 지침: 사용자가 이번에 직접 친 말(text)에 근거가 있어야 저장된다 — 슬래시 명령 답에는 없다
       if (!command && r.guideline && this.ports.guideline) reply += `\n\n${this.ports.guideline(r.guideline, { userText: text, threadId, msgN: userN })}`;
       // 회의 응답 등: 바로 하지 않고 확인 카드(사용자가 [실행]을 눌러야 보낸다)
@@ -848,6 +871,7 @@ export class Chat {
       // 코드 작업: 바로 시작한다(승인 버튼 없음 — PR 까지, 머지만 사용자 승인). 못 올렸으면(허용 밖 레포 등) 답에 알린다
       const madeWts: { title: string; branch?: string }[] = []; // 이번 답이 판 워크트리(수정 run 마다 하나)
       for (const pr of r.proposals ?? []) {
+        if (stopped()) { onStopped(); return; } // 앞의 비동기 처리·제안을 기다리는 사이 멈췄으면 새 수정 세션을 시작하지 않는다
         const made = await this.ports.propose(pr, threadId).catch(() => undefined);
         if (made == null) reply += `\n\n⚠️ "${pr.title}" 작업을 시작하지 못했어요 — 허용된 레포(repoRoots) 안인지 확인해 주세요.`;
         else { const p = made as { id?: unknown; title?: unknown }; if (typeof p.id === "string") madeWts.push({ title: String(p.title ?? pr.title), branch: fixBranch({ id: p.id, title: String(p.title ?? pr.title) }) }); }

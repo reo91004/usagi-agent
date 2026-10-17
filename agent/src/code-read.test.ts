@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isCodeReadCall, isSecretPath, relatedRepo, repoOf, codeBlock, checkoutState, checkoutNote } from "./code-read.ts";
+import { isCodeReadCall, isSecretPath, relatedRepo, repoOf, codeBlock, checkoutState, checkoutNote, forgetCheckouts } from "./code-read.ts";
 import { execFileSync } from "node:child_process";
 import { readOnlyHookFor, stepName, toolOptions } from "./brain.ts";
 import { chatAskOpts, chatPrompt } from "./chat.ts";
@@ -167,4 +167,20 @@ test("isSecretPath: 심볼릭 링크로 이름을 숨긴 .env·~/.cy-agent 도 �
   symlinkSync(HOME_DIR, join(app, "state"));
   assert.equal(isSecretPath(join(app, "state", "config.json")), true);
   assert.equal(isSecretPath(join(app, "README.md")), false);
+});
+
+test("checkoutState: 60초 캐시 — 그 안엔 git 을 다시 안 부르고, 만료·forgetCheckouts 뒤엔 새로 읽는다", () => {
+  const root = mkdtempSync(join(tmpdir(), "cy-cache-"));
+  const git = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  git(root, "init", "-q", "-b", "main");
+  writeFileSync(join(root, "a.txt"), "1\n");
+  git(root, "add", "-A"); git(root, "commit", "-q", "-m", "init");
+  forgetCheckouts();
+  assert.equal(checkoutState(root, 1000)!.branch, "main");
+  git(root, "checkout", "-q", "-b", "other");
+  assert.equal(checkoutState(root, 1000 + 59e3)!.branch, "main", "캐시 안");
+  assert.equal(checkoutState(root, 1000 + 61e3)!.branch, "other", "만료");
+  git(root, "checkout", "-q", "main");
+  forgetCheckouts();
+  assert.equal(checkoutState(root, 1000 + 62e3)!.branch, "main");
 });

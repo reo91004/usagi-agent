@@ -22,6 +22,7 @@ export const PROGRESS = {
   budgetChars: 12000,    // 세션·run 줄 분량
   maxFailures: 3,        // 연속 실패하면 워터마크를 넘긴다
 };
+export const TITLE_RUN_TITLE = "대화 제목 짓기"; // chat.ts suggestTitle 의 run 제목 — 일을 한 게 아니라 진행 확인에서 뺀다
 const WORK_KINDS: ReadonlySet<RunKind> = new Set(["fix", "chat", "action"]); // 사용자 일을 실제로 한 run
 
 export type ProgressApplier = {
@@ -119,7 +120,7 @@ export async function checkProgress(cfg: Config, store: Store, applier: Progress
       .filter((s) => s.updated > since && !store.isHiddenPath(String(s.props.cwd ?? ""), hidden)).slice(0, PROGRESS.maxSessions);
     const reg = deps.runs ?? globalRuns;
     let runList: Run[] = [];
-    try { runList = reg.listRuns({ limit: 80 }).filter((r) => WORK_KINDS.has(r.kind) && r.status === "done" && !!r.endedAt && r.endedAt > since).slice(0, PROGRESS.maxRuns); } catch {}
+    try { runList = reg.listRuns({ limit: 80 }).filter((r) => WORK_KINDS.has(r.kind) && r.title !== TITLE_RUN_TITLE && r.status === "done" && !!r.endedAt && r.endedAt > since).slice(0, PROGRESS.maxRuns); } catch {}
     if (!sessions.length && !runList.length) { st.set("last_at", now.toISOString()); return { ...res, skipped: "no_activity" }; }
 
     // 번호 붙인 작업 줄(예산 안에서 최신 먼저)

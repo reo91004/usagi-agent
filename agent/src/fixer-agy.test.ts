@@ -118,7 +118,27 @@ test("agy 수정 run: 샌드박스 규칙·훅을 넣고, 이벤트를 세션 �
   assert.doesNotMatch(ag2.calls[0].args[1], /앞선 요약/);
 });
 
-test("agy 수정 run: 레포에 원래 .agents/hooks.json 이 있으면 덮지 않고 실패", async () => {
+test("agy 수정 run: 마지막 턴이 종료 코드 0 인데 구조화 결과가 없으면 앞 턴 결과를 쓰지 않고 실패", async () => {
+  const { root, app, wts } = setupRepo();
+  const reg = new RunRegistry(new DatabaseSync(":memory:"));
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const ag = fakeAgy(async (n, _args, { emit }) => {
+    if (n === 1) {
+      emit(upd({ step_index: 1, state: "ACTIVE", step_type: "tool", tool_name: "run_command", tool_info: { parameters: { CommandLine: "ls" } } }));
+      await gate;
+      emit(result(REPORT("첫 턴 성공")));
+    } else emit({ event: "result", result: { conversation_id: "cv-1", status: "SUCCESS", response: "" } });
+  });
+  const p = runFix(cfgFor(root), proposal(app, "prop-ag-stale"), () => {}, { agyRun: ag.fn, agyAllow: () => {}, runs: reg, worktreesDir: wts });
+  const rejected = assert.rejects(p, /결과를 보고하지 않았어요/);
+  await until(() => reg.listRuns().length === 1 && reg.getRun(reg.listRuns()[0].id)!.events.some((e) => e.name === "Bash"));
+  await reg.sendMessage(reg.listRuns()[0].id, "하나 더");
+  release();
+  await rejected;
+});
+
+test("agy 수정 run: 레포에 원래.agents/hooks.json 이 있으면 덮지 않고 실패", async () => {
   const { root, app, wts } = setupRepo((seed) => { mkdirSync(join(seed, ".agents")); writeFileSync(join(seed, ".agents", "hooks.json"), "{}"); });
   const reg = new RunRegistry(new DatabaseSync(":memory:"));
   const ag = fakeAgy(async () => {});
