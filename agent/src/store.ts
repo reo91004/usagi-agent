@@ -242,7 +242,7 @@ export class Store {
   // description·sourceRef·sourceInfo(원본)는 비어 있을 때만 채운다.
   // 새 id 라도 같은 일(todo-match.ts — 참조 키·제목)이 휴지통·묘비·최근 끝낸 일에 있으면 "blocked"(안 만든다),
   // 열린 할 일에 있으면 그 할 일로 합친다("merged" — 사용자가 고친 필드는 그대로). 둘 다 일지에 하루 한 번 남긴다
-  upsertTodo(t: Omit<Todo, "status" | "created" | "userEdited" | "updated" | "origin"> & { status?: string; origin?: TodoSource }, by: TodoActor = "briefing"): UpsertResult {
+  upsertTodo(t: Omit<Todo, "status" | "created" | "userEdited" | "updated" | "origin" | "due"> & { status?: string; origin?: TodoSource; due?: string | null }, by: TodoActor = "briefing"): UpsertResult {
     if (this.isTombstoned(t.id) || this.trashedTodo(t.id)) return "skipped"; // 지운(휴지통 포함) id는 되살리지 않는다
     const cur = this.getTodo(t.id);
     if (!cur) {
@@ -266,7 +266,7 @@ export class Store {
     if (!cur.description && t.description && !cur.userEdited?.includes("description")) this.setTodoDetail(t.id, { description: t.description }); // 사용자가 고친(지운) 설명은 안 덮음
     if (!cur.origin && t.origin) this.setTodoDetail(t.id, { origin: t.origin });
     if (cur.status !== "open") return "skipped";
-    if (t.due !== undefined && t.due !== cur.due) this.db.prepare("UPDATE todos SET due = ? WHERE id = ?").run(t.due, t.id); // 마감은 사용자 필드가 아니라 원본 따라 맞춘다
+    if (t.due !== undefined && (t.due ?? undefined) !== cur.due) this.db.prepare("UPDATE todos SET due = ? WHERE id = ?").run(t.due, t.id); // 마감은 사용자 필드가 아니라 원본 따라 맞춘다
     const mine = new Set(cur.userEdited);
     const priority = mine.has("priority") ? cur.priority : t.priority;
     const link = mine.has("link") ? cur.link : (t.link ?? cur.link);

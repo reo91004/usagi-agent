@@ -36,7 +36,7 @@ test("reminderPriority·reminderTodo: 마감 오늘·지남·높음은 P1, 7일 
   assert.deepEqual(reminderTodo({ id: "R1", title: "  논문  그림 3 ", list: "연구", due: local(18, 14), dueHasTime: true, url: "https://arxiv.org/abs/1" }, NOW), {
     id: "reminder:R1", title: "논문 그림 3", source: "reminders", priority: 2, note: "미리알림 「연구」 · 마감 10월 18일 14:00", due: local(18, 14), link: "https://arxiv.org/abs/1",
   });
-  assert.equal(reminderTodo({ id: "R2", title: "우유" }, NOW)!.due, undefined);
+  assert.equal(reminderTodo({ id: "R2", title: "우유" }, NOW)!.due, null);
   assert.equal(reminderTodo({ id: "R2", title: "우유", list: "장보기" }, NOW)!.note, "미리알림 「장보기」");
   assert.equal(reminderTodo({ id: "R3", title: " " }, NOW), null);
 });
@@ -49,6 +49,8 @@ test("syncReminders: 마감이 바뀌면 열린 할 일의 due 도 맞춘다", a
   assert.equal(store.getTodo("reminder:R9")!.due, due1);
   await syncReminders(store, run(due2), NOW);
   assert.equal(store.getTodo("reminder:R9")!.due, due2);
+  await syncReminders(store, async () => ({ ok: true, open: [{ id: "R9", title: "해지", list: "할 일" }], completed: [] }), NOW); // 미리알림에서 마감을 지움
+  assert.equal(store.getTodo("reminder:R9")!.due, undefined);
 });
 
 test("syncReminders: 안 끝난 것은 할 일로(한 번만), 미리알림에서 끝내면 할 일도 끝, 지운 할 일은 되살리지 않고 내가 고친 우선순위는 그대로", async () => {
