@@ -232,6 +232,8 @@ test('sanitizeAppPrefs: 로그인할 때 켜기·새 버전 알림·Dock 아이�
   assert.deepEqual(sanitizeAppPrefs({ openAtLogin: true }), { openAtLogin: true });
   assert.deepEqual(sanitizeAppPrefs({ showInDock: true }), { showInDock: true });
   assert.equal(sanitizeAppPrefs({ showInDock: 'yes' }), null);
+  assert.deepEqual(sanitizeAppPrefs({ panelPinned: true }), { panelPinned: true });
+  assert.equal(sanitizeAppPrefs({ panelPinned: 1 }), null);
   assert.deepEqual(sanitizeAppPrefs({ updateCheck: false, openAtLogin: false }), { updateCheck: false, openAtLogin: false });
   for (const bad of [null, [], {}, { openAtLogin: 'yes' }, { other: true }, { openAtLogin: true, x: 1 }]) assert.equal(sanitizeAppPrefs(bad), null, JSON.stringify(bad));
 });

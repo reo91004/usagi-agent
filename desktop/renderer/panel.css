@@ -1546,3 +1546,16 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #set-connectors h2 { margin-top: var(--s4); }
 #sec-settings button.ghost { border: 1px solid var(--line); }
 #sec-settings .models-card.empty button { align-self: center; }
+
+/* 위쪽 「항상 위」 고정 단추(#171): 켜지면 강조색, 올리면 바로 뜨는 이름표(포커스 없는 창이라 title 이 안 뜬다) */
+#top .top-ico { position: relative; display: inline-grid; place-items: center; padding: 5px 7px; }
+#top .top-ico svg { display: block; }
+#top .top-ico.on { color: var(--accent); background: var(--accent-soft); }
+#top .top-ico.on svg path { fill: currentColor; fill-opacity: 0.25; }
+#top .top-ico[data-tip]::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0;
+  white-space: nowrap; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; line-height: 1.4;
+  color: var(--surface); background: var(--fg); box-shadow: 0 2px 8px rgba(0,0,0,.25); z-index: 5;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease 0.2s;
+}
+#top .top-ico:hover::after, #top .top-ico:focus-visible::after { opacity: 1; }
