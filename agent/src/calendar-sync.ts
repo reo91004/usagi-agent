@@ -6,7 +6,7 @@
 // 장소: location 이름(여러 곳이면 ", "). 장소 칸에 링크(Zoom 등)를 적은 일정은 온라인 링크로 본다.
 import { eventkitSource } from "./eventkit.ts";
 import { query as sdkQuery, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
-import { NEEDS_CLAUDE_MCP, skipQuietly } from "./feature-brain.ts";
+import { mcpBrainNote, skipQuietly } from "./feature-brain.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
@@ -231,7 +231,7 @@ export function mcpCalendarSource(conn: Extract<Conn, { mode: "mcp" }>, q: typeo
   return async (cfg, w) => {
     // MCP 는 Claude Code 경로로만 읽는다(Codex·API 키 뇌에선 SDK 를 부르지 않는다). 예전 일정은 그대로 둔다
     if ((cfg.brain?.provider ?? "claude-code") !== "claude-code") {
-      skipQuietly("calendar", cfg, console.log, NEEDS_CLAUDE_MCP);
+      skipQuietly("calendar", cfg, console.log, mcpBrainNote(cfg.brain?.provider));
       return { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 };
     }
     if (!tool || isWriteName(tool)) return { ok: false, events: [], calls: 0, errors: 1, costUsd: 0 };

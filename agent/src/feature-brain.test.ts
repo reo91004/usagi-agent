@@ -236,7 +236,7 @@ test("캘린더 MCP 동기화: 뇌가 Claude Code 가 아니면 SDK 를 부르�
   assert.deepEqual(r, { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 });
 });
 
-test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Claude Code 가 있어야 · 코드 고치기는 그 뇌의 명령으로", () => {
+test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Codex 에 넘길 수 있는 서버만 · 코드 고치기는 그 뇌의 명령으로", () => {
   const conns = { connectors: { mail: { mode: "mcp", server: "gmail" }, calendar: { mode: "api", icsUrl: "https://x.example/a.ics" } } };
   const hasServer = () => true;
   // codex 뇌: 빈 실행 파일 하나를 둔 가짜 PATH(실행은 하지 않는다 — PATH 만 본다)
@@ -245,13 +245,16 @@ test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Clau
   writeFileSync(join(bin, exe), "#!/bin/sh\nexit 1\n");
   chmodSync(join(bin, exe), 0o755);
   const env = { PATH: bin };
-  const cx = statusOf(withBrain("codex", conns), { env, hasServer, claude: () => false });
+  const cx = statusOf(withBrain("codex", conns), { env, hasServer, claude: () => false, cliServers: () => ["gmail"] });
   assert.deepEqual(cx.features.background, { by: "codex", ready: true, detail: "Codex 로 돌아요" });
   assert.equal(cx.coder.codex, true);
-  assert.equal(cx.features.mcp, false);
+  assert.equal(cx.features.mcp, true);
   assert.equal(cx.features.code, true); // 뇌가 codex 면 코드 고치기도 Codex(#33) — Claude 로그인이 없어도
   const mail = cx.connectors.find((c) => c.cap === "mail")!;
-  assert.deepEqual([mail.ready, mail.needs], [false, "claude-code"]);
+  assert.deepEqual([mail.ready, mail.needs], [true, undefined]);
+  // 읽기 도구 매핑이 없거나 sse 같은 서버는 Codex 에 넘기지 못한다 → 준비 안 됨(Claude Code 로 바꾸라는 표시는 아님)
+  const bare = statusOf(withBrain("codex", conns), { env, hasServer, cliServers: () => [] }).connectors.find((c) => c.cap === "mail")!;
+  assert.deepEqual([bare.ready, bare.needs], [false, undefined]);
   assert.equal(cx.connectors.find((c) => c.cap === "calendar")!.ready, true); // ICS 는 뇌 상관없이
   const cc = statusOf(withBrain("claude-code", conns), { env, hasServer, claude: () => true });
   assert.deepEqual(cc.features.background, { by: "claude-code", ready: true, detail: "Claude Code 로 돌아요" });
@@ -260,6 +263,8 @@ test("GET /status: 뒤에서 하는 정리는 Codex 로 · MCP 커넥터는 Clau
   assert.equal(cc.connectors.find((c) => c.cap === "mail")!.needs, undefined);
   const gm = statusOf(withBrain("gemini", conns), { env, hasServer });
   assert.deepEqual(gm.features.background, { by: null, ready: false, detail: NEEDS_CODER });
+  assert.equal(gm.features.mcp, false);
+  assert.equal(gm.connectors.find((c) => c.cap === "mail")!.needs, "claude-code");
   const noCodex = statusOf(withBrain("codex", conns), { env: { PATH: "" }, hasServer });
   assert.deepEqual(noCodex.features.background, { by: null, ready: false, detail: "Codex 를 찾을 수 없어요" });
 });
@@ -304,9 +309,12 @@ test("브리핑: 뇌가 Claude Code 가 아니면 MCP 출처(메일 등)는 지�
   assert.doesNotMatch(await taskFor("codex"), /mcp__gmail__/);
 });
 
-test("withMcpBrain: 패널 연결 카드 — Claude Code 뇌가 아니면 MCP 는 준비 안 됨 + 이유", async () => {
-  const { withMcpBrain, NEEDS_CLAUDE_MCP } = await import("./feature-brain.ts");
-  const list = [{ cap: "mail", mode: "mcp", ready: true, detail: "MCP gmail" }, { cap: "calendar", mode: "api", ready: true, detail: "ICS 1개" }];
+test("withMcpBrain: 패널 연결 카드 — Codex·agy 는 넘길 수 있는 서버만 준비됨(채팅에서만), 그 밖의 뇌는 준비 안 됨 + 이유", async () => {
+  const { withMcpBrain, NEEDS_CLAUDE_MCP, MCP_CHAT_ONLY, MCP_CLI_UNUSABLE } = await import("./feature-brain.ts");
+  const list = [{ cap: "mail", mode: "mcp", ready: true, detail: "MCP gmail", server: "gmail" }, { cap: "issues", mode: "mcp", ready: false, detail: "등록 안 됨", server: "gh" }, { cap: "calendar", mode: "api", ready: true, detail: "ICS 1개" }];
   assert.deepEqual(withMcpBrain(withBrain("claude-code"), list), list);
-  assert.deepEqual(withMcpBrain(withBrain("codex"), list).map((c) => [c.ready, c.detail]), [[false, NEEDS_CLAUDE_MCP], [true, "ICS 1개"]]);
+  const usable = () => ["gmail"];
+  for (const p of ["codex", "agy"]) assert.deepEqual(withMcpBrain(withBrain(p), list, usable).map((c) => [c.ready, c.detail]), [[true, `MCP gmail · ${MCP_CHAT_ONLY}`], [false, "등록 안 됨"], [true, "ICS 1개"]]);
+  assert.deepEqual(withMcpBrain(withBrain("codex"), list).map((c) => [c.ready, c.detail]), [[false, MCP_CLI_UNUSABLE], [false, "등록 안 됨"], [true, "ICS 1개"]]);
+  assert.deepEqual(withMcpBrain(withBrain("gemini"), list, usable).map((c) => [c.ready, c.detail]), [[false, NEEDS_CLAUDE_MCP], [false, NEEDS_CLAUDE_MCP], [true, "ICS 1개"]]);
 });

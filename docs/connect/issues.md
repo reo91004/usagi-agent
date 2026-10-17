@@ -4,7 +4,7 @@
 
 | 모드 | 어떻게 읽나 |
 |---|---|
-| `mcp` | Claude Code에 등록한 이슈 트래커 MCP(Claude Code 뇌일 때만 읽힙니다) |
+| `mcp` | Claude Code에 등록한 이슈 트래커 MCP(Claude Code 뇌는 브리핑·채팅, Codex·Antigravity 뇌는 채팅에서만 읽습니다. [brain.md](brain.md#codexantigravity-뇌에서-mcp-연결-읽기)) |
 | `off` | 브리핑에서 이슈 단계가 빠집니다 |
 
 역할은 `search`(이슈 검색) · `list`(이슈 목록) · `read`(이슈 하나) · `searchPrs`(PR 검색) · `me`(내 계정)입니다. 쓰기 도구(생성·댓글·상태 변경 등)는 매핑에 적어도 허용되지 않습니다.
