@@ -14,7 +14,7 @@ import { briefingDue } from "./briefing-sources.ts";
 import { loadCommands, SlashCommands } from "./commands.ts";
 import { createSlack } from "./slack/app.ts";
 import { TodoCanvas, openDm } from "./slack/canvas.ts";
-import { SlackIngester, slackChannels, syncMuted } from "./ingest/slack.ts";
+import { SlackIngester, slackChannels, slackTeam, syncMuted } from "./ingest/slack.ts";
 import { learnFrom } from "./profile.ts";
 import { runAfterSlackIngest } from "./todo-auto.ts";
 import { checkProgress } from "./todo-progress.ts";
@@ -351,7 +351,7 @@ await bus.listen(cfg.port, {
     list: () => agent.listPermissions(),
     remove: (id) => agent.deletePermission(id),
   },
-  settings: { get: () => ({ ...settings.view(), slackChannels: slackChannels(store) }), put: (body) => settings.put(body) },
+  settings: { get: () => ({ ...settings.view(), slackChannels: slackChannels(store), slackTeam: slackTeam(store) }), put: (body) => settings.put(body) },
   characters: characterStore,
   // AI 없이 고르는 질문(캐릭터 더블클릭 칩): 오늘 할 일·열린 할 일·캘린더만 보고 정해진 말로
   // 응원해 줘·춤춰 줘: 답과 함께 그 캐릭터의 응원·춤 영상(앱이 캐릭터마다 고른다)
