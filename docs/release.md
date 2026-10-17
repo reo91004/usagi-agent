@@ -89,7 +89,7 @@ curl -s http://127.0.0.1:48300/status   # 다른 터미널에서
 ## GitHub Releases에 올리기
 
 ```bash
-sh ops/release.sh             # arm64·x64 dmg와 SHA256SUMS를 만들고, 올릴 명령만 보여 줍니다
+sh ops/release.sh             # arm64·x64 dmg와 SHA256SUMS를 만들고, 올릴 명령만 보여 줍니다(dmg에 담고 남은 dist/app은 지웁니다)
 sh ops/release.sh --publish   # gh release create v<버전> 까지 실행합니다
 SHISA_ARCHS=arm64 sh ops/release.sh   # 한 아키텍처만
 ```

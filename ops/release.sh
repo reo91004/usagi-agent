@@ -24,6 +24,8 @@ for a in $ARCHS; do FILES="$FILES $DIST/Usagi-$VER-$a.dmg"; done
 # 받은 파일이 맞는지 확인할 수 있게 SHA-256 목록도 함께 올린다
 (cd "$DIST" && shasum -a 256 $(for a in $ARCHS; do printf '%s ' "Usagi-$VER-$a.dmg"; done) > "SHA256SUMS-$VER.txt")
 FILES="$FILES $DIST/SHA256SUMS-$VER.txt"
+# dmg 에 담고 남은 .app(dist/app)은 지운다. 두면 Launchpad·Spotlight 에 우사기가 설치본과 함께 여러 개로 보인다
+rm -rf "$DIST/app"
 
 # Homebrew cask(reo91004/homebrew-tap 의 Casks/usagi-agent.rb 로 복사): 두 아키텍처 dmg 가 다 있을 때만
 CASK="$DIST/usagi-agent.rb"
