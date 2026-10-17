@@ -2,7 +2,7 @@
 //   뇌가 준비됐으면 말 걸기(더블클릭·패널 채팅·세션 창 입력)·브리핑 요약, 아니면 연결 안내 + 정해진 말(local-mode)
 //   코드 고치기·이어 하기는 features.code(뇌가 Codex·agy 면 그 명령, 아니면 Claude Code), 워크트리·백그라운드 에이전트는 coder.claude 로
 //   뒤에서 혼자 도는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)는 features.background — Claude Code 나 Codex 뇌
-//   MCP 커넥터(메일·이슈·Slack·캘린더 MCP)는 Claude Code 뇌, Codex·agy 뇌면 채팅에서만(넘길 수 있는 서버만 — cli-mcp.ts) — features.mcp, connectors[].needs
+//   MCP 커넥터(메일·이슈·Slack·캘린더 MCP)는 Claude Code 뇌, Codex·agy 뇌면 채팅·브리핑에서 읽기만(넘길 수 있는 서버만 — cli-mcp.ts) — features.mcp, connectors[].needs
 // 비밀값(키·토큰·ICS 주소)은 넣지 않는다. 있나 없나만.
 import type { Config } from "./config.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, commandOnPath, creditFailText, type KeyProvider } from "./providers.ts";
@@ -25,7 +25,7 @@ export type BrainStatus = {
 export type Features = {
   // 끝난 할 일 판정·할 일 진행 확인·지식그래프·프로필 학습. by = 돌리는 뇌(null = 안 돎)
   background: { by: FeatureBrain | null; ready: boolean | null; detail: string };
-  mcp: boolean;          // MCP 커넥터를 읽나(Claude Code 뇌, Codex·agy 뇌는 채팅에서만)
+  mcp: boolean;          // MCP 커넥터를 읽나(Claude Code 뇌, Codex·agy 뇌는 읽기만)
   code: boolean | null;  // 코드 고치기: 뇌가 Codex·agy 면 그 명령, 아니면 Claude Code 로그인(워크트리·백그라운드 에이전트는 Claude 만)
 };
 export type Status = {

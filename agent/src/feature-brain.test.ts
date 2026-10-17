@@ -229,10 +229,10 @@ test("지식그래프: Claude Code·Codex 가 아니면 증분·다듬기·견�
   assert.equal(rep.calls, 0);
 });
 
-test("캘린더 MCP 동기화: 뇌가 Claude Code 가 아니면 SDK 를 부르지 않고 예전 일정 유지(ok=false)", async () => {
+test("캘린더 MCP 동기화: 뇌가 Claude Code·Codex 가 아니면 SDK 를 부르지 않고 예전 일정 유지(ok=false)", async () => {
   resetSkipNotes();
   const src = mcpCalendarSource({ mode: "mcp", cap: "calendar", server: "cal", tools: { listEvents: "list_events" } } as any, noSdk);
-  const r = await src(withBrain("codex"), { from: ago(0), to: ago(-60) });
+  const r = await src(withBrain("agy"), { from: ago(0), to: ago(-60) });
   assert.deepEqual(r, { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 });
 });
 
@@ -288,7 +288,7 @@ test("끝난 할 일 판정: 뇌가 codex 면 codex 로 — 근거 검증·문�
   assert.equal(r.rejected.length, 1);
 });
 
-test("브리핑: 뇌가 Claude Code 가 아니면 MCP 출처(메일 등)는 지시에서 빠진다 — Claude Code 면 그대로", async () => {
+test("브리핑: 뇌가 Claude Code 가 아니고 Codex·agy 에 넘길 서버도 없으면 MCP 출처(메일 등)는 지시에서 빠진다 — Claude Code 면 그대로", async () => {
   const conns = { connectors: { mail: { mode: "mcp", server: "gmail" } } };
   const taskFor = async (provider: string) => {
     const cfg = withBrain(provider, conns);
@@ -300,7 +300,7 @@ test("브리핑: 뇌가 Claude Code 가 아니면 MCP 출처(메일 등)는 지�
     let task = "";
     const agent = new Agent(cfg, store, bus, slack, {
       think: async (_c: any, _s: any, t: string) => { task = t; return { bubble: "b", reply_md: "r", todos: [], done_todo_ids: [], proposals: [] }; },
-      git: async () => [], ready: () => new Set(["mail"]),
+      git: async () => [], ready: () => new Set(["mail"]), cliServers: () => [],
     } as any);
     await agent.runBriefing();
     return task;
@@ -319,10 +319,13 @@ test("withMcpBrain: 패널 연결 카드 — Codex·agy 는 넘길 수 있는 �
   assert.deepEqual(withMcpBrain(withBrain("gemini"), list, usable).map((c) => [c.ready, c.detail]), [[false, NEEDS_CLAUDE_MCP], [false, NEEDS_CLAUDE_MCP], [true, "ICS 1개"]]);
 });
 
-test("withMcpBrain: Codex·agy 뇌면 캘린더 MCP 는 동기화가 안 돌아 준비 안 됨(개요·상태·설정이 같이 쓴다)", () => {
+test("withMcpBrain: 캘린더 MCP 는 Codex 면 넘길 수 있을 때 준비됨, agy 면 동기화가 안 돌아 준비 안 됨(개요·상태·설정이 같이 쓴다)", () => {
   const list = [{ cap: "calendar", mode: "mcp", ready: true, detail: "MCP gcal", server: "gcal" }, { cap: "mail", mode: "mcp", ready: true, detail: "MCP mail", server: "mail" }];
   const [cal, mail] = withMcpBrain({ brain: { provider: "agy" } } as any, list, () => ["gcal", "mail"]);
   assert.deepEqual([cal.ready, mail.ready], [false, true]);
   assert.equal(cal.detail, CAL_MCP_CLAUDE_ONLY);
+  const [cx] = withMcpBrain({ brain: { provider: "codex" } } as any, list, () => ["gcal", "mail"]);
+  assert.equal(cx.ready, true);
+  assert.equal(withMcpBrain({ brain: { provider: "codex" } } as any, list, () => ["mail"])[0].ready, false);
   assert.deepEqual(withMcpBrain({ brain: { provider: "claude-code" } } as any, list).map((c) => c.ready), [true, true]);
 });

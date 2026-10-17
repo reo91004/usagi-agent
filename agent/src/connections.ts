@@ -206,7 +206,7 @@ export class Connections {
     if (keyIssue) rows.push({ id: "brain", label: "뇌(브리핑·채팅 모델)", group: "core", check: "local", checkedAt: at, state: "warn", detail: keyIssue });
     else rows.push({
       id: "brain", label: "뇌(브리핑·채팅 모델)", group: "core", check: "local", checkedAt: at, state: brainOk ? "ok" : "error",
-      detail: brainOk ? `${BRAIN_LABEL[provider] ?? provider}${provider === "local" ? " — 할 일 정리만, 도구 없음" : provider === "codex" || provider === "agy" ? " — 브리핑·채팅·뒤에서 하는 정리(MCP 연결은 채팅에서만)" : ""}`
+      detail: brainOk ? `${BRAIN_LABEL[provider] ?? provider}${provider === "local" ? " — 할 일 정리만, 도구 없음" : provider === "codex" || provider === "agy" ? " — 브리핑·채팅·뒤에서 하는 정리(MCP 연결은 읽기만)" : ""}`
         : provider === "codex" ? "codex 명령을 찾을 수 없어요" : provider === "agy" ? "agy 명령을 찾을 수 없어요" : provider === "genspark" ? "Genspark 키가 없어요(gsk login 을 하거나 키를 붙여 넣어 주세요)" : `${BRAIN_LABEL[provider] ?? provider} API 키가 없어요`,
     });
 
@@ -261,8 +261,8 @@ export class Connections {
         row.state = worst(states);
         row.detail = bits.join(" · ");
       }
-      // 브리핑의 MCP 읽기는 Claude Code 뇌로만 — Codex·agy 면 채팅에서만(넘길 수 있는 서버만), 그 밖의 뇌면 안 읽는다
-      // 넘길 수 있는 서버면 상태는 그대로 두고 「채팅에서만」만 붙인다(개요 카드·GET /status 와 같은 판정 — feature-brain.ts withMcpBrain)
+      // MCP 읽기는 Claude Code 뇌, Codex·agy 면 읽기만(넘길 수 있는 서버만), 그 밖의 뇌면 안 읽는다
+      // 넘길 수 있는 서버면 상태는 그대로 두고 읽기 전용 안내만 붙인다(개요 카드·GET /status 와 같은 판정 — feature-brain.ts withMcpBrain)
       if (x.mode === "mcp" && provider !== "claude-code") {
         const cli = provider === "codex" || provider === "agy";
         const [shown] = withMcpBrain(this.cfg, [{ cap, mode: x.mode, ready: st.ready, detail: "", server: x.server }], () => this.d.cliServers());

@@ -113,7 +113,7 @@ test("Connections: 뇌가 Codex 면 넘길 수 있는 MCP 커넥터는 그대로
   const { rows } = await c.list();
   assert.equal(byId(rows, "connector:mail").state, "ok");
   assert.equal(byId(rows, "connector:issues").state, "error"); // 서버가 등록 안 됨(원래 이유)
-  assert.match(byId(rows, "connector:mail").detail!, /^Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요.* · /);
+  assert.match(byId(rows, "connector:mail").detail!, /^Codex·Antigravity 뇌도 MCP 연결을 읽기 전용으로 읽어요.* · /);
   assert.match(byId(rows, "connector:issues").detail!, /^Codex·Antigravity 로 읽으려면 connectors 의 tools 에/);
   assert.equal(byId(rows, "connector:slack").state, "ok");
   const gm = (await make({}, { brain: { provider: "gemini" } }).c.list()).rows;
