@@ -174,6 +174,18 @@ export function shapeConnectors(list) {
   return out;
 }
 
+// 개요 「오늘 일정」: GET /dashboard meetings 중 오늘(로컬 날짜)에 시작하는 것, 시작 순. past = 이미 끝남
+export function shapeMeetings(list, now = Date.now()) {
+  const day = (ms) => new Date(ms).toDateString();
+  return arr(list)
+    .filter((m) => m && typeof m === 'object' && str(m.subject) && Number.isFinite(toMs(m.start)) && day(toMs(m.start)) === day(now))
+    .map((m) => ({
+      id: str(m.id), subject: m.subject, time: clockTime(m.start), endTime: clockTime(m.end),
+      link: str(m.link) && isSafeLink(m.link) ? m.link : null, past: Number.isFinite(toMs(m.end)) && toMs(m.end) < now, startMs: toMs(m.start),
+    }))
+    .sort((x, y) => x.startMs - y.startMs);
+}
+
 export function visibleSections(_vm) {
   return SECTIONS;
 }
@@ -312,6 +324,7 @@ export function shapeDashboard(raw, now = Date.now()) {
     today: { date: todayDate, items: todayItems, asked: today?.asked === true },
     todayGroups,
     todayDone,
+    meetings: shapeMeetings(r.meetings, now),
     research: shapeResearch(r.research, now),
     directives: shapeDirectives(r.directives, now),
   };

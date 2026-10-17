@@ -2,12 +2,13 @@
 import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
-import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
+import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, navGroups, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
 import { agentSteps } from '../src/setup-flow.js';
 import { renderSetup, clearApiDraft, readSlot, clearSlot } from './setup-view.js';
 import { mountModels } from './models-view.js';
+import { navIcon } from './nav-icons.js';
 import { createFocusView } from './focus-view.js';
 import { connectorAction, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { CANNED, cannedReply, connectSteps, hubItem, slotOk, EXTRAS } from '../src/ai-onboard.js';
@@ -103,6 +104,7 @@ function h(sel, props, ...kids) {
 }
 // 집중하기: 할 일 목록의 [집중하기] · 맨 아래 「오늘 집중」 · 주·월 기록(focus-view.js)
 const focusView = createFocusView({ h, cy });
+$('focus-slot').append(focusView.bar('header')); // 머리의 [집중하기]: 어느 화면에서든(상태는 focus-view 하나)
 
 // replaceChildren 에 null 을 넣으면 화면에 "null" 글자가 찍힌다
 function fill(el, ...kids) {
@@ -231,19 +233,47 @@ let setupAsked = false;
 let chat = initialChat();
 
 // ---- 탭 ----
+// 사이드바는 SECTIONS 에서 만든다: 위쪽은 자주 쓰는 화면, 맨 아래는 설정. 설치는 머리의 [설치] 단추로 연다
 const nav = $('nav');
+const navBottom = $('nav-bottom');
 const badges = {};
-for (const s of SECTIONS) {
-  badges[s] = h('span.badge');
-  nav.append(h('button', { type: 'button', role: 'tab', dataset: { section: s }, onclick: () => goto(s) }, h('span', { text: SECTION_LABELS[s] }), badges[s]));
+const navGroup = navGroups(SECTIONS);
+for (const s of SECTIONS) badges[s] = h('span.badge');
+badges.setup = $('setup-badge'); // 머리의 [설치] 단추 위
+for (const [box, ids] of [[nav, navGroup.main], [navBottom, navGroup.bottom]]) {
+  for (const s of ids) box.append(h('button', { type: 'button', role: 'tab', dataset: { section: s }, onclick: () => goto(s) }, navIcon(s), h('span', { text: SECTION_LABELS[s] }), badges[s]));
+}
+const navButtons = () => [...nav.children, ...navBottom.children];
+$('open-setup').addEventListener('click', () => openSetup());
+
+// ---- 설정 화면: 안쪽 탭(AI·캐릭터·알림·연결·작업 규칙·이 앱). settings.js 는 처음 열 때 불러온다 ----
+const SETTINGS_TABS = ['ai', 'char', 'notify', 'conn', 'rules', 'app'];
+let settingsTab = 'ai';
+try { const t = localStorage.getItem('settingsTab'); if (SETTINGS_TABS.includes(t)) settingsTab = t; } catch { /* 저장소 없음 */ }
+let settingsMod = null;
+function showSettingsTab(t) {
+  if (SETTINGS_TABS.includes(t)) settingsTab = t;
+  try { localStorage.setItem('settingsTab', settingsTab); } catch { /* 무시 */ }
+  for (const b of $('set-tabs').children) b.setAttribute('aria-selected', String(b.dataset.tab === settingsTab));
+  for (const p of $('sec-settings').querySelectorAll('.set-pane')) p.hidden = p.dataset.tab !== settingsTab;
+  if (settingsTab === 'ai') loadSisa();
+}
+for (const b of $('set-tabs').children) b.addEventListener('click', () => showSettingsTab(b.dataset.tab));
+async function enterSettings() {
+  showSettingsTab(settingsTab);
+  if (settingsMod) { settingsMod.refresh(); return; }
+  settingsMod = await import('./settings.js'); // 처음 불러올 때 스스로 데몬에서 읽어 온다
+  settingsMod.setNav({ setup: () => openSetup('extras'), aiTab: () => showSettingsTab('ai') });
 }
 
 function goto(s) {
   const prevSection = section;
+  if (s === 'models') settingsTab = 'ai'; // 예전 「모델」 탭
   section = normalizeSection(s) ?? section;
   if (!visibleSections(vm).includes(section)) section = 'overview';
   try { localStorage.setItem('section', section); } catch { /* 무시 */ }
-  for (const b of nav.children) b.setAttribute('aria-selected', String(b.dataset.section === section));
+  for (const b of navButtons()) b.setAttribute('aria-selected', String(b.dataset.section === section));
+  $('open-setup').classList.toggle('on', section === 'setup');
   for (const x of SECTIONS) $(`sec-${x}`).hidden = x !== section;
   $('content').classList.toggle('fill', section === 'chat');
   $('content').classList.toggle('chat-on', section === 'chat');
@@ -254,7 +284,7 @@ function goto(s) {
     loadSetupSettings();
     if (setupPhase === 'brain') detectAgents();
   }
-  if (section === 'models') loadSisa();
+  if (section === 'settings') enterSettings();
   if (section === 'chat') {
     scrollChat(true);
     renderChatLock();
@@ -269,7 +299,7 @@ function goto(s) {
 // 연결 안 된 기능의 탭은 숨긴다. 보고 있던 탭이 사라지면 개요로
 function renderNav() {
   const shown = visibleSections(vm);
-  for (const b of nav.children) b.hidden = !shown.includes(b.dataset.section);
+  for (const b of navButtons()) b.hidden = !shown.includes(b.dataset.section);
   if (!shown.includes(section)) goto('overview');
 }
 
@@ -324,6 +354,7 @@ function renderAll() {
   maybeOpenSetup();
   renderSetupView(false);
   renderOverview();
+  renderSettingsConnectors();
   renderProjects();
   renderTodos(); // 할 일 탭과 오늘 할 일 탭(같은 줄·같은 묶음)
   renderBadges();
@@ -341,28 +372,54 @@ function setBanner(text) {
 }
 
 // ---- 개요 ----
-function stat(num, label, sub, hot) {
-  return h(`div.card.stat${hot ? '.hot' : ''}`, null, h('div.num', { text: String(num) }), h('div.label', { text: label }), sub ? h(`div.sub${hot ? '.hot' : ''}`, { text: sub }) : null);
+function stat(num, label, sub, hot, live) {
+  return h(`div.card.stat${hot ? '.hot' : ''}`, null, h('div.num', { text: String(num), dataset: live ? { focusToday: '' } : undefined }), h('div.label', { text: label }), sub ? h(`div.sub${hot ? '.hot' : ''}`, { text: sub }) : null);
+}
+
+// 개요 맨 위 인사: 시간대 인사 + 오늘 날짜
+function greeting() {
+  const now = new Date();
+  const hr = now.getHours();
+  const hello = hr < 5 ? '늦은 시간이에요' : hr < 12 ? '좋은 아침이에요' : hr < 18 ? '좋은 오후예요' : '좋은 저녁이에요';
+  return h('div.greet', null, h('h1.greet-hello', { text: hello }), h('span.greet-date', { text: now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }) }));
+}
+
+// 오늘 일정 한 줄: 시각 · 제목(회의 링크가 있으면 눌러서 열기) · 끝난 건 흐리게
+function meetingRow(m) {
+  return h(`div.meeting${m.past ? '.past' : ''}`, null,
+    h('span.mt-time', { text: m.endTime ? `${m.time}–${m.endTime}` : m.time }),
+    h('span.mt-title', { text: m.subject }),
+    m.link ? h('a.small', { href: m.link, text: '참여' }) : null);
 }
 
 const PROPOSAL_LABEL = { pending: '대기', approved: '승인', held: '보류', running: '진행 중', done: '완료', failed: '실패' };
 const PROPOSAL_CHIP = { pending: 'accent', running: 'warn', done: 'ok', failed: 'err' };
 
 function renderOverview() {
-  const { stats, briefing, today, proposals } = vm;
+  const { stats, briefing, today, proposals, meetings } = vm;
   const el = $('sec-overview');
-  const active = vm.projects.filter((p) => p.sessions24h > 0 || p.commitsToday > 0).map((p) => p.name);
+  const nextMeeting = meetings.find((m) => !m.past);
+  const openToday = (today?.items ?? []).filter((it) => !it.done);
   el.replaceChildren(...[ // null(제안 없음 등)은 빼야 'null' 글자로 안 찍힘
+    greeting(),
     h('div.stats', null,
-      stat(stats.commitsToday, '오늘 커밋', vm.projects.filter((p) => p.commitsToday > 0).map((p) => `${p.name} ${p.commitsToday}`).join(' · ') || null),
-      stat(stats.openTodos, '열린 할 일', stats.p1Todos ? `P1 ${stats.p1Todos}개` : 'P1 없음', stats.p1Todos > 0),
-      stat(stats.activeProjects, '진행 중 프로젝트', active.slice(0, 3).join(', ') || null),
+      stat(meetings.length, '오늘 일정', nextMeeting ? `다음 ${nextMeeting.time} ${nextMeeting.subject}` : meetings.length ? '모두 끝났어요' : null),
+      stat(stats.openTodos, '이번 주 할 일', stats.p1Todos ? `P1 ${stats.p1Todos}개` : 'P1 없음', stats.p1Todos > 0),
+      stat(focusView.todayText(), '오늘 집중', null, false, true),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
     ...(researchSection() ?? []),
     ...(directivesSection() ?? []),
+    meetings.length ? h('h2', { text: '오늘 일정' }) : null,
+    meetings.length ? h('div.card.meetings', null, meetings.map(meetingRow)) : null,
     h('h2', null, h('span', { text: '오늘 할 일 ' }),
-      h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('today') })),
+      h('span.chip.click', { text: openToday.length ? `남은 ${openToday.length}개` : '아직 없음', role: 'button', onclick: () => goto('todos') })),
+    openToday.length
+      ? h('div.card.today-short', null,
+        openToday.slice(0, 5).map((it) => h('button.today-item', { type: 'button', onclick: () => goto('todos') },
+          h('span.ti-dot', { 'aria-hidden': 'true' }), h('span.ti-title', { text: it.title }))),
+        openToday.length > 5 ? h('div.muted.small.ti-more', { text: `외 ${openToday.length - 5}개` }) : null)
+      : null,
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
       h('button.ghost.small', { type: 'button', text: '지금 브리핑', onclick: async (ev) => {
         const b = ev.currentTarget; b.disabled = true; b.textContent = '브리핑 중…';
@@ -375,7 +432,6 @@ function renderOverview() {
         h('div.row.briefing-head', null, h('span.chip.accent', { text: `${briefing.time} · ${briefing.rel}` }), briefing.bubble ? h('span.muted', { text: briefing.bubble }) : null),
         md(h('div'), briefing.md || briefing.bubble))
       : h('div.card.empty', { text: '아직 브리핑이 없어요.' }),
-    permissionsSection(),
     proposals.length ? h('h2', { text: '제안' }) : null,
     proposals.length
       ? h('div.card', null, proposals.map((p) => h(`div.proposal${flash?.id === `proposal:${p.id}` && Date.now() < flash.until ? '.flash' : ''}`, { dataset: { id: p.id } },
@@ -384,7 +440,7 @@ function renderOverview() {
         p.repo ? h('span.muted.small', { text: p.repo }) : null,
         /^https:\/\//.test(p.result) ? h('a', { href: p.result, text: 'PR' }) : null)))
       : null,
-    ...(renderConnectors(vm.connectors) ?? []),
+    permissionsSection(),
   ].filter((c) => c != null && c !== false));
 }
 
@@ -546,7 +602,7 @@ function permissionsSection() {
       : h('div.card.empty.small', { text: permLoaded ? '항상 허용한 도구가 없어요. 승인 카드에서 [항상 허용]을 누르면 여기 생겨요.' : '불러오는 중…' }));
 }
 
-// 연결 카드: 기능마다 이름 · 상태 칩 · 맞는 주 동작(꺼져 있으면 [연결하기], 켜져 있으면 [연결 해제]).
+// 연결 카드(설정 > 연결): 기능마다 이름 · 상태 칩 · 맞는 주 동작(꺼져 있으면 [연결하기], 켜져 있으면 [연결 해제]).
 // 준비 안 된 건 이유와 [설정 안내]. [연결 해제]는 그 자리에서 한 번 더 묻는다(다시 그려도 열어 둔 확인은 그대로)
 let confirmingCap = '';
 let connNote = ''; // 방금 끊은 결과(다시 그려도 잠깐 남긴다)
@@ -586,7 +642,7 @@ function connectorActions(c) {
 function renderConnectors(list) {
   if (!list?.length) return null; // 예전 데몬: 필드가 없으면 카드도 없다
   return [
-    h('h2', { text: '연결' }),
+    h('h2', { text: '기능별 연결' }),
     h('div.card.connectors', null, list.map((c) => h(`div.conn-row${c.ready ? '' : '.not-ready'}`, { dataset: { cap: c.cap } },
       h('div.conn-head', null, h('span.conn-label', { text: c.label }), connectorChip(c),
         c.ready && c.detail ? h('span.muted.small.conn-detail', { text: c.detail }) : null,
@@ -597,6 +653,10 @@ function renderConnectors(list) {
     connNote ? h('p.small.conn-note', { role: 'status', text: connNote }) : null,
     h('p.muted.small.conn-foot', { text: `연결 해제는 ${who()} 설정에서만 지워요. Claude Code에 등록한 MCP 서버(claude mcp add)는 그대로 남아요.` }),
   ];
+}
+
+function renderSettingsConnectors() {
+  fill($('set-connectors'), renderConnectors(vm.connectors));
 }
 
 // ---- 설치 마법사 ----
@@ -2826,7 +2886,7 @@ function applyBrain(v) {
     if (section === 'chat') renderChat();
   }
   if (section === 'setup') renderSetupView(false);
-  if (section === 'models') modelsView.update();
+  if (section === 'settings' && settingsTab === 'ai') modelsView.update();
 }
 cy.brain?.().then(applyBrain).catch(() => {});
 cy.onBrain?.(applyBrain);
@@ -2868,7 +2928,7 @@ async function loadSisa() {
   } catch { /* 키 없으면 채팅을 막는다 */ }
   renderChatLock();
   if (section === 'chat') renderChat();
-  if (section === 'models') modelsView.show();
+  if (section === 'settings' && settingsTab === 'ai') modelsView.show();
 }
 
 // 대화 목록의 할 일 칩 제목(기록에 제목이 없을 때)
@@ -3088,6 +3148,7 @@ cy.onDashboard(loadSoon);
 cy.onSection(({ section: s, id } = {}) => {
   if (s === 'chat' && typeof id === 'string' && id) { openThread(id); return; } // 말풍선(호버 답) → 그 대화
   if (s === 'setup' && isSetupPhase(id)) { openSetup(id); if (id === 'brain') detectAgents(); return; } // 연결 안내 말풍선 → 마법사의 그 단계
+  if (s === 'settings' && SETTINGS_TABS.includes(id)) settingsTab = id; // 「모델」 탭이던 말풍선은 id 'ai'
   if (normalizeSection(s)) goto(s);
   if (s === 'todos' && typeof id === 'string' && id && openId !== id) toggleDetail(id);
 });
@@ -3183,7 +3244,7 @@ document.addEventListener('keydown', (e) => {
     if (next !== selectedId) selectThread(next);
   } else if (e.metaKey && /^[1-5]$/.test(e.key)) {
     e.preventDefault();
-    const shown = visibleSections(vm); // 숨긴 탭은 건너뛰고 보이는 순서대로
+    const shown = navGroups(visibleSections(vm)).main; // 사이드바 위쪽 순서대로
     if (shown[Number(e.key) - 1]) goto(shown[Number(e.key) - 1]);
   }
 });
@@ -3204,16 +3265,16 @@ function applySisa(v) {
   };
   renderChatLock();
 }
-// 설정 창에서 AI·연결을 끊으면 main 이 새 저장 모양을 보낸다
+// AI·연결을 끊으면 main 이 새 저장 모양을 보낸다
 cy.onSisa?.((v) => {
   if (!v || typeof v !== 'object') return;
   applySisa(v);
   if (v.done && typeof v.done === 'object') sisa.done = v.done;
   modelsView.update();
   if (section === 'setup') { setupKey = ''; renderSetupView(false); }
-  loadCalendars(); // 설정 창에서 캘린더를 뺐을 수도 있다
+  loadCalendars(); // 설정에서 캘린더를 뺐을 수도 있다
 });
-const modelsView = mountModels({ section: $('sec-models'), h, cy, getSisa: () => sisa, onSisa: applySisa, gotoSetup: () => openSetup(), getBrain: () => brain });
+const modelsView = mountModels({ section: $('set-ai-models'), voiceSection: $('set-voice'), h, cy, getSisa: () => sisa, onSisa: applySisa, gotoSetup: () => openSetup(), gotoRules: () => showSettingsTab('rules'), getBrain: () => brain });
 
 goto(section);
 renderAll();

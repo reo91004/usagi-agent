@@ -229,5 +229,5 @@ export function createFocusView({ h, cy }) {
   // 할 일 탭 / 오늘 할 일 탭에서 부른다
   cy.onFocus?.((p) => set(p));
   load();
-  return { bar, foot, load, isOpen: () => open };
+  return { bar, foot, load, isOpen: () => open, todayText: () => fmtDuration(todayLive(focus)) }; // todayText: 개요의 「오늘 집중」 칸(data-focus-today 로 1초마다 맞춰진다)
 }

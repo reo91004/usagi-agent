@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: cy-asset: cy-attach:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: cy-asset: cy-attach:; media-src blob: cy-asset:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>우사기 비서</title>
   <link rel="stylesheet" href="panel.css">
   <link rel="stylesheet" href="attach.css">
@@ -16,6 +16,7 @@
         <span id="brand-name">우사기 비서</span>
       </div>
       <nav id="nav" role="tablist" aria-label="섹션"></nav>
+      <nav id="nav-bottom" role="tablist" aria-label="설정"></nav>
       <div id="side-foot">
         <span id="conn" class="conn off" title="시사 꺼짐">시사 꺼짐</span>
       </div>
@@ -25,9 +26,10 @@
       <header id="top" class="drag">
         <h1 id="title">개요</h1>
         <span id="updated"></span>
+        <span id="focus-slot" class="nodrag"></span>
+        <button id="open-setup" type="button" class="ghost nodrag" title="이름·AI·캘린더·Slack 연결 (처음 한 번, 이후엔 다시 연결할 때)">설치<span id="setup-badge" class="badge"></span></button>
         <button id="open-session" type="button" class="ghost nodrag" title="코드를 고치는 작업(새 작업·이어 하기) 보기">작업 세션</button>
         <button id="refresh" type="button" class="ghost nodrag" title="새로고침 — Slack·메일을 지금 다시 읽어 할 일에 넣어요">새로고침</button>
-        <button id="open-settings" type="button" class="ghost nodrag" title="설정 — 모델·브리핑 출처·연결 상태 (⌘,)" aria-label="설정">⚙</button>
         <button id="close" type="button" class="ghost nodrag close" title="닫기 (Esc)" aria-label="닫기">✕</button>
       </header>
       <div id="banner" role="status" hidden></div>
@@ -75,11 +77,150 @@
           </div>
         </section>
 
-        <section id="sec-models" class="sec models" role="tabpanel" hidden></section>
+        <section id="sec-settings" class="sec" role="tabpanel" hidden>
+          <div id="set-bar">
+            <div id="set-tabs" role="tablist" aria-label="설정 종류">
+              <button type="button" role="tab" data-tab="ai">AI</button>
+              <button type="button" role="tab" data-tab="char">캐릭터</button>
+              <button type="button" role="tab" data-tab="notify">알림</button>
+              <button type="button" role="tab" data-tab="conn">연결</button>
+              <button type="button" role="tab" data-tab="rules">작업 규칙</button>
+              <button type="button" role="tab" data-tab="app">이 앱</button>
+            </div>
+            <span id="set-saved" role="status" aria-live="polite"></span>
+          </div>
+          <div id="set-banner" role="alert" hidden></div>
+          <div class="set-pane" data-tab="ai">
+      <section class="card" aria-labelledby="h-brains">
+        <h2 id="h-brains">연결된 AI</h2>
+        <p class="hint">끊으면 <span class="who">시사</span>가 그 AI를 더 쓰지 않아요. 지금 쓰던 AI면 「AI 없이 쓰기」로 바뀌어요. 바로 적용돼요.</p>
+        <div id="brains" class="conn-list"></div>
+      </section>
+      <div id="set-ai-models"></div>
+      <section class="card" aria-labelledby="h-models">
+        <h2 id="h-models">Claude Code 세부 모델</h2>
+        <p id="models-hint" class="hint" hidden></p>
+        <p id="models-note" class="hint">일마다 쓸 Claude 모델이에요. 바꾸면 바로 적용돼요. <span id="config-path"></span></p>
+        <div id="set-models" class="rows"></div>
+      </section>
+          </div>
+          <div class="set-pane" data-tab="char" hidden>
+      <section class="card" aria-labelledby="h-char">
+        <h2 id="h-char">캐릭터</h2>
+        <p class="hint">고른 캐릭터가 화면에 나오고, 말투와 정해진 말도 그 캐릭터대로 바뀌어요. 아래 「문구」에서 고친 문구는 그대로 써요.</p>
+        <div id="char-pick" class="char-pick" role="radiogroup" aria-label="캐릭터"></div>
+        <p class="hint char-new-hint">「＋ 새 캐릭터」로 이름·그림·말투를 직접 정해요. 카드의 ✎ 를 누르면 대사를 전부 고칠 수 있어요.</p>
+        <div id="char-editor" class="char-editor" hidden></div>
+      </section>
+      <div id="set-voice"></div>
+      <section class="card" aria-labelledby="h-phrases">
+        <h2 id="h-phrases">문구</h2>
+        <p class="hint">캐릭터가 정해진 때 하는 말이에요. 여러 줄이면 그중 하나를 골라요. <code>{title}</code> 같은 자리표시는 그 문구에 적힌 것만 쓸 수 있어요. 비우면 기본값 — 저장하면 바로 적용돼요.</p>
+        <div id="phrases" class="ph-groups"></div>
+      </section>
+          </div>
+          <div class="set-pane" data-tab="notify" hidden>
+      <section class="card" aria-labelledby="h-rem">
+        <h2 id="h-rem">오늘 할 일 알림</h2>
+        <p class="hint">오늘 할 일을 적어 달라거나, 남은 게 있다고 캐릭터가 알려 줘요. AI 연결 없이도 정해진 말로 알려요.</p>
+        <div id="rem-mode" class="toggles" role="radiogroup" aria-label="오늘 할 일 알림"></div>
+        <div id="rem-auto" class="rem-auto">
+          <label class="rem-line">그 뒤 <select id="rem-every" aria-label="몇 시간마다"></select> 마다 다시 알리기</label>
+          <div class="gl-add">
+            <input id="rem-times" type="text" placeholder="정한 시각에도 알리기 (예: 10:00, 15:30)" aria-label="알릴 시각">
+            <button id="rem-times-save" type="button" class="primary">저장</button>
+          </div>
+        </div>
+        <p id="rem-summary" class="hint"></p>
+        <div id="rem-err" class="ph-err" role="status"></div>
+      </section>
+      <section class="card" aria-labelledby="h-cal">
+        <h2 id="h-cal">일정 알림</h2>
+        <p class="hint">캘린더를 연결하면 일정 몇 분 전에 캐릭터가 춤추며 알려 줘요. 여러 개 고르면 그때마다 한 번씩 알려요.</p>
+        <div id="cal-on" class="rem-auto">
+          <div id="cal-mins" class="toggles" role="group" aria-label="몇 분 전에 알릴지"></div>
+          <div class="gl-add">
+            <input id="cal-custom" type="text" inputmode="numeric" placeholder="직접 적기 (분, 예: 20 · 하루 전 1440)" aria-label="몇 분 전(직접)">
+            <button id="cal-custom-add" type="button" class="primary">추가</button>
+          </div>
+        </div>
+        <label class="toggle cal-off-line"><input id="cal-off" type="checkbox">알림 끄기</label>
+        <p id="cal-summary" class="hint"></p>
+        <div id="cal-err" class="ph-err" role="status"></div>
+      </section>
+          </div>
+          <div class="set-pane" data-tab="conn" hidden>
+      <section class="card" aria-labelledby="h-conn">
+        <div class="card-head">
+          <h2 id="h-conn">연결 상태</h2>
+          <span id="conn-at" class="faint"></span>
+          <button id="check-all" type="button" class="ghost small">모두 다시 확인</button>
+        </div>
+        <p class="hint">안 되는 게 있으면 [설치 안내], 꺼져 있으면 [연결하기]를 눌러 설치 화면(메일·이슈는 안내 문서)에서 차근차근 연결해요. 비밀번호·토큰은 여기서 받지 않아요. [연결 해제]는 <span class="who">시사</span> 설정에서 그 연결과 저장된 토큰·주소를 지워요. Claude Code에 등록한 MCP 서버(claude mcp add)는 그대로 남아요.</p>
+        <div id="conn-core" class="conn-list"></div>
+        <h3>연결한 서비스</h3>
+        <div id="conn-used" class="conn-list"></div>
+        <details id="conn-other-wrap" hidden>
+          <summary id="conn-other-sum">그 밖의 서비스</summary>
+          <div id="conn-other" class="conn-list"></div>
+        </details>
+        <h3>이 컴퓨터</h3>
+        <div id="conn-local" class="conn-list"></div>
+        <p class="hint"><button id="open-setup" type="button" class="small ghost" title="이름·AI·캘린더·Slack·레포 폴더를 다시 연결해요">설치 다시 하기</button></p>
+      </section>
+      <div id="set-connectors"></div>
+      <section class="card" aria-labelledby="h-brief">
+        <h2 id="h-brief">브리핑에 넣을 출처</h2>
+        <p class="hint">끈 출처는 정기 브리핑에서 확인하지도, 말하지도 않아요.</p>
+        <div id="sources" class="toggles"></div>
+      </section>
+      <section class="card" aria-labelledby="h-local">
+        <h2 id="h-local">이 맥에서 읽는 것</h2>
+        <p class="hint">켠 것과 고른 폴더만 읽어요. 처음 설치하면 모두 꺼져 있어요.</p>
+        <div id="local-read" class="toggles"></div>
+        <p id="local-repos" class="hint"></p>
+        <p class="hint"><button id="open-repos" type="button" class="small ghost">레포 폴더 고치기</button></p>
+      </section>
+          </div>
+          <div class="set-pane" data-tab="rules" hidden>
+      <section id="am-card" class="card" aria-labelledby="h-am">
+        <h2 id="h-am">자동 머지</h2>
+        <p class="hint">여기 있는 레포는 ✓ 없이 머지까지 해요 — 채팅에서 시킨 머지, <span class="who">시사</span>가 고친 코드로 올린 PR 이 검사(실패·대기 중 검사·충돌·초안)를 통과하면 바로 머지해요. 채팅에서 「이 레포는 알아서 머지까지 해」·「X는 이제 머지 묻고 해」로도 바꿀 수 있어요.</p>
+        <p id="am-hint" class="hint" hidden>코드 고치기·머지는 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 설치 탭에서 연결하면 여기서 고를 수 있어요.</p>
+        <div id="am-list" class="gl-list"></div>
+        <div class="gl-add">
+          <input id="am-add-text" type="text" placeholder="owner/name (예: my-name/my-app)" aria-label="자동 머지할 레포">
+          <button id="am-add" type="button" class="primary">넣기</button>
+        </div>
+        <div id="am-err" class="ph-err" role="status"></div>
+      </section>
+      <section class="card" aria-labelledby="h-gl">
+        <div class="card-head">
+          <h2 id="h-gl">행동 지침</h2>
+          <span id="gl-count" class="faint"></span>
+        </div>
+        <p class="hint">내가 정한 말투·답 모양·일하는 법이에요. 켜 둔 지침은 대화·브리핑·코드 작업 프롬프트에 늘 붙어요(범위대로). 부딪치면 아래쪽(최근) 것이 이겨요. 나에 대해 배운 사실(프로필·지식그래프)과는 따로예요.</p>
+        <div id="gl-list" class="gl-list"></div>
+        <div class="gl-add">
+          <input id="gl-add-text" type="text" placeholder="예: 답은 짧게, 표는 쓰지 않기" aria-label="새 지침">
+          <select id="gl-add-scope" aria-label="적용 범위"></select>
+          <button id="gl-add" type="button" class="primary">넣기</button>
+        </div>
+      </section>
+          </div>
+          <div class="set-pane" data-tab="app" hidden>
+      <section class="card" aria-labelledby="h-app">
+        <h2 id="h-app">이 앱</h2>
+        <p class="hint" id="app-version"></p>
+        <div id="app-prefs" class="toggles"></div>
+        <p class="hint"><button id="start-tour" type="button" class="small ghost" title="캐릭터가 사용법을 하나씩 보여 줘요">사용법 다시 보기</button></p>
+        <p id="app-hint" class="hint" hidden></p>
+      </section>
+          </div>
+        </section>
       </div>
     </main>
   </div>
   <script type="module" src="panel.js"></script>
-  <script type="module" src="panel-settings.js"></script>
 </body>
 </html>
