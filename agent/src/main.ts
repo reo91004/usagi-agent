@@ -180,7 +180,7 @@ const settings = new Settings(cfg, { onChange: (keys) => {
   if (keys.includes("onboarded") && modelWorkAllowed(cfg)) setTimeout(() => onboardedNow(), 0); // 마법사를 막 마침 → 첫 정리
   else if (keys.includes("readSessions") && sessionsAllowed(cfg)) setTimeout(() => ingest(), 0);
   if (keys.includes("slackMuted")) syncMuted(store, cfg.slackMuted);
-  if (keys.some((k) => k === "sshHosts" || k === "jobDirs")) setTimeout(pollJobHosts, 30e3).unref(); // 새 서버는 2분을 기다리지 않고 곧 한 번
+  if (keys.some((k) => k === "sshHosts" || k === "jobDirs")) { jobIdle.clear(); setTimeout(pollJobHosts, 30e3).unref(); } // 새 서버는 2분을 기다리지 않고 곧 한 번
   if (keys.some((k) => k === "sessionHosts" || k === "jobDirs")) setTimeout(pollSessionHosts, 30e3).unref();
   if (keys.includes("connectors")) reloadConnectors(); // 연결(MCP 서버·캘린더 시간대)은 다시 읽어 데몬을 다시 켠다(launchd 아래일 때)
   if (keys.includes("tineGraph")) setTimeout(() => void writeNotes(), 5e3).unref(); // 새 그래프에 곧 한 번 쓴다
@@ -437,14 +437,14 @@ const ingestUnlessFresh = () => { if (Date.now() - lastIngestAt >= cfg.ingestInt
 const health = new McpHealth({ urls: () => connectorServerUrls(cfg.connectors) });
 
 // 이벤트 루프 멈춤 감시: 동기 작업이 2초 넘게 데몬을 붙잡으면(패널이 '연결 안 됨'으로 보임) 로그로 남긴다.
-// 단조 시계(performance.now) 기준. 맥이 잠들면 단조 시계는 거의 안 가고 벽시계만 크게 뛴다. 그건 멈춤이 아니다(log.ts stallLag)
+// 5초마다 한 번 깨어 지난 간격의 초과분(lag)을 본다. 단조 시계(performance.now) 기준. 맥이 잠들면 단조 시계는 거의 안 가고 벽시계만 크게 뛴다. 그건 멈춤이 아니다(log.ts stallLag)
 let tickMono = performance.now(), tickWall = Date.now();
 setInterval(() => {
   const mono = performance.now(), wall = Date.now();
-  const lag = stallLag(mono - tickMono, wall - tickWall);
+  const lag = stallLag(mono - tickMono, wall - tickWall, 5000);
   if (lag > 2000) console.warn(`[stall] 데몬이 ${(lag / 1000).toFixed(1)}초 멈췄어요`);
   tickMono = mono; tickWall = wall;
-}, 1000).unref();
+}, 5000).unref();
 let authSkipLogged = false;
 const brief = asRoutine(safe("briefing", async () => {
   if (!modelWorkAllowed(cfg)) return; // 설치 마법사를 마치기 전(정기 브리핑은 말풍선도 없이 조용히)
@@ -605,6 +605,9 @@ function jobsRunning(host: string, running: RunningJob[]) {
 }
 const jobHostDown = new Set<string>(); // 끊긴 서버는 상태가 바뀔 때만 로그
 const jobBackoff = hostBackoff(2 * 60e3); // 끊긴 서버는 4·8·16·30분 간격으로(성공하면 2분)
+// 도는 작업·끝난 작업·돌고 있는 tmux 가 없는 확인이 JOB_IDLE_N 번 이어지면 그 서버는 10분마다만 본다. 뭔가 보이면 2분으로 복귀
+const JOB_IDLE_N = 3, JOB_IDLE_MS = 10 * 60e3;
+const jobIdle = new Map<string, { n: number; last: number }>();
 let jobsBusy = false;
 async function pollJobHosts() {
   if (jobsBusy) return;
@@ -612,8 +615,12 @@ async function pollJobHosts() {
   try {
     for (const host of cfg.jobHosts) {
       if (!jobBackoff.due(host)) continue;
+      const idle = jobIdle.get(host);
+      if (idle && idle.n >= JOB_IDLE_N && Date.now() - idle.last < JOB_IDLE_MS - 60e3) continue;
       try {
         const { done, running, tmux } = await pullJobs(host, undefined, cfg.jobDirs[host]);
+        const quiet = !done.length && !running.length && !tmux.some((s) => s.running);
+        jobIdle.set(host, { n: quiet ? (idle?.n ?? 0) + 1 : 0, last: Date.now() });
         tmuxSeen[host] = { at: new Date().toISOString(), sessions: tmux };
         jobsRunning(host, running);
         for (const j of done) jobDone(j);

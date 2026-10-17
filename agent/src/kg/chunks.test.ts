@@ -69,6 +69,12 @@ test("packItems: 순서 유지, 목표 크기 이하, 뒤에 붙여도 앞 청�
   assert.ok(cs[0].text.startsWith("[09-10 09:00] 사용자:"), "KST 시각");
 });
 
+test("claudeItems·codexItems: 문자열이든 줄 반복자든 같은 결과", () => {
+  const raw = claude("s1", "/r/app");
+  assert.deepEqual(claudeItems(raw.split("\n"), "x"), claudeItems(raw, "x"));
+  assert.deepEqual(codexItems(["", "{oops"], "c"), codexItems("\n{oops", "c"));
+});
+
 test("scanSessions: 전체 기간, 서브에이전트는 부모 세션 근거로, 데몬 세션 제외, 바뀐 것만 다시", async () => {
   const root = mkdtempSync(join(tmpdir(), "kg-scan-"));
   const proj = join(root, "claude", "-r-app");

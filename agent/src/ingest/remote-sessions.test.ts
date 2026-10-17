@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Store } from "../store.ts";
 import { scanSessions } from "../kg/chunks.ts";
 import { ingestSessions } from "./sessions.ts";
-import { listCmd, parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchBatch } from "./remote-sessions.ts";
+import { checkCmd, listCmd, parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchBatch } from "./remote-sessions.ts";
 import { execFileSync } from "node:child_process";
 
 test("parseList: 정해진 두 폴더 아래 셸에 안전한 .jsonl 만, wc 의 total 줄은 뺀다", () => {
@@ -41,7 +41,11 @@ test("syncRemoteSessions: 늘어난 만큼만 받고, 줄었으면 처음부터,
   const remote = new Map<string, string>([[".claude/projects/p/a.jsonl", "a1\n"], [".codex/sessions/2026/b.jsonl", "b1\n"]]);
   const calls: [string, number][] = [];
   let ssh = 0;
-  const run = async () => [...remote].map(([rel, s]) => `${Buffer.byteLength(s)} ${rel}`).join("\n");
+  let checks = 0;
+  const run = async (a: string[]) => {
+    if (a[2].includes("head -c")) { checks++; return [...remote.keys()].filter((r) => a[2].includes(`'${r}'`)).join("\n"); } // 새 파일 검사: 전부 사람 세션
+    return [...remote].map(([rel, s]) => `${Buffer.byteLength(s)} ${rel}`).join("\n");
+  };
   const fetch: FetchBatch = async (host, items) => {
     assert.equal(host, "gpu1");
     ssh++;
@@ -57,10 +61,12 @@ test("syncRemoteSessions: 늘어난 만큼만 받고, 줄었으면 처음부터,
   assert.equal(await sync(), 2);
   assert.deepEqual(calls.splice(0), [[".claude/projects/p/a.jsonl", 0], [".codex/sessions/2026/b.jsonl", 0]]);
   assert.equal(ssh, 1); // 바뀐 파일이 둘이어도 받기는 한 번
+  assert.equal(checks, 1); // 새 파일 검사도 한 번
 
   remote.set(".claude/projects/p/a.jsonl", "a1\na2\n");
   assert.equal(await sync(), 1);
   assert.deepEqual(calls.splice(0), [[".claude/projects/p/a.jsonl", 3]]);
+  assert.equal(checks, 1); // 이미 받아 둔 파일은 다시 검사하지 않는다
   assert.equal(readFileSync(local(".claude/projects/p/a.jsonl"), "utf8"), "a1\na2\n");
 
   remote.set(".claude/projects/p/a.jsonl", "new\n");
@@ -68,6 +74,9 @@ test("syncRemoteSessions: 늘어난 만큼만 받고, 줄었으면 처음부터,
   assert.deepEqual(calls.splice(0), [[".claude/projects/p/a.jsonl", 0]]);
   assert.equal(readFileSync(local(".claude/projects/p/a.jsonl"), "utf8"), "new\n");
 
+  const emptyList = syncRemoteSessions("gpu1", { run: async () => "", fetch, root });
+  assert.equal(await emptyList, 0);
+  assert.equal(existsSync(local(".codex/sessions/2026/b.jsonl")), true); // 서버 목록이 통째로 비면 지우지 않는다
   remote.delete(".codex/sessions/2026/b.jsonl");
   assert.equal(await sync(), 0);
   assert.equal(existsSync(local(".codex/sessions/2026/b.jsonl")), false);
@@ -143,10 +152,40 @@ test("listCmd: 공용 계정은 cwd 가 내 폴더나 그 아래인 기록만 �
   put(".codex/sessions/2026/10/17/rollout-exec.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b`, originator: "codex_exec", source: "exec" } });
   put(".codex/sessions/2026/10/17/rollout-sub.jsonl", { type: "session_meta", payload: { cwd: `${home}/reo/b`, originator: "codex-tui", source: { subagent: { thread_spawn: {} } } } });
   put(".claude/projects/-h-reo-a/sdk.jsonl", { type: "user", cwd: `${home}/reo/a`, entrypoint: "sdk-cli" });
-  const list = (mine?: string) => parseList(execFileSync("sh", ["-c", listCmd(mine)], { env: { ...process.env, HOME: home } }).toString()).map((f) => f.rel).sort();
+  const sh = (c: string) => execFileSync("sh", ["-c", c], { env: { ...process.env, HOME: home } }).toString();
+  const list = (mine?: string) => {
+    const rels = parseList(sh(listCmd())).map((f) => f.rel);
+    return sh(checkCmd(rels, mine)).split("\n").filter(Boolean).sort();
+  };
   assert.deepEqual(list("~/reo"), [".claude/projects/-h-reo-a/mine.jsonl", ".claude/projects/-h/moved.jsonl", ".codex/sessions/2026/10/17/rollout-a.jsonl"]);
   assert.deepEqual(list(`${home}/reo`), list("~/reo")); // 절대 경로로 적어도 같다
   assert.equal(list().length, 6); // 개인 계정은 남의 폴더도 받되, 프로그램이 돌린 세션 셋은 빼고
+});
+
+test("syncRemoteSessions: 거른 파일(프로그램 세션)은 판정을 기록해 다시 검사하지 않고, 두 배 넘게 자라면 다시 본다", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cy-judged-"));
+  const rels = { h: ".claude/projects/p/h.jsonl", a: ".claude/projects/p/auto.jsonl" };
+  let autoSize = 100;
+  const seen: string[] = [];
+  const run = async (c: string[]) => {
+    if (!c[2].includes("head -c")) return `1 ${rels.h}\n${autoSize} ${rels.a}`;
+    seen.push(c[2]);
+    return rels.h; // auto 는 서버 검사에서 걸러짐
+  };
+  const fetch: FetchBatch = async (_h, items) => { for (const i of items) writeFileSync(i.to, "x"); };
+  assert.equal(await syncRemoteSessions("g", { run, fetch, root }), 1);
+  assert.equal(seen.length, 1);
+  assert.equal(await syncRemoteSessions("g", { run, fetch, root }), 0);
+  assert.equal(seen.length, 1); // 사람 세션(맥에 있음)·프로그램 세션(기록됨) 모두 다시 검사하지 않음
+  autoSize = 250;
+  await syncRemoteSessions("g", { run, fetch, root });
+  assert.equal(seen.length, 2);
+  assert.ok(seen[1].includes("auto.jsonl") && !seen[1].includes("h.jsonl"));
+  writeFileSync(join(root, "g", ".judged.json"), "{깨짐"); // 깨진 기록은 처음부터 다시 판정(동기화는 멈추지 않는다)
+  await syncRemoteSessions("g", { run, fetch, root });
+  assert.equal(seen.length, 3);
+  await syncRemoteSessions("g", { run, fetch, root, mine: "~/reo" }); // 공용 계정 내 폴더가 바뀌면 다시 판정
+  assert.equal(seen.length, 4);
 });
 
 test("syncRemoteSessions: 공용 계정 이름이 이상하면 ssh 전에 멈춘다", async () => {

@@ -139,7 +139,7 @@ export function awayAwareBriefing(o: {
   idleSec: () => Promise<number>; inHours: () => boolean; run: () => unknown;
   awayMs?: number; recheckMs?: number; later?: (fn: () => void, ms: number) => void;
 }) {
-  const { awayMs = 60 * 60e3, recheckMs = 5 * 60e3, later = (fn, ms) => { setTimeout(fn, ms).unref(); } } = o;
+  const { awayMs = 60 * 60e3, recheckMs = 10 * 60e3, later = (fn, ms) => { setTimeout(fn, ms).unref(); } } = o;
   let waiting = false;
   const check = async () => {
     if (!o.inHours()) { waiting = false; return; }

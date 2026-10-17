@@ -67,13 +67,15 @@ test("pullJobs: 끝난 것(D)은 읽고 지우고, 도는 것(R)은 두되 끊�
     { id: "20261017-1-3", name: "긴 학습", host: "gpu1", start: 1792171509, alive: true, cwd: "/home/u/exp", cmd: "python t.py" },
     { id: "20261017-1-4", name: "죽은 학습", host: "gpu1", start: 1792171000, alive: false },
   ]);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1); // 지우기 ssh 는 따로 나가지 않는다
   assert.deepEqual(calls[0].slice(0, 2), ["--", "gpu1"]);
-  assert.equal(calls[1][2], "cd ~/.usagi-agent/jobs && rm -f -- '20261016-1-1.json' '20261016-1-2.json' 'broken.json' '20261017-1-4.running' 'bad.running'");
-  // 끝난 게 없고 도는 것만 있으면 지우지 않는다
+  // 지우기는 다음 목록 ssh 명령 앞에 합쳐서, 그 다음엔 없다
   const quiet: string[][] = [];
   assert.deepEqual(await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; }), { done: [], running: [], tmux: [] });
   assert.equal(quiet.length, 1);
+  assert.ok(quiet[0][2].startsWith("(cd ~/.usagi-agent/jobs && rm -f -- '20261016-1-1.json' '20261016-1-2.json' 'broken.json' '20261017-1-4.running' 'bad.running'); "));
+  await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; });
+  assert.ok(!quiet[1][2].includes("rm -f"));
   await assert.rejects(pullJobs("-oProxyCommand=x", run), /jobHosts/);
 });
 
@@ -166,8 +168,8 @@ test("usagi-run 이 남긴 파일 → pullJobs(원격 명령을 실제 sh 로) �
   };
   const { done } = await pullJobs("gpu1", localSh);
   assert.deepEqual(done.map((j) => [j.name, j.code, j.host]).sort(), [["학습 A", 0, "gpu1"], ["학습 B", 1, "gpu1"]]);
+  assert.deepEqual(await pullJobs("gpu1", localSh), { done: [], running: [], tmux: [] }); // 이 호출 앞머리에서 지운다
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
-  assert.deepEqual(await pullJobs("gpu1", localSh), { done: [], running: [], tmux: [] });
   // 폴더가 아직 없는 서버도 조용히 빈 목록
   assert.deepEqual(await pullJobs("gpu1", async (a) => spawnSync("sh", ["-c", a[2]], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "empty-")) }, encoding: "utf8" }).stdout), { done: [], running: [], tmux: [] });
 });
@@ -192,6 +194,7 @@ test("usagi-run: 도는 동안 .running 표시(pullJobs 가 살아 있음으로 
   assert.equal(done[0].id, mid.running[0].id); // 도는 중 표시와 같은 id → 같은 노드
   assert.equal(done[0].cwd, realpathSync(work));
   assert.deepEqual([...done[0].files!].sort(), ["log.txt", "out/m.json"]);
+  await pullJobs("gpu1", localSh); // 지우기는 다음 목록 호출 앞에서
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
 });
 
@@ -206,6 +209,7 @@ test("usagi-run: 프로세스가 끝 기록 없이 죽으면 표시만 남고 pu
   const { running } = await pullJobs("gpu1", localSh);
   assert.equal(running.length, 1);
   assert.equal(running[0].alive, false);
+  await pullJobs("gpu1", localSh);
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
 });
 

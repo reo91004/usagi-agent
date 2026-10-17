@@ -2,11 +2,11 @@
 // (ingestSessions·지식그래프 scanSessions)로 읽는다. ~/.cy-agent/remote-sessions/<서버>/ 아래에 서버 홈과 같은 상대 경로로 둔다.
 //   기록은 뒤에 덧붙기만 하는 JSONL 이라 받아 둔 크기 뒤부터(tail -c) 늘어난 만큼만 받는다. 서버 쪽이 더 작으면 처음부터.
 //   바뀐 파일은 서버당 ssh 한 번으로 묶어 받는다(파일마다 「F<TAB>경로<TAB>시작<TAB>바이트 수」 줄 + 그만큼의 본문).
-//   서버에서 최근 SINCE_DAYS 일 안에 바뀐 파일만 받고, 그 목록에서 빠진 파일은 받아 둔 쪽에서도 지운다.
+//   서버에서 최근 SINCE_DAYS 일 안에 바뀐 파일만 받고, 그 목록에서 빠진 파일은 받아 둔 쪽에서도 지운다(목록이 통째로 비면 지우지 않는다).
 // 서버 → 맥 포트는 열지 않는다(jobs.ts 와 같은 ssh BatchMode). 서버가 준 파일 이름은 믿지 않는 입력:
 // 정해진 두 폴더 아래, 셸에 안전한 글자만 받는다(그래야 원격 명령에 따옴표만 씌워 넣을 수 있다).
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "../config.ts";
 import { okJobDir, okJobHost, runSsh, sshArgs, type RunSsh } from "../jobs.ts";
@@ -14,6 +14,7 @@ import { okJobDir, okJobHost, runSsh, sshArgs, type RunSsh } from "../jobs.ts";
 export const SINCE_DAYS = 14; // ingestSessions 기본 창과 같다
 export const REMOTE_ROOT = join(HOME_DIR, "remote-sessions");
 const FETCH_TIMEOUT_MS = 10 * 60e3;
+const JUDGED = ".judged.json"; // 서버 폴더 안, 받지 않기로 한 파일 → 그때 크기
 const BATCH = 200; // 한 ssh 에 싣는 파일 수(원격 명령줄 길이 상한 안쪽)
 
 export const remoteSessionDirs = (host: string, root = REMOTE_ROOT) =>
@@ -25,17 +26,20 @@ export const sessionDirs = (cfg: Pick<Config, "claudeProjectsDir" | "codexSessio
   ...cfg.sessionHosts.map((host) => ({ ...remoteSessionDirs(host, root), host })),
 ];
 
-// 「크기 상대경로」 한 줄씩(POSIX find·grep·head·wc 만). 폴더가 없으면 빈 출력.
+// 목록: 「크기 상대경로」 한 줄씩(POSIX find·wc 만, 폴더가 없으면 빈 출력). 파일 안은 열지 않는다.
+// 거르기(checkCmd)는 맥에 아직 없고 거른 기록(JUDGED)에도 없는 새 파일만 서버에서 검사한다.
 // 프로그램이 돌린 세션(codex exec·Codex 하위 에이전트·claude -p)은 받지 않는다: 수집(sessions.ts)이 사람 대화로 세지 않아 받아도 버려진다.
 //   그 표시는 앞쪽(Codex 첫 줄 session_meta, Claude 는 줄마다 entrypoint)에 있어 앞 64KB 만 본다.
 // mine(공용 계정의 내 폴더, jobs.ts sharedMineDir): 기록 안에 cwd 가 내 폴더나 그 아래인 파일만 — 남의 세션은 이 맥으로 받지 않는다.
-//   cwd 는 앞쪽에 없을 수 있어(긴 제목 줄, 홈에서 시작해 옮겨 간 세션) 파일 전체를 보되 grep -l 은 첫 일치에서 멈춘다. mine 은 okJobDir 를 지난 글자뿐이라 따옴표로 넣는다
-const FIND = `find .claude/projects .codex/sessions -type f -name '*.jsonl' -mtime -${SINCE_DAYS}`;
+//   cwd 는 앞쪽에 없을 수 있어(긴 제목 줄, 홈에서 시작해 옮겨 간 세션) 파일 전체를 보되 grep -q 는 첫 일치에서 멈춘다. mine 은 okJobDir 를 지난 글자뿐이라 따옴표로 넣는다
 const AUTO = `-e '"originator":"codex_exec"' -e '"source":"exec"' -e '"source":{"subagent"' -e '"entrypoint":"sdk-cli"'`;
-const SIZES = `while IFS= read -r f; do head -c 65536 "$f" | grep -qF ${AUTO} || wc -c "$f"; done; true`;
-export const listCmd = (mine?: string) => !mine
-  ? `cd && ${FIND} -print 2>/dev/null | ${SIZES}`
-  : `cd && M=${mine.startsWith("~/") ? `"$HOME"/'${mine.slice(2)}'` : `'${mine}'`} && ${FIND} -exec grep -lF -e "\\"cwd\\":\\"$M\\"" -e "\\"cwd\\":\\"$M/" {} + 2>/dev/null | ${SIZES}`;
+export const listCmd = () => `cd && find .claude/projects .codex/sessions -type f -name '*.jsonl' -mtime -${SINCE_DAYS} -exec wc -c {} + 2>/dev/null; true`;
+// rels 중 받을 것(사람 세션, mine 이면 내 폴더 것)의 경로만 한 줄씩
+export const checkCmd = (rels: string[], mine?: string) => {
+  const own = mine === undefined ? "" : `grep -qF -e "\\"cwd\\":\\"$M\\"" -e "\\"cwd\\":\\"$M/" "$f" && `;
+  const m = mine === undefined ? "" : `M=${mine.startsWith("~/") ? `"$HOME"/'${mine.slice(2)}'` : `'${mine}'`}; `;
+  return `cd && ${m}for f in ${rels.map((r) => `'${r}'`).join(" ")}; do ${own}! head -c 65536 "$f" | grep -qF ${AUTO} && echo "$f"; done; true`;
+};
 const SAFE_REL = /^\.(claude\/projects|codex\/sessions)\/[A-Za-z0-9_.\/-]+\.jsonl$/;
 
 export type RemoteFile = { rel: string; size: number };
@@ -115,7 +119,23 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
   const { run = runSsh, fetch = fetchBatch, root = REMOTE_ROOT, mine } = deps;
   if (mine !== undefined && !okJobDir(mine)) throw new Error(`jobDirs 경로가 이상해요: ${mine}`);
   const base = join(root, host);
-  const files = parseList(await run(["--", host, listCmd(mine)], 30e3));
+  const all = parseList(await run(["--", host, listCmd()], 30e3));
+  // 판정: 맥에 이미 있으면 받기로 한 파일, JUDGED 에 있으면 거른 파일(그때 크기의 2배 넘게 자라면 다시 본다 — 공용 계정에서 홈에서 시작해 내 폴더로 옮겨 오는 세션)
+  const judgedPath = join(base, JUDGED);
+  // 깨졌거나 공용 계정 내 폴더(mine)가 바뀌었으면 처음부터 다시 판정한다
+  let judged: Record<string, number> = {};
+  try { const j = JSON.parse(readFileSync(judgedPath, "utf8")); if (j?.mine === (mine ?? null) && j.files && typeof j.files === "object") judged = j.files; } catch { /* 없거나 깨짐 */ }
+  const fresh = all.filter((f) => !existsSync(join(base, f.rel)) && !(f.rel in judged && f.size <= 2 * judged[f.rel]));
+  const wanted = new Set<string>();
+  for (let i = 0; i < fresh.length; i += BATCH) {
+    const out = await run(["--", host, checkCmd(fresh.slice(i, i + BATCH).map((f) => f.rel), mine)], 60e3);
+    for (const l of out.split("\n")) if (SAFE_REL.test(l)) wanted.add(l);
+  }
+  const nextJudged: Record<string, number> = {};
+  for (const f of all) if (!wanted.has(f.rel) && f.rel in judged) nextJudged[f.rel] = judged[f.rel];
+  for (const f of fresh) if (!wanted.has(f.rel)) nextJudged[f.rel] = f.size;
+  if (fresh.length || Object.keys(judged).length !== Object.keys(nextJudged).length || !existsSync(judgedPath)) { mkdirSync(base, { recursive: true, mode: 0o700 }); writeFileSync(judgedPath, JSON.stringify({ mine: mine ?? null, files: nextJudged })); }
+  const files = all.filter((f) => !(f.rel in nextJudged));
   const keep = new Set<string>();
   const todo: FetchItem[] = [];
   for (const f of files) {
@@ -127,6 +147,12 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
     todo.push({ rel: f.rel, from: have < f.size ? have : 0, to });
   }
   for (let i = 0; i < todo.length; i += BATCH) await fetch(host, todo.slice(i, i + BATCH));
+  // 서버 목록이 통째로 비면(find 실패·일시 오류일 수 있다) 받아 둔 것을 지우지 않고 로그만. 서버가 정말 다 지웠으면 다음 정상 목록에서 정리된다
+  if (!all.length) {
+    const n = [...walk(base)].length;
+    if (n) console.warn(`[sessions] ${host} 목록이 비었어요 — 받아 둔 ${n}개는 그대로 둬요`);
+    return todo.length;
+  }
   for (const p of walk(base)) if (!keep.has(p)) unlinkSync(p);
   return todo.length;
 }

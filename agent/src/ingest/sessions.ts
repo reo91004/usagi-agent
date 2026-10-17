@@ -43,17 +43,25 @@ function textOf(content: unknown, kind: "text" | "input_text" | "output_text"): 
 // readFileSync(…, "utf8") 하면 오류 대신 프로세스째 죽는다(PartitionAlloc OOM, SIGTRAP).
 // 문자열로 만들 수 없을 만큼 긴 줄은 빈 줄로 낸다.
 // from 바이트부터 읽고, end 는 그 줄 다음 바이트 위치(줄바꿈으로 끝나지 않은 마지막 줄은 end = -1).
+const MAX_LINE = 8 << 20;
 function* readLinesFrom(path: string, from = 0): Generator<{ line: string; end: number }> {
   const fd = openSync(path, "r");
   try {
     const buf = Buffer.alloc(1 << 20);
     let parts: Buffer[] = [];
+    let size = 0, over = false; // 한 줄이 MAX_LINE 을 넘으면 그 줄은 모으지 않고 버린다(읽은 자리는 앞으로)
     let base = from; // buf[0] 의 파일 내 위치
     let n: number;
+    const add = (b: Buffer) => {
+      if (over) return;
+      size += b.length;
+      if (size > MAX_LINE) { over = true; parts = []; } else parts.push(Buffer.from(b));
+    };
     const flush = function* (end: number) {
+      if (over) { over = false; size = 0; yield { line: "", end }; return; }
       if (!parts.length) return;
       const line = parts.length === 1 ? parts[0] : Buffer.concat(parts);
-      parts = [];
+      parts = []; size = 0;
       let text = "";
       try { text = line.toString("utf8"); } catch { /* 너무 긴 줄: 빈 줄로 넘겨 읽은 자리만 앞으로 */ }
       yield { line: text, end };
@@ -61,11 +69,11 @@ function* readLinesFrom(path: string, from = 0): Generator<{ line: string; end: 
     while ((n = readSync(fd, buf, 0, buf.length, base)) > 0) {
       let start = 0;
       for (let i = buf.indexOf(10, 0); i !== -1 && i < n; i = buf.indexOf(10, start)) {
-        parts.push(Buffer.from(buf.subarray(start, i)));
+        add(buf.subarray(start, i));
         yield* flush(base + i + 1);
         start = i + 1;
       }
-      if (start < n) parts.push(Buffer.from(buf.subarray(start, n)));
+      if (start < n) add(buf.subarray(start, n));
       base += n;
     }
     yield* flush(-1);

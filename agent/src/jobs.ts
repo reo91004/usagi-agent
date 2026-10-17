@@ -132,11 +132,18 @@ export function mineOnly(sessions: TmuxSession[], dir: string, home: string): Tm
   return sessions.filter((s) => s.path === mine || s.path.startsWith(`${mine}/`));
 }
 
-// 한 서버에서 끝난 작업과 도는 작업을 가져온다. 읽은 끝난 파일·잘못된 파일·끊긴 작업 표시만 지운다
+// 읽은 끝난 파일·잘못된 파일·끊긴 표시의 지우기는 다음 목록 ssh 명령 앞에 합쳐 ssh 를 한 번 아낀다(서버·폴더별, 메모리만).
+// 데몬이 그 사이 꺼지면 같은 파일을 다시 읽는다(id 가 있는 기록은 같은 노드로 합쳐진다)
+const pendingDrop = new Map<string, string[]>();
+
+// 한 서버에서 끝난 작업과 도는 작업을 가져온다. 읽은 끝난 파일·잘못된 파일·끊긴 작업 표시만 다음 호출에서 지운다
 export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_DIR): Promise<{ done: JobDone[]; running: RunningJob[]; tmux: TmuxSession[] }> {
   if (!okJobHost(host)) throw new Error(`jobHosts 이름이 이상해요: ${host}`);
   if (!okJobDir(dir)) throw new Error(`jobDirs 경로가 이상해요: ${dir}`);
-  const out = await run(["--", host, listCmd(dir)], 20e3);
+  const key = `${host}\0${dir}`;
+  const prev = pendingDrop.get(key);
+  const out = await run(["--", host, (prev?.length ? `(cd ${dir} && rm -f -- ${prev.map((f) => `'${f}'`).join(" ")}); ` : "") + listCmd(dir)], 20e3);
+  pendingDrop.delete(key);
   const done: JobDone[] = [], running: RunningJob[] = [];
   const drop: string[] = [];
   const panes: string[][] = [];
@@ -159,7 +166,7 @@ export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_
       if (!r || !alive) drop.push(file);
     }
   }
-  if (drop.length) await run(["--", host, `cd ${dir} && rm -f -- ${drop.map((f) => `'${f}'`).join(" ")}`], 20e3);
+  if (drop.length) pendingDrop.set(key, drop);
   return { done, running, tmux: mineOnly(parseTmux(panes), dir, home) };
 }
 

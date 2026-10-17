@@ -23,6 +23,7 @@ import { phrase } from "./phrases.ts";
 import { calendarAlertOf } from "./calendar-alert.ts";
 
 export const SYNC_EVERY_MS = 30 * 60e3;   // 30분마다 다시 가져온다
+const AWAY_RECHECK_MS = 10 * 60e3; // 자리 비움 중에는 이 간격으로만 입력(ioreg)을 다시 본다
 export const MCP_AWAY_SEC = 60 * 60;       // 자리를 이만큼 비우면 MCP(모델 호출) 동기화는 쉰다 — 돌아오면 다음 확인에서 바로 한 번
 
 
@@ -282,6 +283,7 @@ export class CalendarSync {
   private timer?: Timer;
   private lastSync = 0;
   private lastTick = 0;
+  private awayAt = 0; // 마지막으로 「자리 비움」이라 확인한 시각(0 = 자리에 있음)
   private stopped = true;
   onChange?: () => void;
 
@@ -417,7 +419,12 @@ export class CalendarSync {
     const woke = now - this.lastTick > expected + 120e3; // 예정보다 2분 넘게 늦게 깼으면 잠자기에서 깬 것
     if (woke || now - this.lastSync >= SYNC_EVERY_MS) {
       // MCP 는 동기화마다 모델 호출이라 오래 자리를 비웠으면 건너뛴다(ICS 는 모델이 없어 그대로). 알림 확인은 계속
-      if (this.cfg.connectors?.calendar?.mode === "mcp" && await (this.deps.idleSec ?? hidIdleSec)() >= MCP_AWAY_SEC) { this.check(); return; }
+      // 자리 비움 확인(ioreg 실행)은 AWAY_RECHECK_MS 에 한 번만: 비웠다고 본 동안은 다시 묻지 않는다
+      if (this.cfg.connectors?.calendar?.mode === "mcp") {
+        const away = now - this.awayAt < AWAY_RECHECK_MS || await (this.deps.idleSec ?? hidIdleSec)() >= MCP_AWAY_SEC;
+        if (away) { if (now - this.awayAt >= AWAY_RECHECK_MS) this.awayAt = now; this.check(); return; }
+        this.awayAt = 0;
+      }
       this.sync().then((r) => this.onSync?.(r)).catch((e) => { console.warn("[calendar] 동기화 실패:", e?.message ?? e); this.check(); });
       this.arm(); // sync 가 끝나면 check() 가 다시 잡는다
       return;

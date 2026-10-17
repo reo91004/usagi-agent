@@ -3,11 +3,12 @@
 // 청크 경계는 앞에서부터 탐욕적으로 정해진다 → 세션·대화에 뒤로 내용이 붙어도 앞 청크의 텍스트(해시)는 그대로라
 // 이미 추출한 청크를 다시 돌리지 않는다. 바뀐 건 마지막 청크(와 새 청크)뿐.
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
 import type { Store } from "../store.ts";
 import { IS_WIN, winNorm } from "../plat.ts";
 import { mutedIds, permalinkOf } from "../ingest/slack.ts";
+import { readLines } from "../ingest/sessions.ts";
 
 export const CHUNK_TARGET = 7000;
 const MAX_PROMPT = 4000, MAX_ASSISTANT = 2500, MAX_SUB_TASK = 1500, MAX_SUB_TEXT = 1500, MAX_TOOLS_LINE = 400;
@@ -93,14 +94,14 @@ export function toolExcerpt(name: string, input: any): string | undefined {
 export type ParsedSession = { id: string; tool: "claude" | "codex"; cwd?: string; items: Item[] };
 
 // 사람 프롬프트 + 어시스턴트 텍스트 + 도구 한 줄 요약(연속된 건 한 줄로). 도구 결과는 버린다.
-export function claudeItems(raw: string, fallbackId: string, opts: { subagent?: boolean } = {}): ParsedSession {
+export function claudeItems(raw: string | Iterable<string>, fallbackId: string, opts: { subagent?: boolean } = {}): ParsedSession {
   const s: ParsedSession = { id: fallbackId, tool: "claude", items: [] };
   let tools: string[] = [], toolsAt = "", firstUser = true;
   const flush = () => {
     if (tools.length) s.items.push({ at: toolsAt, text: `도구: ${clip(tools.join("; "), MAX_TOOLS_LINE)}` });
     tools = [];
   };
-  for (const line of raw.split("\n")) {
+  for (const line of typeof raw === "string" ? raw.split("\n") : raw) {
     if (!line) continue;
     let e: any;
     try { e = JSON.parse(line); } catch { continue; }
@@ -135,7 +136,7 @@ export function claudeItems(raw: string, fallbackId: string, opts: { subagent?: 
   return s;
 }
 
-export function codexItems(raw: string, fallbackId: string): ParsedSession {
+export function codexItems(raw: string | Iterable<string>, fallbackId: string): ParsedSession {
   const s: ParsedSession = { id: fallbackId, tool: "codex", items: [] };
   let tools: string[] = [], toolsAt = "";
   const flush = () => {
@@ -144,7 +145,7 @@ export function codexItems(raw: string, fallbackId: string): ParsedSession {
   };
   // Codex Desktop이 Claude Code 세션을 가져온 턴(turn_id external-import-*)은 원본이 ~/.claude/projects에 있으니 뺀다
   let imported = false;
-  for (const line of raw.split("\n")) {
+  for (const line of typeof raw === "string" ? raw.split("\n") : raw) {
     if (!line) continue;
     let e: any;
     try { e = JSON.parse(line); } catch { continue; }
@@ -268,10 +269,11 @@ async function scanFile(
     if (!parent) parentCwd.set(basename(path, ".jsonl"), undefined);
     return 0;
   }
-  let raw: string;
-  try { raw = await readFile(path, "utf8"); } catch { return 0; }
   const id = basename(path, ".jsonl");
-  const s = tool === "codex" ? codexItems(raw, id) : claudeItems(raw, id, { subagent: !!parent });
+  let s: ParsedSession;
+  try { // 줄 단위로 읽는다: 통째로 읽으면 512MB 넘는 파일이 "Invalid string length" 로 실패한다
+    s = tool === "codex" ? codexItems(readLines(path), id) : claudeItems(readLines(path), id, { subagent: !!parent });
+  } catch (e: any) { console.warn(`[kg] 세션 못 읽음 ${path}: ${e?.message ?? e}`); return 0; }
   const setMark = () => store.db.prepare("INSERT OR REPLACE INTO kg_marks (path, mtime) VALUES (?, ?)").run(path, mtime);
   if (!parent) parentCwd.set(id, s.cwd);
   const cwd = s.cwd ?? (parent ? parentCwd.get(parent) : undefined);
