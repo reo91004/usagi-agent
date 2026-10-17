@@ -195,8 +195,9 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
     renameSync(sidePath + ".tmp", sidePath);
   };
   if (!existsSync(sidePath)) {
-    for (const p of walk(base)) migrate(p, relative(base, p), side);
+    // 파일마다 저장: 도중에 멈춰도 다음엔 사이드카가 있어 남은 원본은 entry 없는 파일로 0부터 받는다(바꾼 파일을 또 바꾸지 않게)
     saveSide();
+    for (const p of walk(base)) { migrate(p, relative(base, p), side); saveSide(); }
   } else {
     try {
       const j = JSON.parse(readFileSync(sidePath, "utf8"));
