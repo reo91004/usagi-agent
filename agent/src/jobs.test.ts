@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, pullJobs, type RunSsh } from "./jobs.ts";
 import { setCharacter } from "./characters.ts";
+import { loadConfig } from "./config.ts";
 import { Bus } from "./bus.ts";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ops", "usagi-run");
@@ -204,4 +205,23 @@ test("usagi-run: 프로세스가 끝 기록 없이 죽으면 표시만 남고 pu
   assert.equal(running.length, 1);
   assert.equal(running[0].alive, false);
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
+});
+
+test("공용 계정: 개인 폴더의 usagi-run(~/reo/bin)은 ~/reo/.usagi-agent/jobs 에 남기고, pullJobs 는 jobDirs 의 그 폴더만 본다", async () => {
+  const home = mkdtempSync(join(tmpdir(), "usagi-shared-"));
+  const mine = join(home, "reo");
+  mkdirSync(join(mine, "bin"), { recursive: true });
+  mkdirSync(join(mine, ".usagi-agent"));
+  copyFileSync(SCRIPT, join(mine, "bin", "usagi-run"));
+  const env = { ...process.env, HOME: home, CY_AGENT_PORT: "9" };
+  spawnSync("sh", [join(mine, "bin", "usagi-run"), "-n", "내 학습", "--", "true"], { env });
+  spawnSync("sh", [SCRIPT, "-n", "다른 사람 학습", "--", "true"], { env }); // 같은 계정의 다른 사람(기본 위치)
+  const localSh: RunSsh = async (args) => spawnSync("sh", ["-c", args[2]], { env, encoding: "utf8" }).stdout;
+  const { done } = await pullJobs("gpu1", localSh, "~/reo/.usagi-agent/jobs");
+  assert.deepEqual(done.map((j) => j.name), ["내 학습"]);
+  assert.equal(readdirSync(join(home, ".usagi-agent", "jobs")).length, 1, "다른 사람 결과는 건드리지 않는다");
+  for (const bad of ["~/reo; rm -rf ~", "../x", "~/a/../b", "reo/jobs", "~/a b"]) await assert.rejects(pullJobs("gpu1", localSh, bad), /jobDirs/, bad);
+  const cfg = loadConfig({}, { jobDirs: { "pacl-208": "~/reo/.usagi-agent/jobs", "-oX": "~/a", "gpu2": "~/a;b" } } as any);
+  assert.deepEqual(cfg.jobDirs, { "pacl-208": "~/reo/.usagi-agent/jobs" });
+  assert.ok(cfg.configNotes?.some((n) => /jobDirs/.test(n)));
 });

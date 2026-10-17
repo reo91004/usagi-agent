@@ -338,6 +338,35 @@ usagi-run -n "resnet 학습" -- python train.py
 - 도는 동안에는 서버의 `~/.usagi-agent/jobs/`에 `<id>.running` 표시가 있고, 끝나면 지워집니다. 우사기는 이걸로 지금 돌고 있는 실험을 압니다. 표시만 남고 `usagi-run`이 사라졌으면(서버 재시작, 강제 종료) 「끊김」으로 봅니다.
 - 끝날 때 작업 폴더, 명령, 실행 중에 그 폴더에서 바뀐 파일(최근 것 8개, 깊이 3)을 같이 남깁니다. 「어제 돌린 실험 결과 어때?」라고 물으면 이 파일부터 봅니다.
 
+#### 공용 계정 서버
+
+연구실 서버처럼 여러 사람이 한 계정(예: `user`)을 같이 쓰면, `~/.local/bin`이나 `~/.usagi-agent/jobs/`가 모두의 것이 됩니다. 다른 사람이 `usagi-run`을 쓰면 그 결과가 내 맥으로 오고, 내 우사기가 읽은 결과 파일을 지우기까지 합니다. 그래서 내 폴더(예: `~/reo`) 안에 둡니다.
+
+```sh
+ssh pacl-208 'mkdir -p ~/reo/bin ~/reo/.usagi-agent/jobs'      # 맥에서 한 번
+scp "$(command -v usagi-run)" pacl-208:~/reo/bin/
+```
+
+`usagi-run`은 자기 위 폴더에 `.usagi-agent`가 있으면(`~/reo/bin/usagi-run` → `~/reo/.usagi-agent`) 결과를 거기에 남깁니다. 공용 `.bashrc`는 건드리지 말고 경로를 적어서 부르거나, 내 tmux 창에서만 PATH에 넣습니다.
+
+```sh
+~/reo/bin/usagi-run -n "resnet 학습" -- python train.py
+export PATH=~/reo/bin:$PATH    # 내 tmux 창에서만
+```
+
+맥의 `config.json`에는 그 서버의 결과 폴더를 적어 둡니다. 적지 않은 서버는 지금처럼 `~/.usagi-agent/jobs`를 봅니다.
+
+```json
+{
+  "sshHosts": ["pacl-205", "pacl-208"],
+  "jobDirs": { "pacl-205": "~/reo/.usagi-agent/jobs", "pacl-208": "~/reo/.usagi-agent/jobs" }
+}
+```
+
+- 서버에서 맥으로 들어오는 포트는 여전히 열지 않습니다. 다른 사람은 내 결과를 보지 않고, 내 우사기도 남의 결과를 지우지 않습니다.
+- 같은 계정이라 파일 권한으로 막히지는 않습니다. 결과 파일에는 작업 폴더·명령·바뀐 파일 이름만 들어 있습니다.
+- 바꾼 `jobDirs`는 데몬을 다시 켜면 적용됩니다.
+
 ### 실험 서버 둘러보기 (sshHosts)
 
 우사기에게 서버의 폴더, 결과 파일, GPU 상황을 물어볼 수 있습니다. 둘러볼 서버를 `config.json`에 적어 두면 됩니다. 여기 적은 서버의 끝난 작업도 `jobHosts`처럼 2분마다 가져옵니다.
@@ -452,6 +481,7 @@ usagi-run -n "resnet 학습" -- python train.py
 | `brain.gensparkApiKey` | `CY_AGENT_GENSPARK_API_KEY` |  | Genspark 키. 비워 두면 `gsk login`이 남긴 키(`~/.genspark-tool-cli/config.json`)를 쓸 때마다 읽습니다. 유료 플랜이 있어야 대답합니다 |
 | `user.name` / `user.aliases` | `CY_AGENT_USER_NAME` | git `user.name` | 부를 이름 / 지식그래프에서 "나"로 볼 다른 이름들. 비워 두면 git 이름을 부르고, git 이름·이메일 아이디·맥 계정 이름도 "나"로 봅니다 |
 | `repoRoots` |  | 새 설치는 `[]`, 예전 설정은 `["~/code"]` | 코드를 고쳐도 되는 레포 폴더. 개요의 내 커밋도 이 폴더에서만 읽습니다. 이 밖은 건드리지 않습니다 |
+| `jobDirs` |  | `{}` | 서버마다 `usagi-run` 결과 폴더(공용 계정이면 개인 폴더, 예: `{"pacl-208": "~/reo/.usagi-agent/jobs"}`). [공용 계정 서버](#공용-계정-서버) |
 | `tineGraph` |  |  | 연구 노트를 남길 Tine 그래프 폴더(`logseq/config.edn`이 있는 곳). [연구 노트](#연구-노트-tine) |
 | `appleReminders` |  | `false` | 이 Mac 의 미리알림을 할 일로 가져올지(설치 탭 「더 연결하기」의 「이 Mac 의 캘린더·미리알림」이 켜고 끕니다). 읽기만 하고, 미리알림에서 끝낸 것은 할 일도 끝냅니다 |
 | `allowMcp` |  | `[]` | 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(예: `["notion"]`). 여기 없는 서버는 Claude Code에 등록돼 있어도 브리핑·채팅에서 쓰지 않습니다. 뇌가 Claude Code일 때만 씁니다 |
