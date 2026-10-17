@@ -154,21 +154,32 @@ export function formatRead(out: string, label: string, m: ReadMode): RemoteResul
   return { ok: true, title: `${label} ${meta} · ${what}`, body: h.rest.join("\n") || "(없음)" };
 }
 
-export function formatGpu(out: string, host: string): RemoteResult {
+export type GpuProc = { gpu: string; pid: string; mem: number; who: string };
+export type Gpu = { idx: string; name: string; util: number; memUsed: number; memTotal: number; temp: number };
+export type GpuHost = { host: string; ok: boolean; error?: string; gpus: Gpu[]; procs: GpuProc[] };
+const n0 = (s: string | undefined) => (Number.isFinite(Number(s)) ? Number(s) : 0);
+// nvidia-smi 출력 → GPU·프로세스(패널 카드는 이걸 그대로 그리고, 맥락 도구는 formatGpu 글로)
+export function parseGpu(out: string, host: string): GpuHost {
   const h = head(out);
-  if (h.err) return { ok: false, title: `GPU ${host}`, body: h.err };
-  const gpus: string[] = [], bus = new Map<string, string>(), procs: string[] = [];
+  if (h.err) return { host, ok: false, error: h.err, gpus: [], procs: [] };
+  const gpus: Gpu[] = [], bus = new Map<string, string>(), procs: GpuProc[] = [];
   for (const l of h.rest) {
     const f = l.split("\t");
     if (f[0] === "G") {
       const [idx, b, name, util, used, total, temp] = (f[1] ?? "").split(",").map((x) => x.trim());
       bus.set((b ?? "").toLowerCase(), idx);
-      gpus.push(`- GPU${idx} ${name}: 사용률 ${util}% · 메모리 ${used}/${total} MiB · ${temp}°C`);
+      gpus.push({ idx, name, util: n0(util), memUsed: n0(used), memTotal: n0(total), temp: n0(temp) });
     } else if (f[0] === "P") {
-      const idx = bus.get((f[1] ?? "").toLowerCase()) ?? "?";
-      procs.push(`  - GPU${idx} pid ${f[2]} · ${f[3]} MiB · ${(f[4] ?? "").replace(/\s+/g, " ").trim()}`);
+      procs.push({ gpu: bus.get((f[1] ?? "").toLowerCase()) ?? "?", pid: f[2] ?? "", mem: n0(f[3]), who: (f[4] ?? "").replace(/\s+/g, " ").trim() });
     }
   }
+  return { host, ok: true, gpus, procs };
+}
+export function formatGpu(out: string, host: string): RemoteResult {
+  const g = parseGpu(out, host);
+  if (!g.ok) return { ok: false, title: `GPU ${host}`, body: g.error ?? "" };
+  const gpus = g.gpus.map((x) => `- GPU${x.idx} ${x.name}: 사용률 ${x.util}% · 메모리 ${x.memUsed}/${x.memTotal} MiB · ${x.temp}°C`);
+  const procs = g.procs.map((p) => `  - GPU${p.gpu} pid ${p.pid} · ${p.mem} MiB · ${p.who}`);
   return { ok: true, title: `GPU ${host}`, body: [...gpus, ...(procs.length ? ["- 돌고 있는 프로세스:", ...procs] : ["- 돌고 있는 GPU 프로세스 없음"])].join("\n") };
 }
 
@@ -216,6 +227,14 @@ export function remoteRead(cfg: Pick<Config, "sshHosts" | "jobHosts">, a: ReadAr
   const m: ReadMode = match ? { mode: "match", text: match } : { mode: a.from === "head" ? "head" : "tail", bytes: clampInt(a.bytes, 200, 5000, 3000) };
   const p = remotePath(a.path);
   return call(cfg, a.host, `파일 ${a.host}:`, () => p && readScript(p, m), (o) => formatRead(o, `파일 ${a.host}:`, m), run);
+}
+
+// 패널 카드용: 서버마다 구조화된 GPU(접속 실패는 그 서버만 ok:false)
+export async function remoteGpuData(cfg: Pick<Config, "sshHosts" | "jobHosts">, run: RemoteRun = remoteRun): Promise<GpuHost[]> {
+  return Promise.all(remoteHosts(cfg).map(async (host) => {
+    try { return parseGpu(await run(host, GPU_SCRIPT, 20e3), host); }
+    catch (e: any) { return { host, ok: false, error: `접속하지 못했어요: ${String(e?.message ?? e).slice(0, 160)}`, gpus: [], procs: [] }; }
+  }));
 }
 
 export async function remoteGpu(cfg: Pick<Config, "sshHosts" | "jobHosts">, a: { host?: string }, run: RemoteRun = remoteRun): Promise<RemoteResult[]> {

@@ -2,7 +2,7 @@
 import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
-import { shapeDashboard, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
+import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
 import { needsSetup, stepForCap } from '../src/setup.js';
 import { isFeature, isAgent, buildWalk, agentSteps } from '../src/setup-flow.js';
 import { renderSetup, clearApiDraft, readSlot, clearSlot } from './setup-view.js';
@@ -366,6 +366,7 @@ function renderOverview() {
       stat(stats.activeProjects, '진행 중 프로젝트', active.slice(0, 3).join(', ') || null),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
+    ...(researchSection() ?? []),
     h('h2', null, h('span', { text: '오늘 할 일 ' }),
       h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('today') })),
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
@@ -391,6 +392,85 @@ function renderOverview() {
       : null,
     ...(renderConnectors(vm.connectors) ?? []),
   ].filter((c) => c != null && c !== false));
+}
+
+// ---- 연구 카드(#40) — 실험 서버·연구 노트를 연결했을 때만 개요 맨 위에. 설정 토글 없이 연결이 곧 켜짐 ----
+// GPU 는 [GPU 보기]를 누를 때만 서버에 묻는다(패널을 열 때마다 ssh 하지 않게). 받은 건 다시 그려도 남긴다
+let gpu = { loading: false, at: '', hosts: null, err: '' };
+async function loadGpu() {
+  if (gpu.loading) return;
+  gpu = { ...gpu, loading: true, err: '' };
+  renderOverview();
+  let r;
+  try { r = await cy.researchGpu(); } catch { r = { ok: false }; }
+  gpu = r?.ok && Array.isArray(r.data?.hosts) ? { loading: false, at: str(r.data.at), hosts: shapeGpu(r.data.hosts), err: '' } : { ...gpu, loading: false, err: `가져오지 못했어요 — ${why(r)}` };
+  renderOverview();
+}
+const str = (v) => (typeof v === 'string' ? v : '');
+// 실험 줄 [물어보기]: 새 대화에 질문을 채워 두고 보내기는 사용자가
+function askAbout(text) {
+  newChat();
+  chatInput.value = text;
+  autosize();
+}
+async function openNote(day, btn) {
+  btn.disabled = true;
+  const r = await cy.researchNoteOpen(day).catch(() => ({ ok: false }));
+  btn.disabled = false;
+  if (!r?.ok) btn.textContent = '못 열었어요';
+}
+// 막대 채움: CSP(style-src 'self')가 style 속성은 막지만 CSSOM 은 된다
+function barFill(pct) {
+  const el = h('span');
+  el.style.width = `${pct}%`;
+  return el;
+}
+function gpuBlock() {
+  const head = h('div.row.gpu-head', null,
+    h('span.muted.small', { text: gpu.hosts ? `GPU · ${relativeTime(gpu.at)}` : 'GPU' }), h('span.spacer'),
+    h('button.ghost.small', { type: 'button', text: gpu.loading ? '가져오는 중…' : gpu.hosts ? '다시 보기' : 'GPU 보기', disabled: gpu.loading, onclick: loadGpu }));
+  const rows = (gpu.hosts ?? []).map((x) => h('div.gpu-host', null,
+    h('div.gpu-hostname', null, h('span', { text: x.host }), x.ok ? null : h('span.muted', { text: ` · ${x.error}` })),
+    ...x.gpus.map((g) => h('div.gpu-row', null,
+      h('div.gpu-line', null,
+        h('span.gpu-name', { text: `GPU${g.idx} ${g.name}`, title: g.name }),
+        h('span.gpu-bar', { title: `사용률 ${g.util}%`, role: 'img', 'aria-label': `사용률 ${g.util}%` }, barFill(g.util)),
+        h('span.gpu-num', { text: `${g.util}% · ${g.mem} · ${g.temp}°C` })),
+      ...g.procs.map((p) => h('div.gpu-proc.muted.small', { text: `${p.mem}${p.etime ? ` · ${p.etime}째` : ''} · ${p.cmd}`, title: `pid ${p.pid} · ${p.cmd}` })))),
+    x.ok && !x.gpus.length ? h('div.muted.small', { text: 'GPU 가 보이지 않아요' }) : null));
+  return h('div.gpu', null, head, gpu.err ? h('div.result.err.small', { role: 'status', text: gpu.err }) : null, ...rows);
+}
+function researchSection() {
+  const r = vm.research;
+  if (!r) return null;
+  const out = [h('h2', null, h('span', { text: '연구 ' }), r.hosts.length ? h('span.muted.small', { text: `실험 서버 ${r.hosts.join(', ')}` }) : null)];
+  if (r.hosts.length || r.jobs.length) {
+    out.push(h('div.card.research-jobs', null,
+      r.jobs.length
+        ? r.jobs.map((j) => h('div.job-row', { dataset: { id: j.id } },
+          h(`span.chip.${j.chip}`, { text: j.label }),
+          h('div.job-main', null,
+            h('div.job-name', { text: `${j.name}${j.host ? ` @${j.host}` : ''}`, title: j.detail || j.name }),
+            h('div.muted.small.job-sub', { text: [j.time, j.files.length ? `바뀐 파일 ${j.files.join(', ')}` : ''].filter(Boolean).join(' · '), title: j.detail })),
+          h('button.ghost.small', { type: 'button', text: '물어보기', title: j.ask, onclick: () => askAbout(j.ask) })))
+        : h('div.muted.small', { text: '아직 usagi-run 으로 돌린 실험이 없어요. 서버에서 명령 앞에 usagi-run -- 을 붙이면 여기 보여요.' }),
+      r.hosts.length ? gpuBlock() : null));
+  }
+  if (r.note) {
+    const y = r.note.yesterday;
+    out.push(h('div.card.research-note', null,
+      h('div.row', null,
+        h('span', { text: `오늘 연구 노트 · ${r.note.day}` }), h('span.spacer'),
+        r.note.exists
+          ? h('button.ghost.small', { type: 'button', text: '열기', onclick: (ev) => openNote(r.note.day, ev.currentTarget) })
+          : h('span.muted.small', { text: '오늘 한 일이 생기면 만들어져요' })),
+      y && (y.lines.length || y.next.length)
+        ? h('div.note-sum', null,
+          h('div.muted.small', { text: `어제(${y.day}) 요약` }),
+          h('ul', null, ...y.lines.map((l) => h('li', { text: l })), ...y.next.map((l) => h('li.next', { text: `다음: ${l}` }))))
+        : null));
+  }
+  return out;
 }
 
 // ---- 권한([항상 허용]으로 저장한 도구 규칙) — 개요 아래. 지우면 다음부터 다시 묻는다 ----

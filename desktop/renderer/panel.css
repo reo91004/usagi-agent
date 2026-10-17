@@ -1392,3 +1392,23 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 /* 연결된 캘린더: 줄마다 종류 · 가린 이름 · [빼기](묻는 칸은 줄 아래로) */
 .setup-cals .setup-repos li { flex-wrap: wrap; }
 .setup-cals .cal-kind { flex: none; color: var(--muted); font-size: 12px; }
+
+/* 연구 카드(개요 맨 위): 실험 줄은 제안 줄과 같은 칩·구분선, GPU 는 누를 때만 */
+.job-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); min-width: 0; }
+.job-row:first-child { border-top: 0; }
+.job-main { flex: 1; min-width: 0; }
+.job-name, .job-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpu { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.gpu-host { margin-top: 6px; }
+.gpu-hostname { font-size: 12px; font-weight: 650; margin: 8px 0 2px; }
+.gpu-row { padding: 3px 0; }
+.gpu-line { display: grid; grid-template-columns: minmax(0, 1fr) 90px 190px; align-items: center; gap: 10px; font-size: 12.5px; }
+.gpu-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpu-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.gpu-bar > span { display: block; height: 100%; background: var(--accent); }
+.gpu-num { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; text-align: right; }
+.gpu-proc { padding-left: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-sum { margin-top: 8px; }
+.note-sum ul { margin: 4px 0 0; padding-left: 18px; }
+.note-sum li { margin: 2px 0; }
+.note-sum li.next { color: var(--muted); }

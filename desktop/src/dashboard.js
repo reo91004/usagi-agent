@@ -162,6 +162,71 @@ export function visibleSections(_vm) {
   return SECTIONS;
 }
 
+// 연구 카드(#40): 데몬 research(연구 연결이 있을 때만). 작업 한 줄 = 상태 칩 · 이름 @서버 · 시간 글, 채팅에 물어볼 글
+const JOB_STATE = {
+  running: { label: '도는 중', chip: 'warn' },
+  done: { label: '끝', chip: 'ok' },
+  failed: { label: '실패', chip: 'err' },
+  lost: { label: '끊김', chip: 'err' },
+};
+export function durationText(sec) {
+  const s = Math.max(0, Math.round(num(sec)));
+  if (s < 60) return `${s}초`;
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  return h ? `${h}시간${m % 60 ? ` ${m % 60}분` : ''}` : `${m}분`;
+}
+export function shapeResearch(r, now = Date.now()) {
+  if (!r || typeof r !== 'object') return null;
+  const jobs = arr(r.jobs).filter((j) => j && str(j.id) && str(j.name) && JOB_STATE[j.state]).map((j) => {
+    const st = JOB_STATE[j.state];
+    const start = num(j.start) * 1000;
+    const time = j.state === 'running'
+      ? (start ? `${durationText((now - start) / 1000)}째` : '')
+      : j.state === 'lost' ? '끝 기록 없이 사라짐'
+        : `${relativeTime(j.at, now)} · ${durationText(j.seconds)}${j.state === 'failed' && Number.isInteger(j.code) ? ` · 종료 코드 ${j.code}` : ''}`;
+    const where = j.host ? ` @${j.host}` : '';
+    return {
+      id: j.id, name: j.name, host: str(j.host), state: j.state, label: st.label, chip: st.chip, time,
+      detail: [str(j.cwd), str(j.cmd)].filter(Boolean).join(' · '),
+      files: arr(j.files).filter((f) => str(f)).slice(0, 3),
+      ask: j.state === 'running' ? `'${j.name}'${where} 실험 지금 어디까지 왔어? 로그 끝부분 봐 줘.` : `'${j.name}'${where} 실험 결과 정리해 줘.`,
+    };
+  });
+  const n = r.note && typeof r.note === 'object' && str(r.note.day) ? r.note : null;
+  const y = n?.yesterday && typeof n.yesterday === 'object' ? n.yesterday : null;
+  return {
+    hosts: arr(r.hosts).filter((h) => str(h)),
+    jobs,
+    note: n ? { day: n.day, exists: n.exists === true, yesterday: y ? { day: str(y.day), lines: arr(y.lines).filter((l) => str(l)), next: arr(y.next).filter((l) => str(l)) } : null } : null,
+  };
+}
+
+// GPU 카드(누를 때만 받은 /research/gpu): 서버마다 GPU 한 줄(짧은 이름·사용률·GB·온도) + 그 GPU 에서 도는 프로세스 짧게
+const gb = (mib) => `${(num(mib) / 1024).toFixed(1)}`;
+export function shortGpuName(name) {
+  return str(name).replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+/i, '').replace(/\s+Server Edition$/i, '').trim() || 'GPU';
+}
+// "user 01:02:03 /path/to/python -u train.py --lr 3e-4" → { etime, cmd: "python -u train.py --lr 3e-4" }
+export function shortProc(who) {
+  const [, etime = '', ...rest] = str(who).split(' ');
+  const [bin = '', ...args] = rest;
+  const cmd = [bin.split('/').pop(), ...args].join(' ').trim();
+  return { etime, cmd: cmd.length > 80 ? `${cmd.slice(0, 79)}…` : cmd };
+}
+export function shapeGpu(hosts) {
+  return arr(hosts).filter((x) => x && str(x.host)).map((x) => ({
+    host: x.host,
+    ok: x.ok === true,
+    error: str(x.error),
+    gpus: arr(x.gpus).map((g) => ({
+      idx: str(g.idx), name: shortGpuName(g.name), util: Math.min(100, num(g.util)),
+      mem: `${gb(g.memUsed)}/${gb(g.memTotal)} GB`, memPct: num(g.memTotal) ? Math.min(100, Math.round((num(g.memUsed) / num(g.memTotal)) * 100)) : 0,
+      temp: num(g.temp),
+      procs: arr(x.procs).filter((p) => p && str(p.gpu) === str(g.idx)).map((p) => ({ pid: str(p.pid), mem: `${gb(p.mem)} GB`, ...shortProc(p.who) })),
+    })),
+  }));
+}
+
 export function shapeDashboard(raw, now = Date.now()) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const all = arr(r.projects).filter((p) => p && typeof p === 'object').map((p) => shapeProject(p, now));
@@ -216,5 +281,6 @@ export function shapeDashboard(raw, now = Date.now()) {
     today: { date: todayDate, items: todayItems, asked: today?.asked === true },
     todayGroups,
     todayDone,
+    research: shapeResearch(r.research, now),
   };
 }
