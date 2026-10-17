@@ -150,6 +150,7 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA busy_timeout = 5000;"); // 다른 프로세스(cli·패널)가 쓰는 중이면 바로 실패하지 않고 기다린다. journal_mode 전환도 잠금이 필요해 먼저
     this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db.exec("PRAGMA journal_size_limit = 1048576;"); // 체크포인트 뒤 WAL 파일을 1MB 로 줄인다(안 하면 가장 컸던 크기로 남음)
     this.db.exec(SCHEMA);
     this.migrate();
     lockDown(path);
