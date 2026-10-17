@@ -1607,6 +1607,8 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-edit { flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .rp-hist { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .rp-folder { display: flex; align-items: center; gap: 6px; padding: 4px 0; min-width: 0; }
+.rp-folder button, .rp-kinds button { white-space: nowrap; flex: none; }
+.rp-sec input[type=url] { width: min(100%, 420px); }
 .rp-sess { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; min-width: 0; }
 .rp-sess .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-chip { margin-left: 6px; }
