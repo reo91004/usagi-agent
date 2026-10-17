@@ -106,6 +106,7 @@ export function shapeRecentDone(list, now = Date.now()) {
       priority: [1, 2, 3, 4].includes(t.priority) ? t.priority : 2,
       link: str(t.link) && isSafeLink(t.link) ? t.link : null,
       auto: t.doneBy === 'auto',
+      skipped: t.skipped === true,
       reason: t.doneBy === 'auto' ? str(t.autoReason) : '',
       evidence: t.doneBy === 'auto' && str(t.autoEvidence) && isSafeLink(t.autoEvidence) ? t.autoEvidence : null,
       doneRel: relativeTime(t.doneAt, now),

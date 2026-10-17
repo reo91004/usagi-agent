@@ -12,6 +12,7 @@ export type Todo = {
   id: string; title: string; source: string; link?: string; priority: number; status: string; created: string;
   note?: string; updated?: string; userEdited?: TodoField[]; // 사용자가 직접 고친 필드 — 브리핑이 덮어쓰지 않는다
   doneBy?: TodoDoneBy;          // 끝낸 주체(열린 할 일엔 없음)
+  skipped?: boolean;            // status 'done' 이지만 안 해도 돼서 닫은 일 — 「한 일」 집계에서 빠진다
   autoReason?: string;          // 자동 완료 이유(한 줄)
   autoEvidence?: AutoEvidence;  // 자동 완료 근거(Slack 메시지)
   autoReverted?: boolean;       // 사용자가 자동 완료를 되돌린 적 있음 — 다시는 자동으로 끝내지 않는다
@@ -33,7 +34,7 @@ export type TodoSource = {
 export type TodoDoneBy = "user" | "auto" | "briefing";
 // 할 일 일지(일별 기록): 누가 무엇을 했나. 브리핑·진행 확인이 "사용자가 지운 일"을 기억하는 근거
 export type TodoActor = "user" | "briefing" | "rule" | "auto";
-export type LedgerAction = "added" | "edited" | "done" | "reopened" | "trashed" | "restored" | "purged" | "progress" | "blocked" | "merged";
+export type LedgerAction = "added" | "edited" | "done" | "reopened" | "trashed" | "restored" | "purged" | "skipped" | "progress" | "blocked" | "merged";
 export type LedgerEntry = { n: number; day: string; at: string; todoId: string; title: string; action: LedgerAction; by: TodoActor; detail?: string };
 export type UpsertResult = "added" | "updated" | "skipped" | "merged" | "blocked";
 export const LEDGER_KEEP_DAYS = 90;
@@ -45,7 +46,7 @@ export const kstDay = (iso: string | number | Date) => {
 export type AutoEvidence = { ids: string[]; permalink?: string };
 export type TodoField = "title" | "priority" | "link" | "note" | "status" | "description";
 // today: true = 오늘(KST)로 고름, 날짜 글 = 그날로, false·null = 오늘 할 일에서 뺌(할 일은 그대로)
-export type TodoPatch = { title?: string; priority?: number; link?: string | null; note?: string | null; status?: "open" | "done"; description?: string | null; doing?: boolean | null; today?: boolean | string | null };
+export type TodoPatch = { title?: string; priority?: number; link?: string | null; note?: string | null; status?: "open" | "done"; skipped?: boolean; description?: string | null; doing?: boolean | null; today?: boolean | string | null };
 // 휴지통에 든 할 일(패널 '휴지통' 그룹). priority·status는 옮기기 전 것
 export type TrashedTodo = Todo & { trashedAt: string; prevStatus: string };
 export const TRASH_KEEP_DAYS = 30; // 휴지통에 이보다 오래 있으면 영구 삭제
@@ -116,6 +117,7 @@ function todoRow(r: any): Todo {
     id: r.id, title: r.title, source: r.source, ...(r.link ? { link: r.link } : {}), priority: r.priority, status: r.status, created: r.created,
     ...(r.note ? { note: r.note } : {}), ...(r.updated ? { updated: r.updated } : {}), userEdited: edited,
     ...(done && r.done_by ? { doneBy: r.done_by } : {}),
+    ...(done && r.skipped ? { skipped: true } : {}),
     ...(done && r.done_by === "auto" && r.auto_reason ? { autoReason: r.auto_reason } : {}),
     ...(done && r.done_by === "auto" && evidence ? { autoEvidence: evidence } : {}),
     ...(r.auto_reverted ? { autoReverted: true } : {}),
@@ -164,6 +166,7 @@ export class Store {
       ["doing", "INTEGER"], // 사용자가 누른 (진행중) 토글: 1 켬 · 0 끔 · NULL 자동
       ["plan_day", "TEXT"], // 오늘 할 일로 고른 날(KST), daily-plan.ts
       ["due", "TEXT"], // 마감(ISO) — 미리알림 동기화가 씀
+      ["skipped", "INTEGER NOT NULL DEFAULT 0"], // 1 = 안 해도 돼서 닫음(status 는 'done')
     ];
     for (const [name, type] of add) if (!cols.has(name)) this.db.exec(`ALTER TABLE todos ADD COLUMN ${name} ${type}`);
     // 할 일 일지: 처음 만들 때 지금 있는 할 일·휴지통·묘비로 한 번 채운다(예전 DB 도 "사용자가 지운 일"을 바로 기억)
@@ -319,7 +322,7 @@ export class Store {
     for (const r of this.db.prepare("SELECT * FROM todos").all() as any[]) {
       this.log(r.id, r.title, "added", String(r.id).startsWith("user:") ? "user" : "briefing", "기록 전", r.created);
       if (r.trashed_at) this.log(r.id, r.title, "trashed", "user", "기록 전", r.trashed_at);
-      else if (r.status === "done") this.log(r.id, r.title, "done", (["user", "auto", "briefing"].includes(r.done_by) ? r.done_by : "briefing") as TodoActor, "기록 전", r.updated ?? r.created);
+      else if (r.status === "done") this.log(r.id, r.title, r.skipped ? "skipped" : "done", (["user", "auto", "briefing"].includes(r.done_by) ? r.done_by : "briefing") as TodoActor, "기록 전", r.updated ?? r.created);
     }
     for (const r of this.db.prepare("SELECT * FROM todo_tombstones WHERE id NOT IN (SELECT id FROM todos)").all() as any[])
       this.log(r.id, r.title ?? "", "purged", "user", "기록 전", r.at);
@@ -436,13 +439,17 @@ export class Store {
     // 오늘 할 일 고르기·빼기: 사용자 필드 아님(브리핑이 덮지 않는 제목 등과 무관)
     if (patch.today !== undefined) { sets.push("plan_day = ?"); vals.push(planDay(patch.today)); }
     if (!sets.length) return cur;
-    if (patch.status !== undefined && patch.status !== cur.status) { sets.push("done_by = ?"); vals.push(patch.status === "done" ? "user" : null); }
+    const statusChanged = patch.status !== undefined && patch.status !== cur.status;
+    if (statusChanged) { sets.push("done_by = ?"); vals.push(patch.status === "done" ? "user" : null); }
+    const skipped = (patch.skipped ?? false) && (patch.status ?? cur.status) === "done"; // 다시 열거나 그냥 끝내면 표시가 없어진다
+    if (statusChanged || patch.skipped !== undefined) { sets.push("skipped = ?"); vals.push(skipped ? 1 : 0); }
     sets.push("user_edited = ?", "updated = ?");
     vals.push(JSON.stringify([...mine]), now());
     this.db.prepare(`UPDATE todos SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
     const title = typeof patch.title === "string" ? patch.title : cur.title;
     const fields = (Object.keys(col) as TodoField[]).filter((k) => k !== "status" && k in patch && patch[k] !== undefined);
-    if (patch.status !== undefined && patch.status !== cur.status) this.log(id, title, patch.status === "done" ? "done" : "reopened", "user");
+    if (statusChanged) this.log(id, title, patch.status === "done" ? (skipped ? "skipped" : "done") : "reopened", "user");
+    else if (skipped !== !!cur.skipped) this.log(id, title, skipped ? "skipped" : "done", "user");
     if (fields.length) this.log(id, title, "edited", "user", fields.join(","));
     return this.getTodo(id);
   }
@@ -518,21 +525,22 @@ export class Store {
   }
   // 그날 오늘 할 일로 고른 것(열림·끝냄, 휴지통 제외). 순서는 열린 할 일 목록과 같다
   todayTodos(day: string): Todo[] {
-    return (this.db.prepare("SELECT * FROM todos WHERE plan_day = ? AND status IN ('open', 'done') ORDER BY priority, sort IS NULL, sort, created").all(day) as any[]).map(todoRow);
+    return (this.db.prepare("SELECT * FROM todos WHERE plan_day = ? AND status IN ('open', 'done') AND skipped = 0 ORDER BY priority, sort IS NULL, sort, created").all(day) as any[]).map(todoRow);
   }
   openTodos(): Todo[] {
     return (this.db.prepare("SELECT * FROM todos WHERE status = 'open' ORDER BY priority, sort IS NULL, sort, created").all() as any[]).map(todoRow);
   }
   // 최근에 끝낸 할 일(되살리기 대상), 최신순
-  doneTodos(limit = 10): Todo[] {
-    return (this.db.prepare("SELECT * FROM todos WHERE status = 'done' ORDER BY coalesce(updated, created) DESC LIMIT ?").all(limit) as any[]).map(todoRow);
+  // 기본은 「한 일」만(안 해도 됨으로 닫은 일 제외). 찾아보기용은 withSkipped
+  doneTodos(limit = 10, withSkipped = false): Todo[] {
+    return (this.db.prepare(`SELECT * FROM todos WHERE status = 'done'${withSkipped ? "" : " AND skipped = 0"} ORDER BY coalesce(updated, created) DESC LIMIT ?`).all(limit) as any[]).map(todoRow);
   }
   // 브리핑·자동 처리용 상태 변경. 사용자가 상태를 직접 정한 할 일은 건드리지 않는다(force면 무시)
   setTodoStatus(id: string, status: string, opts: { force?: boolean; by?: TodoDoneBy } = {}): boolean {
     const cur = this.getTodo(id);
     if (!cur || (!opts.force && cur.userEdited?.includes("status"))) return false;
     const by = status === "done" ? (cur.status === "done" ? cur.doneBy ?? null : opts.by ?? "briefing") : null;
-    const ok = Number(this.db.prepare("UPDATE todos SET status = ?, done_by = ?, updated = ? WHERE id = ? AND trashed_at IS NULL").run(status, by, now(), id).changes) > 0;
+    const ok = Number(this.db.prepare("UPDATE todos SET status = ?, done_by = ?, skipped = ?, updated = ? WHERE id = ? AND trashed_at IS NULL").run(status, by, status === "done" && cur.skipped ? 1 : 0, now(), id).changes) > 0;
     if (ok && status !== cur.status) this.log(id, cur.title, status === "done" ? "done" : status === "open" ? "reopened" : "edited", opts.by ?? "briefing", status === "done" || status === "open" ? undefined : `상태 ${status}`);
     return ok;
   }
@@ -570,7 +578,7 @@ export class Store {
     return this.getTodo(id);
   }
 
-  // 패널 '최근 완료': sinceIso 이후 끝난 할 일, 최신순
+  // 패널 '최근 완료': sinceIso 이후 끝난 할 일(안 해도 됨으로 닫은 것 포함 — skipped 로 구분), 최신순
   recentlyDone(sinceIso: string, limit = 10): Todo[] {
     return (this.db.prepare("SELECT * FROM todos WHERE status = 'done' AND coalesce(updated, created) >= ? ORDER BY coalesce(updated, created) DESC LIMIT ?")
       .all(sinceIso, limit) as any[]).map(todoRow);

@@ -61,6 +61,7 @@ export type DayNote = {
   jobs: NoteJob[];
   meetings: { time: string; title: string }[];
   done: string[];
+  skipped: string[]; // 안 해도 돼서 닫은 일 — 한 일(done)과 따로
   added: string[];
   commits: { repo: string; sha: string; subject: string }[];
   summary?: DaySummary;
@@ -90,14 +91,15 @@ export async function collectDay(
   }
 
   // 할 일 일지는 최신 먼저 — 오래된 것부터 따라가 그날 마지막 상태로. 그날 생겼다 그날 끝낸 일은 「끝냄」에만
-  const done = new Map<string, string>(), added = new Map<string, string>();
+  const done = new Map<string, string>(), skipped = new Map<string, string>(), added = new Map<string, string>();
   for (const e of store.ledger({ day, limit: 500 }).reverse()) {
-    if (e.action === "done") done.set(e.todoId, e.title);
-    else if (e.action === "reopened") done.delete(e.todoId);
+    if (e.action === "done") { done.set(e.todoId, e.title); skipped.delete(e.todoId); }
+    else if (e.action === "skipped") { skipped.set(e.todoId, e.title); done.delete(e.todoId); }
+    else if (e.action === "reopened") { done.delete(e.todoId); skipped.delete(e.todoId); }
     else if (e.action === "added" && !e.todoId.startsWith("reminder:")) added.set(e.todoId, e.title); // 미리알림에서 가져온 것은 그날 생긴 일이 아니다
     else if (e.action === "trashed" || e.action === "purged") added.delete(e.todoId);
   }
-  for (const id of done.keys()) added.delete(id);
+  for (const id of [...done.keys(), ...skipped.keys()]) added.delete(id);
 
   let meetings: DayNote["meetings"] = [];
   try {
@@ -124,6 +126,7 @@ export async function collectDay(
     }),
     meetings,
     done: [...done.values()],
+    skipped: [...skipped.values()],
     added: [...added.values()],
     commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, sha: c.sha, subject: c.subject }))),
     ...(sum ? { summary: { lines: strs(sum.props.lines, 3), next: strs(sum.props.next, 3) } } : {}),
@@ -138,7 +141,7 @@ export const sharedGit = (cfg: Config, firstDay: string, fetch: typeof gitActivi
 };
 
 // 요약은 재료가 아니다(재료가 없으면 페이지도 없다)
-export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.added.length && !n.commits.length;
+export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.skipped.length && !n.added.length && !n.commits.length;
 
 // 우리 블록 표시: Logseq 가 화면에 안 보이는 id 속성. 앞 「75736167-6900」(usag i)으로 알아보고 뒤는 그날마다 다르게(블록 id 는 겹치면 안 된다)
 const ID_PREFIX = "75736167-6900-5";
@@ -183,7 +186,7 @@ export function autoBlock(n: DayNote): string {
     ...n.commits.map((c) => `\t\t- ${plain(c.repo, 40)} ${code(c.sha)} ${plain(c.subject, 100)}`),
     ...n.sessions.flatMap((p) => [`\t\t- 작업 세션 ${code(plain(p.project, 200))}`, ...sessionLines(p.items)]),
   ]);
-  sec("할 일", [...n.done.map((t) => `\t\t- 끝냄: ${plain(t, 100)}`), ...n.added.map((t) => `\t\t- 새로 생김: ${plain(t, 100)}`)]);
+  sec("할 일", [...n.done.map((t) => `\t\t- 끝냄: ${plain(t, 100)}`), ...n.skipped.map((t) => `\t\t- 안 함: ${plain(t, 100)}`), ...n.added.map((t) => `\t\t- 새로 생김: ${plain(t, 100)}`)]);
   if (n.focus.seconds) out.push(`\t- 집중 ${focusDuration(n.focus.seconds)}${n.focus.longest ? ` (가장 길게 이어서 ${focusDuration(n.focus.longest)})` : ""}`);
   return out.join("\n");
 }

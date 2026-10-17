@@ -663,6 +663,10 @@ button.ghost.danger-text { color: var(--err); }
 .todo.row:hover .row-today, .todo.row:focus-visible .row-today, .todo.row:focus-within .row-today, .todo.row .row-today:focus-visible, .todo.row .row-today.on { opacity: 1; }
 .todo.row .row-today.on { color: var(--accent); background: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) { .todo.row .row-today { transition: none; } }
+.todo.row .row-skip { flex: none; padding: 1px 7px; font-size: 11.5px; border-radius: 999px; color: var(--faint); opacity: 0; transition: opacity 0.12s ease; }
+.todo.row:hover .row-skip, .todo.row:focus-visible .row-skip, .todo.row:focus-within .row-skip, .todo.row .row-skip:focus-visible { opacity: 1; }
+.chip.skipped { color: var(--faint); background: transparent; border: 1px solid currentColor; }
+@media (prefers-reduced-motion: reduce) { .todo.row .row-skip { transition: none; } }
 .confirm { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .confirm { padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); }
 .result { margin-top: 10px; font-size: 12.5px; }

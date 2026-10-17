@@ -109,3 +109,24 @@ test("채팅 기록: 예전 DB에 todo_id·todo_title 열을 덧붙이고, 할 �
   ]);
   new Store(path); // 두 번 열어도 안전
 });
+
+test("안 해도 됨으로 닫기: done + skipped, 집계에서 빠지고, 다시 열면 표시가 없어진다", () => {
+  const s = new Store(":memory:");
+  s.upsertTodo({ id: "slack:dm1", title: "김호은 Slack DM 확인 및 확인 답장", source: "slack", priority: 2 });
+  s.upsertTodo({ id: "t2", title: "진짜 한 일", source: "mail", priority: 2 });
+  s.editTodo("t2", { status: "done" });
+  const t = s.editTodo("slack:dm1", { status: "done", skipped: true })!;
+  assert.equal(t.status, "done");
+  assert.equal(t.skipped, true);
+  assert.deepEqual(s.doneTodos().map((x) => x.id), ["t2"]);
+  assert.deepEqual(s.doneTodos(10, true).map((x) => x.id).sort(), ["slack:dm1", "t2"]);
+  assert.equal(s.recentlyDone("2000-01-01T00:00:00Z").find((x) => x.id === "slack:dm1")?.skipped, true);
+  assert.equal(s.ledger({ todoId: "slack:dm1" }).some((e) => e.action === "skipped"), true);
+  // 브리핑이 같은 id 를 다시 올려도 열리지 않는다
+  assert.equal(s.upsertTodo({ id: "slack:dm1", title: "김호은 Slack DM 확인 및 확인 답장", source: "slack", priority: 2 }), "skipped");
+  assert.equal(s.openTodos().length, 0);
+  const re = s.editTodo("slack:dm1", { status: "open" })!;
+  assert.equal(re.status, "open");
+  assert.equal(re.skipped, undefined);
+  assert.equal(s.ledger({ todoId: "slack:dm1" })[0].action, "reopened");
+});
