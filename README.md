@@ -1,7 +1,7 @@
 # 우사기 비서 (usagi-agent)
 
 화면 구석에 사는 작은 비서입니다. 캐릭터 「우사기」가 할 일, 회의, 브리핑을 말풍선으로 알려 주고, 캐릭터를 두 번 누르면 할 일·채팅·연구·작업 폴더를 모아 둔 패널이 열립니다. 대학원 연구 생활에 맞춰 서버 실험(usagi-run, tmux, GPU), 연구 노트(Tine 일지), Slack 지시사항을 한곳에서 볼 수 있습니다.
-데이터는 전부 이 맥의 `~/.cy-agent/`에 저장되고, 따로 서버로 올라가는 것은 없습니다. 맥 전용입니다.
+데이터는 이 맥의 `~/.cy-agent/`에 저장되고, AI 에게 묻는 글만 연결한 AI(Antigravity·Codex·Claude 등)로 갑니다([데이터와 개인정보](#데이터와-개인정보)). 맥 전용입니다.
 
 이 레포는 [cheo0y/shisa-agent](https://github.com/cheo0y/shisa-agent)(「시사 비서」)에서 갈라져 나온 포크입니다. 자세한 것은 [원래 프로젝트와 라이선스](#원래-프로젝트와-라이선스)에 있습니다.
 
@@ -274,7 +274,7 @@ AI별 차이와 모델은 [docs/connect/brain.md](docs/connect/brain.md)에 있�
 
 맥 밖으로 나가는 것은 다음뿐입니다.
 
-- 고른 AI 회사(Anthropic, OpenAI, Google, Genspark)에 브리핑과 대화에 필요한 글. AI 없이 쓰면 없습니다.
+- 고른 AI(Antigravity·Codex·Claude Code CLI 나 Anthropic·OpenAI·Google·Genspark API)에 브리핑과 대화에 필요한 글. AI 없이 쓰면 없습니다.
 - 연결한 서비스(Slack, ICS 캘린더, MCP 서버)에 대한 읽기 요청, `sshHosts`에 적은 서버로의 ssh.
 - 하루 한 번 GitHub에 최신 버전 번호를 묻는 요청(내 데이터 없음, 끌 수 있음).
 
