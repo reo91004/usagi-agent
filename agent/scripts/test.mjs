@@ -2,7 +2,7 @@
 // 1) tsc -p .(typecheck)  2) TZ=Asia/Seoul · CY_AGENT_HOME=<임시>/cy-agent-test-home 으로 node --test 'src/**/*.test.ts'
 // TZ: Node 는 Windows 에서도 TZ 환경 변수를 ICU 로 따른다(IANA 이름 Asia/Seoul 그대로) — 자식 프로세스 시작 때 넘기므로 확실히 먹는다.
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +20,10 @@ const tscBin = JSON.parse(readFileSync(join(tsPkg, "package.json"), "utf8")).bin
 const tsc = run([join(tsPkg, tscBin), "-p", "."]);
 if (tsc !== 0) process.exit(tsc);
 
-// 예전 스크립트: ${TMPDIR:-/tmp}/cy-agent-test-home — POSIX 에서 os.tmpdir() 도 TMPDIR → /tmp 순이라 같다
-const env = { ...process.env, TZ: "Asia/Seoul", CY_AGENT_HOME: join(tmpdir(), "cy-agent-test-home") };
+// 시험이 mkdtemp 로 만든 폴더는 대부분 남는다 — 실행마다 전용 임시 폴더를 TMPDIR(Windows 는 TMP·TEMP)로 주고 끝나면 통째로 지운다
+const tmp = mkdtempSync(join(tmpdir(), "cy-test-"));
+const env = { ...process.env, TZ: "Asia/Seoul", TMPDIR: tmp, TMP: tmp, TEMP: tmp, CY_AGENT_HOME: join(tmp, "cy-agent-test-home") };
 // node --test 는 glob 을 스스로 푼다(셸 없이 그대로 넘긴다). 뒤에 붙인 인자(npm test -- …)는 node --test 로
-process.exit(run(["--test", ...process.argv.slice(2), "src/**/*.test.ts"], env));
+const code = run(["--test", ...process.argv.slice(2), "src/**/*.test.ts"], env);
+rmSync(tmp, { recursive: true, force: true });
+process.exit(code);
