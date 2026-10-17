@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../store.ts";
@@ -85,4 +85,91 @@ test("ingestSessions: subagents 폴더는 들어가지 않는다", () => {
   assert.equal(ingestSessions(store, { claude: dir, codex: join(dir, "none") }), 1);
   assert.ok(store.node("session:s1"));
   assert.equal(store.node("session:sub"), undefined);
+});
+
+// 증분 읽기: 파일을 임의 바이트 지점(줄 중간·UTF-8 글자 중간 포함)에서 나눠 덧붙여 가며 수집해도 한 번에 파싱한 것과 같다
+const codexLines = [
+  { type: "session_meta", timestamp: "2026-10-08T01:00:00Z", payload: { id: "c9", cwd: "/r/x", git: { branch: "dev" } } },
+  { type: "response_item", timestamp: "2026-10-08T01:00:01Z", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "첫 요청 🐰" }] } },
+  { type: "turn_context", timestamp: "2026-10-08T01:00:02Z", payload: { cwd: "/r/y" } },
+  { type: "response_item", timestamp: "2026-10-08T01:00:03Z", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "했어요" }] } },
+  { type: "response_item", timestamp: "2026-10-08T01:00:04Z", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "둘째 요청" }] } },
+].map((l) => JSON.stringify(l)).join("\n");
+
+for (const [tool, raw, parse] of [["claude", claudeLines + "\n" + JSON.stringify({ type: "user", cwd: "/r/app2", timestamp: "2026-10-08T02:00:00Z", message: { content: "다음 일 🐰" } }), parseClaudeSession], ["codex", codexLines, parseCodexSession]] as const) {
+  test(`ingestSessions 증분(${tool}): 아무 바이트 지점에서 나눠 읽어도 한 번에 읽은 것과 같다`, () => {
+    const bytes = Buffer.from(raw, "utf8"); // 마지막 줄은 줄바꿈 없이 끝난다
+    const want = parse(raw, "f")!;
+    const dir = mkdtempSync(join(tmpdir(), "cy-inc-"));
+    for (let cut = 1; cut < bytes.length; cut += 7) {
+      mkdirSync(join(dir, "c", "p"), { recursive: true });
+      const path = join(dir, "c", "p", "f.jsonl");
+      const dirs = tool === "claude" ? { claude: join(dir, "c"), codex: join(dir, "none") } : { claude: join(dir, "none"), codex: join(dir, "c") };
+      const store = new Store(":memory:");
+      writeFileSync(path, bytes.subarray(0, cut));
+      ingestSessions(store, dirs);
+      appendFileSync(path, bytes.subarray(cut));
+      utimesSync(path, new Date(), new Date(Date.now() + cut * 1000)); // 같은 ms 안에 쓴 파일도 바뀐 것으로
+      ingestSessions(store, dirs);
+      const ref = new Store(":memory:");
+      rmSync(join(dir, "c"), { recursive: true });
+      mkdirSync(join(dir, "c", "p"), { recursive: true });
+      writeFileSync(path, bytes);
+      ingestSessions(ref, dirs);
+      for (const id of [`session:${want.id}`, `project:${want.cwd}`]) {
+        assert.deepEqual(store.node(id)?.props, ref.node(id)?.props, `cut=${cut} ${id}`);
+        assert.equal(store.node(id)?.label, ref.node(id)?.label);
+      }
+      assert.deepEqual(store.neighbors(`session:${want.id}`, "edited"), ref.neighbors(`session:${want.id}`, "edited"));
+      assert.equal(ref.node(`session:${want.id}`)?.props.turns, want.turns);
+      rmSync(join(dir, "c"), { recursive: true });
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+}
+
+test("ingestSessions 증분: 늘어난 부분만 읽고, 줄었거나 앞이 바뀐 파일은 처음부터 다시 읽는다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cy-shrink-"));
+  mkdirSync(join(dir, "p"), { recursive: true });
+  const path = join(dir, "p", "s1.jsonl");
+  const u = (id: string, text: string) => JSON.stringify({ type: "user", sessionId: id, cwd: "/w", timestamp: "2026-10-08T01:00:00Z", message: { content: text } }) + "\n";
+  const store = new Store(":memory:");
+  const dirs = { claude: dir, codex: join(dir, "none") };
+  const bump = (n: number) => utimesSync(path, new Date(), new Date(Date.now() + n * 1000));
+  writeFileSync(path, u("s1", "하나") + u("s1", "둘"));
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 2);
+  // 늘어남: 저장된 위치 이후만 읽는다 — 앞 부분을 같은 길이의 다른 글로 바꿔도(해시가 같지 않으면 다시 읽음) 이어 읽기만 확인하려면 뒤만 덧붙인다
+  appendFileSync(path, u("s1", "셋")); bump(1);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 3);
+  // 줄어듦(교체): 처음부터
+  writeFileSync(path, u("s1", "새것")); bump(2);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 1);
+  assert.equal(store.node("session:s1")?.props.firstPrompt, "새것");
+  // 더 길어졌지만 다른 파일(앞 256바이트가 다름): 처음부터
+  writeFileSync(path, u("s1", "다른 파일 ".repeat(30)) + u("s1", "하나 더")); bump(3);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 2);
+  assert.match(String(store.node("session:s1")?.props.firstPrompt), /^다른 파일/);
+  // 앞은 같고 읽은 자리 바로 앞이 바뀐 채 길어짐: 처음부터
+  const head = u("s1", "다른 파일 ".repeat(30));
+  writeFileSync(path, head + u("s1", "바뀐 둘째") + u("s1", "셋째")); bump(4);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 3);
+  assert.equal(store.node("session:s1")?.props.lastPrompt, "셋째");
+  // 새 파일로 바꿔 끼움(inode 다름), 내용은 앞부분이 같고 더 김: 처음부터
+  const tmp = join(dir, "new.tmp");
+  writeFileSync(tmp, head + u("s1", "바뀐 둘째") + u("s1", "셋째") + u("s1", "넷째"));
+  renameSync(tmp, path); bump(5);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 4);
+  // 저장된 상태가 다른 접는 규칙(버전)의 것이면 처음부터: 틀린 중간 상태를 이어 쌓지 않는다
+  const st = JSON.parse(store.stateOf(path)!);
+  store.setState(path, JSON.stringify({ ...st, v: -1, fold: { ...st.fold, turns: 99 } }));
+  appendFileSync(path, u("s1", "다섯째")); bump(6);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 5);
+  rmSync(dir, { recursive: true, force: true });
 });

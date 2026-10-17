@@ -81,6 +81,7 @@ CREATE INDEX IF NOT EXISTS nodes_kind ON nodes(kind, updated);
 CREATE TABLE IF NOT EXISTS edges (src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, PRIMARY KEY (src, rel, dst));
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, rel);
 CREATE TABLE IF NOT EXISTS ingest_marks (path TEXT PRIMARY KEY, mtime REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS ingest_state (path TEXT PRIMARY KEY, state TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS todos (id TEXT PRIMARY KEY, title TEXT NOT NULL, source TEXT NOT NULL, link TEXT, priority INTEGER NOT NULL DEFAULT 2, status TEXT NOT NULL DEFAULT 'open', created TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS todo_tombstones (id TEXT PRIMARY KEY, title TEXT, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS proposals (id TEXT PRIMARY KEY, repo TEXT NOT NULL, title TEXT NOT NULL, plan TEXT NOT NULL, status TEXT NOT NULL, slack_ts TEXT, slack_channel TEXT, result TEXT, created TEXT NOT NULL);
@@ -235,6 +236,14 @@ export class Store {
   }
   setMark(path: string, mtime: number) {
     this.db.prepare("INSERT OR REPLACE INTO ingest_marks (path, mtime) VALUES (?, ?)").run(path, mtime);
+  }
+
+  // 파일별 이어 읽기 상태(세션 수집: 읽은 위치·파서 중간 상태). JSON 문자열 그대로 둔다
+  stateOf(path: string): string | undefined {
+    return (this.db.prepare("SELECT state FROM ingest_state WHERE path = ?").get(path) as any)?.state;
+  }
+  setState(path: string, state: string) {
+    this.db.prepare("INSERT OR REPLACE INTO ingest_state (path, state) VALUES (?, ?)").run(path, state);
   }
 
   // 브리핑이 올린 할 일. 같은 id는 하나로 본다(브리핑마다 중복 생성 방지).
