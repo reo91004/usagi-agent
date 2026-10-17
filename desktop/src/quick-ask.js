@@ -1,6 +1,6 @@
 // AI(뇌) 없이 캐릭터를 한 번 클릭하면 뜨는 고르는 질문(칩). 순수 로직: 렌더러·main·테스트가 같이 쓴다.
 // 답은 데몬 POST /local/ask { id } 가 오늘 할 일·할 일·캘린더만 보고 정해진 말로 준다(agent local-mode.ts quickAnswer).
-// 마지막 칩 「AI 연결하기」는 데몬에 묻지 않고 설치 마법사의 뇌 단계를 연다.
+// 「집중하기」는 데몬에 묻지 않고 집중 타이머를 바로 시작하고, 마지막 칩 「AI 연결하기」는 설치 마법사의 뇌 단계를 연다.
 
 import { localSay } from './character.js';
 
@@ -14,10 +14,11 @@ export const QUICK_CHIPS = [
   { id: 'next_event', label: '다음 일정은요?' },
   { id: 'cheer', label: '응원해 줘' },
   { id: 'dance', label: '춤춰 줘' },
+  { id: 'focus', label: '집중하기', local: true },
   { id: 'connect', label: 'AI 연결하기', connect: true },
 ];
 const CHIP_IDS = QUICK_CHIPS.map((c) => c.id);
-export const ASK_IDS = QUICK_CHIPS.filter((c) => !c.connect).map((c) => c.id); // 데몬에 묻는 것
+export const ASK_IDS = QUICK_CHIPS.filter((c) => !c.connect && !c.local).map((c) => c.id); // 데몬에 묻는 것
 export const isAskId = (v) => typeof v === 'string' && ASK_IDS.includes(v);
 
 // 칩 말풍선. view = brain-state.js brainView
@@ -44,6 +45,7 @@ export const chipsOf = (ids) => (ids ?? []).map((id) => QUICK_CHIPS.find((c) => 
 // 칩을 눌렀을 때 할 일
 export function chipAction(id) {
   if (id === 'connect') return { type: 'open', section: 'setup', id: 'brain' };
+  if (id === 'focus') return { type: 'focus' };
   if (isAskId(id)) return { type: 'ask', id };
   return null;
 }
