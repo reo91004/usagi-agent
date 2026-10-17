@@ -764,7 +764,7 @@ function closedScopes(store: Store, sinceIso: string): Map<string, string> {
   let dms: { channel: string; name: string }[] | undefined;
   for (const t of closed) {
     const text = `${t.id} ${t.source_ref ?? ""} ${t.link ?? ""} ${t.origin ?? ""}`;
-    const m = /slack:([A-Z0-9]+):p(\d{10})(\d+)/.exec(text) ?? /archives\/([A-Z0-9]+)\/p(\d{10})(\d+)(?:\?thread_ts=(\d+\.\d+))?/.exec(text);
+    const m = /(?:slack:|archives\/)([A-Z0-9]+)[:/]p(\d{10})(\d+)(?:\?thread_ts=(\d+\.\d+))?/.exec(text);
     let key: string | undefined;
     if (m) {
       const [, ch, a, b] = m;
