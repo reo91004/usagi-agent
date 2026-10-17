@@ -2,6 +2,15 @@
 // 모델·브리핑 출처 저장(PUT /settings) · 연결 상태(GET /connections, POST /connections/check) · 행동 지침 · 캐릭터 · 이 앱.
 // 받는 쪽은 패널 창 하나뿐이다(오버레이·세션 창의 요청은 거절).
 
+import { sanitizeSettingsPatch, sanitizeAppPrefs, okCheckId, sanitizeCharacterBody, okMediaSlot } from './settings.js';
+import { okCharacterId } from './character.js';
+import { REPO_SLUG } from './update-check.js';
+import { cleanUpload } from './attachments.js';
+import { sanitizeGuidelineAdd, sanitizeGuidelinePatch, okGuidelineId } from './guidelines.js';
+import { okBrainId, okCap } from './disconnect.js';
+import { okCalendarId } from './calendars.js';
+import { denied } from './denied.js';
+
 // deps: { ipcMain, shell, request(method, path, body?, timeoutMs?), fromPanel(e), caps?(),
 //         sisa?() 앱의 AI 저장(publicView), disconnectBrain?(id), disconnectConnector?(cap), copyText?(text),
 //         calendars?() 연결된 캘린더(가린 이름), removeCalendar?(id) 하나 빼기,

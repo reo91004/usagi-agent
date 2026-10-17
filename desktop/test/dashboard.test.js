@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, visibleSections, SECTIONS, splitHost } from '../src/dashboard.js';
+import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, visibleSections, SECTIONS, navGroups, shapeMeetings, splitHost } from '../src/dashboard.js';
 
 const NOW = Date.parse('2026-10-09T05:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -69,11 +69,36 @@ test('shapeDashboard: 빈/깨진 응답도 안전', () => {
   assert.deepEqual(shapeDashboard({ projects: 'x', todos: {} }, NOW).today.items, []);
 });
 
+test('navGroups: 위쪽은 자주 쓰는 화면, 설정은 맨 아래, 설치는 사이드바에 없다', () => {
+  const g = navGroups(SECTIONS);
+  assert.deepEqual(g.bottom, ['settings']);
+  assert.ok(!g.main.includes('setup') && !g.main.includes('models') && !g.main.includes('settings'));
+  assert.deepEqual(g.main, ['overview', 'projects', 'todos', 'today', 'chat']);
+  assert.ok(SECTIONS.includes('setup'), '설치 화면은 머리 단추로 열린다');
+});
+
+test('shapeMeetings: 오늘 시작하는 일정만, 시작 순, 끝난 건 past, 안전한 링크만', () => {
+  const now = new Date(2026, 9, 17, 12, 0).getTime();
+  const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const r = shapeMeetings([
+    { id: 'b', subject: '오후', start: at(17, 15), end: at(17, 16), link: 'https://teams.microsoft.com/x' },
+    { id: 'a', subject: '오전', start: at(17, 9), end: at(17, 10), link: 'javascript:alert(1)' },
+    { id: 'c', subject: '내일', start: at(18, 9), end: at(18, 10) },
+    { id: 'd', subject: '', start: at(17, 11), end: at(17, 12) },
+  ], now);
+  assert.deepEqual(r.map((m) => [m.subject, m.time, m.past]), [['오전', '09:00', true], ['오후', '15:00', false]]);
+  assert.equal(r[0].link, null);
+  assert.equal(r[1].link, 'https://teams.microsoft.com/x');
+  assert.deepEqual(shapeMeetings(undefined, now), []);
+});
+
 test('normalizeSection', () => {
   assert.equal(normalizeSection('projects'), 'projects');
   assert.equal(normalizeSection('today'), 'today');
   assert.equal(normalizeSection('scrum'), 'today');
-  assert.equal(normalizeSection('settings'), null);
+  assert.equal(normalizeSection('settings'), 'settings');
+  assert.equal(normalizeSection('models'), 'settings', '예전 모델 탭은 설정으로');
+  assert.equal(normalizeSection('nope'), null);
   assert.equal(normalizeSection(null), null);
 });
 
