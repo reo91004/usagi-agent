@@ -43,7 +43,8 @@ test('createCapsProbe: 잠깐 기억하고(force 면 새로), 동시에 물으�
 
 test('Claude Code 가 없으면: 메뉴에서 작업 세션을 빼고, 패널은 버튼을 숨기고, 단축키는 안내', () => {
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(m, /\.\.\.\(coder\(\) \? \[\{ label: '작업 세션 열기', click: openSessionMenu \}\] : \[\]\)/);
+  assert.match(m, /coder: coder\(\)/);
+  assert.match(readFileSync(new URL('../src/menu.js', import.meta.url), 'utf8'), /s\.coder \? \[it\('작업 세션 열기'/);
   assert.doesNotMatch(m, /suggest|건의/i, '건의함은 개인판에서 뺐다');
   assert.match(m, /ipcMain\.handle\('caps-get'/);
   const p = readFileSync(new URL('../renderer/panel.js', import.meta.url), 'utf8');
