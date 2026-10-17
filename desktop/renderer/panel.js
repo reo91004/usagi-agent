@@ -3380,7 +3380,7 @@ function applyCaps(c) {
 cy.caps?.().then(applyCaps).catch(() => {});
 cy.onCaps?.(applyCaps);
 $('close').addEventListener('click', () => cy.close());
-// 항상 위 고정(#171): 켜짐은 앱이 state.json 에 기억(settings-app-get/set)
+// 항상 위 고정(#171): 켜짐은 앱이 state.json 에 기억(설정과 같은 cy.settings 의 settings-app-get/set)
 const pinBtn = $('panel-pin');
 pinBtn.append(navIcon('pin'));
 function showPin(on) {
@@ -3390,9 +3390,9 @@ function showPin(on) {
   pinBtn.dataset.tip = tip;
   pinBtn.setAttribute('aria-label', tip);
 }
-cy.getAppPrefs?.().then((r) => { if (r?.ok) showPin(r.panelPinned === true); }).catch(() => {});
+cy.settings.getAppPrefs().then((r) => { if (r?.ok) showPin(r.panelPinned === true); }).catch(() => {});
 pinBtn.addEventListener('click', async () => {
-  const r = await cy.setAppPrefs?.({ panelPinned: pinBtn.getAttribute('aria-pressed') !== 'true' }).catch(() => null);
+  const r = await cy.settings.setAppPrefs({ panelPinned: pinBtn.getAttribute('aria-pressed') !== 'true' }).catch(() => null);
   if (r?.ok) showPin(r.panelPinned === true);
 });
 document.addEventListener('keydown', (e) => {
