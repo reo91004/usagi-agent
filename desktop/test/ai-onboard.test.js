@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   AI_PROVIDERS, HUB, SISA_SAY,
-  connectSteps, cannedReply, slotCheck, slotOk, DEFAULT_PERSONA, SLACK_MANIFEST,
+  connectSteps, cannedReply, slotCheck, slotOk, DEFAULT_PERSONA, SLACK_MANIFEST, SLACK_APP_URL,
 } from '../src/ai-onboard.js';
 import { checkLlm } from '../src/llm-check.js';
 
@@ -26,6 +26,13 @@ test('AI 공급자는 넷이고, 슬랙은 쿠키를 쓰지 않는다', () => {
   const yaml = readFileSync(new URL('../../ops/slack-readonly-manifest.yaml', import.meta.url), 'utf8');
   assert.equal(SLACK_MANIFEST, `${yaml.split('\n').filter((l) => !l.startsWith('#')).join('\n').trim()}\n`);
   assert.doesNotMatch(SLACK_MANIFEST, /chat:write|:write\b/, '쓰기 스코프 없음');
+  // 앱 만들기 링크에 매니페스트(주석 뺀 것)가 미리 채워진다
+  const u = new URL(SLACK_APP_URL);
+  assert.equal(`${u.origin}${u.pathname}`, 'https://api.slack.com/apps');
+  assert.equal(u.searchParams.get('new_app'), '1');
+  assert.equal(u.searchParams.get('manifest_yaml'), SLACK_MANIFEST.replace(/\s+#.*$/gm, ''));
+  assert.doesNotMatch(u.searchParams.get('manifest_yaml'), /\s#|우사기/); // 주석·앱을 드러내는 말 없음
+  assert.equal(connectSteps('slack', null)[0].url, SLACK_APP_URL);
   assert.ok(HUB.find((h) => h.id === 'slack'));
 });
 

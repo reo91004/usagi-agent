@@ -17,7 +17,7 @@ Slack은 두 가지 용도로 씁니다.
 
 `mcp` 모드는 Claude Code 뇌면 브리핑·채팅에서, Codex·Antigravity 뇌면 채팅에서만 읽힙니다([brain.md](brain.md#codexantigravity-뇌에서-mcp-연결-읽기)). 다른 뇌는 도구를 쓰지 못합니다. `api` 모드는 어떤 뇌든 됩니다.
 
-설치 마법사(패널 「설치」 → 「더 연결하기」 → Slack)는 아래 읽기 전용 앱을 만드는 화면(매니페스트를 그대로 보여 줍니다)과 토큰 붙여 넣기 칸으로 안내하고, `connectors.slack`을 `{ "mode": "api", "userToken": "xoxp-…" }`로 넣은 뒤 데몬에 다시 읽게 알립니다. 어떤 뇌든 됩니다. Slack 공식 MCP(`mode: "mcp"`)는 마법사에 없고 아래 (b)대로 직접 넣습니다.
+설치 마법사(패널 「설치」 → 「더 연결하기」 → Slack)는 아래 읽기 전용 앱을 만드는 화면(매니페스트를 미리 채운 링크로 열고, 채워지지 않으면 붙여 넣을 내용도 보여 줍니다)과 토큰 붙여 넣기 칸으로 안내하고, `connectors.slack`을 `{ "mode": "api", "userToken": "xoxp-…" }`로 넣은 뒤 데몬에 다시 읽게 알립니다. 어떤 뇌든 됩니다. Slack 공식 MCP(`mode: "mcp"`)는 마법사에 없고 아래 (b)대로 직접 넣습니다.
 
 ---
 

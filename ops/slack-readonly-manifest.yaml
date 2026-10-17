@@ -5,7 +5,7 @@
 #   agent/src/ingest/slack-api.ts 가 auth.test · users.conversations · conversations.history/replies/info · search.messages · users.info 만 부른다(쓰기 메서드는 코드에서 막힘)
 display_information:
   name: usagi-reader
-  description: 우사기 비서가 내 DM과 나를 멘션한 글을 읽기만 합니다
+  description: 내 DM과 나를 멘션한 글을 내 컴퓨터에서 읽기만 합니다
   background_color: "#3b2a5c"
 oauth_config:
   scopes:
