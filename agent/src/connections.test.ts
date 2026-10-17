@@ -51,6 +51,7 @@ function make(over: Partial<ConstructorParameters<typeof Connections>[1]> = {}, 
     env: {},
     sdkProbe: async () => ({ account: { email: "me@example.com", provider: "firstParty", tokenSource: "claude.ai" }, servers: [{ name: "mail", status: "connected" }, { name: "github", status: "failed", error: "HTTP 401 Bearer abcdefghijklmnop" }] }),
     gh: async () => ({ ok: false, err: "You are not logged into any GitHub hosts. token gho_abcdefghijklmnopqrstu" }),
+    resolves: async () => true, // 시험은 네트워크를 보지 않는다
     lastRun: (k) => runs.find((r) => r.kind === k),
     kg: () => ({ phase: "idle" }),
     ...over,
@@ -213,4 +214,20 @@ test("Connections: 이 Mac 캘린더·미리알림·실험 서버·연구 노트
   assert.deepEqual([byId(on, "apple").state, byId(on, "apple").detail], ["ok", "캘린더·미리알림(할 일로)을 읽어요"]);
   assert.match(byId(on, "ssh").detail!, /^gpu1·gpu2 · 끝난 실험 알림·물어보면 폴더·결과·GPU$/);
   assert.equal(byId(on, "research-note").state, "ok");
+});
+
+test("GitHub(gh): 확인이 실패해도 주소를 못 찾으면 로그인 문제가 아니라 인터넷 문제로(주의), 주소를 찾으면 그대로 로그인 안내", async () => {
+  const off = make({ gh: async () => ({ ok: false, err: "X Failed to log in to github.com account me (keyring) - The token in keyring is invalid." }), resolves: async () => false });
+  const r1 = byId((await off.c.list()).rows, "gh");
+  assert.equal(r1.state, "warn");
+  assert.match(r1.detail ?? "", /인터넷 연결 문제/);
+  assert.doesNotMatch(r1.detail ?? "", /gh auth login/);
+  const on = make({ gh: async () => ({ ok: false, err: "The token in keyring is invalid." }), resolves: async () => true });
+  const r2 = byId((await on.c.list()).rows, "gh");
+  assert.equal(r2.state, "error");
+  assert.match(r2.detail ?? "", /gh auth login/);
+  let asked = 0;
+  const ok = make({ gh: async () => ({ ok: true }), resolves: async () => { asked++; return false; } });
+  assert.equal(byId((await ok.c.list()).rows, "gh").state, "ok");
+  assert.equal(asked, 0); // 성공하면 주소 찾기를 하지 않는다
 });

@@ -70,6 +70,12 @@ CREATE INDEX IF NOT EXISTS slack_threads_activity ON slack_threads(activity);
 CREATE TABLE IF NOT EXISTS slack_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS slack_convs (id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, user TEXT, quiet INTEGER NOT NULL DEFAULT 0, next_sync TEXT NOT NULL DEFAULT '');
 `;
+// 연결·이름 찾기 실패(인터넷 문제). 이때는 토큰·설치 문제가 아니라고 알려 준다
+export const NET_ERR = /ENOTFOUND|EAI_AGAIN|getaddrinfo|fetch failed|request error|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|socket hang up/i;
+export function ingestErrorText(c: { errors: number; calls: number }, last: string): string {
+  if (NET_ERR.test(last)) return `인터넷 연결 문제로 Slack 에 닿지 못했어요(${c.errors}/${c.calls}회) — 다음 수집 때 다시 해요`;
+  return `Slack 호출 ${c.errors}/${c.calls}회 실패: ${last.slice(0, 160) || "오류"}`;
+}
 const DM_KEY = "__search_dm__";
 const MENTION_KEY = "__search_mentions__";
 const MINE_KEY = "__search_mine__";
@@ -559,6 +565,7 @@ export class SlackRun {
 
   // 오류 응답 처리(레이트리밋이면 대기·재시도, 아니면 오류로 세고 호출별 onError)
   private failed(c: Call, tool: string, err: string) {
+    this.lastErr = err;
     if (isRateLimit(err)) {
       this.counts.rateLimited++;
       this.ing.noteRateLimit(retryAfterMs(err));
@@ -571,6 +578,8 @@ export class SlackRun {
     if (process.env.CY_AGENT_DEBUG) console.error("slack 호출 오류", tool, err.slice(0, 200));
     try { c.onError?.(err); } catch { /* 무시 */ }
   }
+
+  private lastErr = ""; // 마지막 호출 오류(실패 원인 한 줄 — 설정 화면 「Slack 수집」)
 
   async drive() {
     if (!this.ing.transport) return; // slack 연결 안 됨(off·mcp) — 수집 없음
@@ -604,7 +613,7 @@ export class SlackRun {
           try { c.handle(data); } catch (e) { this.counts.errors++; if (process.env.CY_AGENT_DEBUG) console.error("slack handle 실패", c.tool, e); }
         }
       }
-      run.end(this.counts.errors ? "failed" : "done");
+      run.end(this.counts.errors ? "failed" : "done", this.counts.errors ? { error: ingestErrorText(this.counts, this.lastErr) } : undefined);
     } catch (e: any) {
       this.counts.errors++;
       run.end("failed", { error: String(e?.message ?? e) });
