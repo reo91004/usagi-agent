@@ -132,11 +132,17 @@ function makeSlimmer(tool: "claude" | "codex") {
 export function makeReceiver(tool: "claude" | "codex") {
   const sl = makeSlimmer(tool);
   let rest: Buffer = Buffer.alloc(0);
+  let skip = 0; // MAX_LINE 을 넘은 줄은 쌓지 않고(소비자도 버린다) 줄바꿈까지 바이트 수만 센다
   const joined = (out: string[]) => (out.length ? out.join("\n") + "\n" : "");
   const r = {
     off: 0,
     feed(chunk: Buffer) {
-      const buf = rest.length ? Buffer.concat([rest, chunk]) : chunk;
+      let buf = chunk;
+      if (skip) {
+        const nl = buf.indexOf(10);
+        if (nl < 0) { skip += buf.length; return ""; }
+        r.off += skip + nl + 1; skip = 0; buf = buf.subarray(nl + 1);
+      } else if (rest.length) buf = Buffer.concat([rest, chunk]);
       const out: string[] = [];
       let start = 0;
       for (let i = buf.indexOf(10); i !== -1; i = buf.indexOf(10, start)) {
@@ -144,7 +150,8 @@ export function makeReceiver(tool: "claude" | "codex") {
         start = i + 1;
       }
       r.off += start;
-      rest = Buffer.from(buf.subarray(start));
+      if (buf.length - start > MAX_LINE) { skip = buf.length - start; rest = Buffer.alloc(0); }
+      else rest = Buffer.from(buf.subarray(start));
       return joined(out);
     },
     end() {

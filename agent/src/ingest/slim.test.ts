@@ -86,3 +86,15 @@ test("receiver: 줄이 조각 사이에서 갈라져도, 끝이 안 온 줄은 �
     }
   }
 });
+
+test("receiver: 8MB 넘는 줄은 쌓지 않고 건너뛰되 오프셋은 그 줄까지 센다", () => {
+  const rx = makeReceiver("claude");
+  const ok = JSON.stringify({ type: "user", message: { content: "다음" } }) + "\n";
+  const big = Buffer.alloc((8 << 20) + 10, 120);
+  let out = rx.feed(big.subarray(0, 5 << 20)) + rx.feed(big.subarray(5 << 20)); // 줄바꿈 전까지 8MB 를 넘는다
+  assert.equal(out, "");
+  assert.equal(rx.off, 0);
+  out += rx.feed(Buffer.concat([Buffer.from("\n"), Buffer.from(ok)]));
+  assert.equal(out, ok);
+  assert.equal(rx.off, big.length + 1 + Buffer.byteLength(ok));
+});

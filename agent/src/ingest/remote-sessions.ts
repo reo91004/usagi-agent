@@ -7,8 +7,8 @@
 // 서버 → 맥 포트는 열지 않는다(jobs.ts 와 같은 ssh BatchMode). 서버가 준 파일 이름은 믿지 않는 입력:
 // 정해진 두 폴더 아래, 셸에 안전한 글자만 받는다(그래야 원격 명령에 따옴표만 씌워 넣을 수 있다).
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "../config.ts";
 import { okJobDir, okJobHost, runSsh, sshArgs, type RunSsh } from "../jobs.ts";
 import { SLIM_V, makeReceiver } from "./slim.ts";
@@ -112,6 +112,7 @@ function openSink(items: FetchItem[], side: Side) {
   return {
     begin(rel: string, from: number) {
       const item = byRel.get(rel)!;
+      if (from && !existsSync(item.to)) throw new Error(`받는 중 맥 파일이 사라졌어요: ${rel}`);
       open.set(rel, { fd: openSync(from ? item.to : item.to + ".tmp", from ? "a" : "w", 0o600), rx: makeReceiver(toolOf(rel)), from, item });
     },
     data(rel: string, chunk: Buffer) {
@@ -119,30 +120,16 @@ function openSink(items: FetchItem[], side: Side) {
       writeSync(o.fd, o.rx.feed(chunk));
     },
     finish() {
-      for (const [rel, o] of open) {
-        writeSync(o.fd, o.rx.end());
-        const loc = fstatSync(o.fd).size;
-        closeSync(o.fd);
-        if (!o.from) renameSync(o.item.to + ".tmp", o.item.to);
-        side.files[rel] = { srv: o.from + o.rx.off, loc };
-      }
-      open.clear();
+      try {
+        for (const [rel, o] of open) {
+          let loc: number;
+          try { writeSync(o.fd, o.rx.end()); loc = fstatSync(o.fd).size; } finally { closeSync(o.fd); open.delete(rel); }
+          if (!o.from) renameSync(o.item.to + ".tmp", o.item.to);
+          side.files[rel] = { srv: o.from + o.rx.off, loc };
+        }
+      } finally { for (const o of open.values()) closeSync(o.fd); open.clear(); }
     },
   };
-}
-
-// 슬림 이전 원본 파일(사이드카가 아예 없을 때만)을 그 자리에서 슬림으로 바꾼다. 마지막 줄바꿈 뒤는 srv 에 넣지 않아 다음에 서버에서 받는다.
-// 이 길은 한 번뿐이다: 슬림은 원본을 지우므로 SLIM_V 가 오르면 서버에서 처음부터 다시 받는 수밖에 없다(사이드카 v 가 다르면 entry 없는 파일로 보고 0부터 받는다).
-function migrate(path: string, rel: string, side: Side) {
-  const rx = makeReceiver(toolOf(rel));
-  const src = openSync(path, "r"), dst = openSync(path + ".tmp", "w", 0o600);
-  try {
-    const buf = Buffer.alloc(1 << 20);
-    for (let n = readSync(src, buf, 0, buf.length, null); n > 0; n = readSync(src, buf, 0, buf.length, null)) writeSync(dst, rx.feed(buf.subarray(0, n)));
-    writeSync(dst, rx.end());
-  } finally { closeSync(src); closeSync(dst); }
-  renameSync(path + ".tmp", path);
-  side.files[rel] = { srv: rx.off, loc: statSync(path).size };
 }
 
 const sizeOf = (p: string) => { try { return statSync(p).size; } catch { return 0; } };
@@ -186,7 +173,8 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
     writeFileSync(judgedPath, JSON.stringify({ mine: mine ?? null, files: nextJudged }));
   }
   const files = all.filter((f) => !(f.rel in nextJudged));
-  // 사이드카: 없으면 슬림 이전 원본이 있는 것이니 지금 바꾸고, 깨졌거나 SLIM_V 가 다르면 entry 가 없는 셈 쳐 서버에서 0부터 다시 받는다
+  // 사이드카가 없거나 깨졌거나 SLIM_V 가 다르면 entry 가 없는 셈 쳐 서버에서 0부터 다시 받는다.
+  // 맥에 있는 파일이 원본인지 슬림인지는 사이드카로만 알 수 있어, 슬림 이전 미러도 그 자리에서 바꾸지 않고 한 번 다시 받는다
   const sidePath = join(base, SIDECAR);
   let side: Side = { v: SLIM_V, files: {} };
   const saveSide = () => {
@@ -194,18 +182,13 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
     writeFileSync(sidePath + ".tmp", JSON.stringify(side));
     renameSync(sidePath + ".tmp", sidePath);
   };
-  if (!existsSync(sidePath)) {
-    // 파일마다 저장: 도중에 멈춰도 다음엔 사이드카가 있어 남은 원본은 entry 없는 파일로 0부터 받는다(바꾼 파일을 또 바꾸지 않게)
-    saveSide();
-    for (const p of walk(base)) { migrate(p, relative(base, p), side); saveSide(); }
-  } else {
-    try {
-      const j = JSON.parse(readFileSync(sidePath, "utf8"));
-      if (j?.v === SLIM_V && j.files && typeof j.files === "object") side = j;
-    } catch { /* 깨짐 */ }
-  }
+  try {
+    const j = JSON.parse(readFileSync(sidePath, "utf8"));
+    if (j?.v === SLIM_V && j.files && typeof j.files === "object") side = j;
+  } catch { /* 없거나 깨짐 */ }
   const keep = new Set<string>();
   const todo: FetchItem[] = [];
+  let dropped = false;
   for (const f of files) {
     const to = join(base, f.rel);
     keep.add(to);
@@ -215,12 +198,15 @@ export async function syncRemoteSessions(host: string, deps: { run?: RunSsh; fet
     const ok = e && have >= e.loc; // 파일이 없거나 짧으면 처음부터
     if (ok && f.size === e.srv) continue;
     mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
-    todo.push({ rel: f.rel, from: ok && f.size > e.srv ? e.srv : 0, to }); // 서버가 줄었으면 처음부터
+    const from = ok && f.size > e.srv ? e.srv : 0; // 서버가 줄었으면 처음부터
+    if (e && !from) { delete side.files[f.rel]; dropped = true; }
+    todo.push({ rel: f.rel, from, to });
   }
+  if (dropped) saveSide();
   for (let i = 0; i < todo.length; i += BATCH) {
     const batch = todo.slice(i, i + BATCH);
     const sink = openSink(batch, side);
-    try { await fetch(host, batch, sink); } finally { sink.finish(); saveSide(); }
+    try { await fetch(host, batch, sink); } finally { try { sink.finish(); } finally { saveSide(); } }
   }
   // 서버 목록이 통째로 비면(find 실패·일시 오류일 수 있다) 받아 둔 것을 지우지 않고 로그만. 서버가 정말 다 지웠으면 다음 정상 목록에서 정리된다
   if (!all.length) {

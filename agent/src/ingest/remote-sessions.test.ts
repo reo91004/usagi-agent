@@ -251,27 +251,40 @@ test("syncRemoteSessions: 서버 파일이 줄면 새 파일로 처음부터(ino
   assert.equal(readFileSync(to, "utf8"), cl("z") + cl("y") + cl("x"));
 });
 
-test("syncRemoteSessions: 슬림 이전 원본 미러는 ssh 없이 그 자리에서 슬림으로 바꾸고, 사이드카는 다음 동기화에도 이어진다", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cy-migrate-"));
+test("syncRemoteSessions: 사이드카가 없으면(슬림 이전 미러 포함) 맥 파일을 믿지 않고 서버에서 0부터 받아 슬림으로 바꾼다", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cy-noside-"));
   const rel = ".claude/projects/p/a.jsonl";
   const to = join(root, "g", rel);
   const think = JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "x".repeat(2000) }, { type: "text", text: "답" }] } }) + "\n";
-  const rawLines = cl("질문") + think;
-  const partial = cl("쓰는 중").slice(0, 12);
+  const remote = cl("질문") + think;
   mkdirSync(dirname(to), { recursive: true });
-  writeFileSync(to, rawLines + partial);
-  const slimLines = (() => { const rx = makeReceiver("claude"); return rx.feed(Buffer.from(rawLines)) + rx.end(); })();
-  let remote = rawLines + cl("쓰는 중");
+  writeFileSync(to, remote); // 원본 그대로인 옛 미러(이미 슬림이어도 사이드카가 없으면 구별할 수 없다)
+  const slim = (() => { const rx = makeReceiver("claude"); return rx.feed(Buffer.from(remote)) + rx.end(); })();
   const froms: number[] = [];
   const run = async (a: string[]) => (a[2].includes("head -c") ? rel : `${Buffer.byteLength(remote)} ${rel}`);
   const fetch: FetchBatch = async (_h, items, sink) => { froms.push(items[0].from); send(sink, rel, remote, items[0].from); };
   const ino = statSync(to).ino;
   await syncRemoteSessions("g", { run, fetch, root });
-  assert.notEqual(statSync(to).ino, ino);
-  assert.equal(froms[0], Buffer.byteLength(rawLines)); // 원본의 줄바꿈 끝부터 받는다
-  assert.equal(readFileSync(to, "utf8"), slimLines + cl("쓰는 중"));
-  assert.ok(statSync(to).size < Buffer.byteLength(rawLines));
+  assert.deepEqual(froms, [0]);
+  assert.notEqual(statSync(to).ino, ino); // 새 파일로 바꿔 ingest 이어 읽기 표시가 무효가 된다
+  assert.equal(readFileSync(to, "utf8"), slim);
   assert.equal(sideOf(root, "g").files[rel].srv, Buffer.byteLength(remote));
-  assert.equal(await syncRemoteSessions("g", { run, fetch, root }), 0); // 사이드카가 있으니 다시 바꾸지도 받지도 않는다
+  assert.equal(await syncRemoteSessions("g", { run, fetch, root }), 0);
   assert.equal(froms.length, 1);
+});
+
+test("syncRemoteSessions: 0부터 다시 받을 파일의 옛 사이드카 값은 받기 전에 지워 둔다(받은 뒤 저장 전에 멈춰도 새 파일을 옛 크기로 자르지 않게)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cy-stale-"));
+  const rel = ".claude/projects/p/a.jsonl";
+  const to = join(root, "g", rel);
+  let remote = cl("하나") + cl("둘");
+  const run = async (a: string[]) => (a[2].includes("head -c") ? rel : `${Buffer.byteLength(remote)} ${rel}`);
+  let seen: unknown = "unset";
+  const fetch: FetchBatch = async (_h, items, sink) => { seen = existsSync(join(root, "g", ".slim.json")) ? sideOf(root, "g").files[rel] : undefined; send(sink, rel, remote, items[0].from); };
+  await syncRemoteSessions("g", { run, fetch, root });
+  assert.equal(seen, undefined);
+  remote = cl("짧음"); // 서버 파일이 줄었다 → 0부터
+  await syncRemoteSessions("g", { run, fetch, root });
+  assert.equal(seen, undefined, "받기 시작할 때 디스크의 사이드카에 옛 값이 없어야 한다");
+  assert.equal(readFileSync(to, "utf8"), cl("짧음"));
 });
