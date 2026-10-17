@@ -38,6 +38,12 @@ export function restorePhase(saved) {
   return isSetupPhase(saved) ? saved : 'name';
 }
 
+// 미리알림 줄: 연결해 둔 것(config)이라도 macOS 허락이 없으면(앱 업데이트 뒤) 다시 허락하라고
+function appleRow(a) {
+  const on = !!a.connected?.reminders, ok = on && a.reminders === 'granted';
+  return { id: 'reminders', label: '미리알림', ok, text: ok ? '안 끝난 미리알림을 할 일로 가져와요' : on ? 'macOS 허락이 다시 필요해요(더 연결하기에서)' : '나중에' };
+}
+
 // 끝 화면 요약: 무엇이 됐고 무엇을 나중에 할 수 있나. 캘린더·Slack 은 데몬이 본 연결 상태(대시보드 connectors — 개요 카드와 같은 값),
 // 미리알림은 GET /apple/status(도우미가 없는 실행이면 줄 없음), 실험 서버·연구 노트는 연구 카드(research — 설정 파일에서 켠 것만)
 export function setupSummary({ brain = {}, repos = [], name = '', readSessions = false, connectors = [], apple = null, research = null } = {}) {
@@ -49,8 +55,8 @@ export function setupSummary({ brain = {}, repos = [], name = '', readSessions =
   return [
     { id: 'name', label: '이름', ok: !!name, text: name ? `${name} 님` : '나중에' },
     { id: 'brain', label: '뇌(대화 AI)', ok: brain.ready === true && !brain.local, text: brain.ready === true && !brain.local ? (brain.label || '연결됨') : brain.local ? 'AI 없이 쓰기 (나중에 설정에서 연결할 수 있어요)' : '나중에 설정에서 연결' },
-    connRow('calendar', '캘린더'),
-    ...(apple && apple.available !== false ? [{ id: 'reminders', label: '미리알림', ok: !!apple.connected?.reminders, text: apple.connected?.reminders ? '안 끝난 미리알림을 할 일로 가져와요' : '나중에' }] : []),
+    apple?.connected?.calendar && apple.calendar !== 'granted' ? { id: 'calendar', label: '캘린더', ok: false, text: '이 Mac 캘린더: macOS 허락이 다시 필요해요(더 연결하기에서)' } : connRow('calendar', '캘린더'),
+    ...(apple && apple.available !== false ? [appleRow(apple)] : []),
     connRow('slack', 'Slack'),
     { id: 'repos', label: '레포 폴더', ok: repos.length > 0, text: repos.length ? repos.join(', ') : '나중에' },
     { id: 'sessions', label: '작업 기록', ok: readSessions === true, text: readSessions === true ? 'Claude Code·Codex 작업 기록을 읽어요' : '읽지 않아요 (설정에서 켤 수 있어요)' },

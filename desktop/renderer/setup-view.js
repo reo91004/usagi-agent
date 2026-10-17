@@ -343,21 +343,26 @@ function calendarsBlock(calendars, onAdd, onRemove) {
 
 // 이 Mac 의 캘린더·미리알림(EventKit, #53): 주소 없이 macOS 허락 한 번으로. 앱에 도우미가 없으면(개발 실행 등) 안 보인다
 // calMcp: 지금 캘린더를 MCP 로 읽고 있으면 그 서버 이름 — 이 Mac 캘린더를 연결하면 그 설정을 대신한다(eventkit.ts setAppleFlags)
+// 연결해 둔 것(config)이라도 macOS 허락이 없으면(앱 업데이트로 서명이 바뀌면 다시 묻는다) 연결된 것으로 치지 않고 [다시 허락하기]
 function appleBlock(a, onConnect, onDisconnect, onPrivacy, calMcp) {
   if (!a || a.available === false || !onConnect) return null;
-  const cal = !!a.connected?.calendar, rem = !!a.connected?.reminders;
+  const set = (k) => !!a.connected?.[k], ok = (k) => set(k) && a[k] === 'granted';
+  const cal = ok('calendar'), rem = ok('reminders');
+  const regrant = (set('calendar') && !cal) || (set('reminders') && !rem);
   const denied = (k) => a[k] === 'denied' || a[k] === 'restricted';
   const on = [cal ? '캘린더' : '', rem ? '미리알림' : ''].filter(Boolean).join('·');
   return h('div.setup-folder.setup-apple', null,
     h('span.setup-pick-title', { text: on ? `이 Mac 의 캘린더·미리알림 · ${on} 연결됨` : '이 Mac 의 캘린더·미리알림' }),
     h('p.setup-blurb', { text: '주소를 붙이지 않고 캘린더 앱과 미리알림 앱을 바로 읽어요. 처음 한 번 macOS 가 허락을 물어요. 구글 캘린더는 시스템 설정 → 인터넷 계정에 Google 계정을 넣으면 함께 읽혀요. 읽기만 하고 바꾸지 않아요.' }),
-    calMcp && !cal ? h('p.setup-gate', { text: `지금은 캘린더를 MCP(${calMcp})로 읽고 있어요. 캘린더를 연결하면 이 Mac 캘린더로 바뀌어요.` }) : null,
+    calMcp && !set('calendar') ? h('p.setup-gate', { text: `지금은 캘린더를 MCP(${calMcp})로 읽고 있어요. 캘린더를 연결하면 이 Mac 캘린더로 바뀌어요.` }) : null,
+    regrant && !a.pending ? h('p.setup-gate', { text: '연결해 둔 것의 macOS 허락이 풀렸어요. 앱을 업데이트하면 macOS 가 다시 물어요. [다시 허락하기]를 눌러 주세요.' }) : null,
     a.pending ? h('p.setup-gate', { text: 'macOS 창에서 허락을 기다리고 있어요…' }) : null,
     a.error ? h('p.setup-gate', { text: a.error }) : null,
     h('div.setup-fields.row', null,
-      !cal || !rem ? h('button.primary', { type: 'button', disabled: !!a.pending, text: cal ? '미리알림도 연결' : rem ? '캘린더도 연결' : '연결하기', onclick: () => onConnect({ calendar: !cal, reminders: !rem }) }) : null,
-      cal ? h('button.ghost', { type: 'button', text: '캘린더 빼기', onclick: () => onDisconnect({ calendar: true }) }) : null,
-      rem ? h('button.ghost', { type: 'button', text: '미리알림 빼기', onclick: () => onDisconnect({ reminders: true }) }) : null,
+      regrant ? h('button.primary', { type: 'button', disabled: !!a.pending, text: '다시 허락하기', onclick: () => onConnect({ calendar: set('calendar') && !cal, reminders: set('reminders') && !rem }) })
+        : !cal || !rem ? h('button.primary', { type: 'button', disabled: !!a.pending, text: cal ? '미리알림도 연결' : rem ? '캘린더도 연결' : '연결하기', onclick: () => onConnect({ calendar: !cal, reminders: !rem }) }) : null,
+      set('calendar') ? h('button.ghost', { type: 'button', text: '캘린더 빼기', onclick: () => onDisconnect({ calendar: true }) }) : null,
+      set('reminders') ? h('button.ghost', { type: 'button', text: '미리알림 빼기', onclick: () => onDisconnect({ reminders: true }) }) : null,
       denied('calendar') ? h('button.ghost', { type: 'button', text: '캘린더 허락 열기', onclick: () => onPrivacy('calendar') }) : null,
       denied('reminders') ? h('button.ghost', { type: 'button', text: '미리알림 허락 열기', onclick: () => onPrivacy('reminders') }) : null));
 }

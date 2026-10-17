@@ -43,9 +43,12 @@ test('끝 화면 요약: 된 것과 나중에 할 것 — 캘린더·Slack 은 �
   assert.equal(s[1].text, 'Gemini');
   assert.equal(s[2].text, '이 Mac 캘린더');
   assert.equal(s[3].text, '나중에');
-  const more = setupSummary({ apple: { available: true, connected: { reminders: true } }, research: { hosts: ['gpu1', 'gpu2'], note: { day: '2026-10-17' } } });
+  const more = setupSummary({ apple: { available: true, reminders: 'granted', connected: { reminders: true } }, research: { hosts: ['gpu1', 'gpu2'], note: { day: '2026-10-17' } } });
   assert.deepEqual(more.filter((x) => ['reminders', 'ssh', 'note'].includes(x.id)).map((x) => [x.id, x.ok, x.text]), [['reminders', true, '안 끝난 미리알림을 할 일로 가져와요'], ['ssh', true, 'gpu1, gpu2'], ['note', true, 'Tine 「우사기 연구 노트」에 그날 한 일을 써요']]);
   assert.equal(setupSummary({ apple: { available: false } }).some((x) => x.id === 'reminders'), false, '도우미가 없는 실행은 미리알림 줄이 없다');
+  // 앱 업데이트로 macOS 허락이 풀리면(notDetermined) 연결해 둔 것이라도 ✓ 가 아니고 다시 허락하라고
+  const lost = setupSummary({ apple: { available: true, calendar: 'notDetermined', reminders: 'notDetermined', connected: { calendar: true, reminders: true } }, connectors: [{ cap: 'calendar', mode: 'api', ready: true, detail: '이 Mac 캘린더' }] });
+  assert.deepEqual(lost.filter((x) => x.id === 'calendar' || x.id === 'reminders').map((x) => [x.id, x.ok, /다시 필요/.test(x.text)]), [['calendar', false, true], ['reminders', false, true]]);
   const none = setupSummary({ brain: { ready: true, local: true } });
   assert.equal(none.every((x) => !x.ok), true, '로컬 뇌는 연결로 치지 않는다');
   assert.match(none[1].text, /나중에/);
