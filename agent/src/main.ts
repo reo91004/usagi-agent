@@ -293,6 +293,7 @@ await bus.listen(cfg.port, {
   todoApply: (id, ops, rev, rule) => agent.applyAsk(id, ops, rev, rule),
   todoReject: (id, text, ops, rule) => agent.rejectAsk(id, text, ops, rule),
   todoRules: () => agent.todoRules(),
+  doingTodos: () => store.openTodos().filter((t) => t.doing === true).map((t) => ({ id: t.id, title: t.title })),
   todoLedger: (day) => agent.todoLedger(day),
   todoRuleEdit: (id, patch) => agent.editRule(id, patch),
   todoRuleDelete: (id) => agent.deleteRule(id),

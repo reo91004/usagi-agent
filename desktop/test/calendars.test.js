@@ -123,28 +123,10 @@ test('[빼기] 문구·반영 안내', () => {
   assert.equal(calendarReloadNote({ changed: false, restarting: false }, false), '');
 });
 
-test('설정 창 IPC: 캘린더 목록·하나 빼기는 이 창에서만, id 모양이 맞을 때만 main 으로', async () => {
-  const handlers = {};
-  const listeners = {};
-  const fakeWin = { webContents: {}, isDestroyed: () => false, loadFile() {}, once() {}, on() {}, show() {}, focus() {} };
-  fakeWin.webContents.setWindowOpenHandler = () => {};
-  fakeWin.webContents.on = () => {};
-  function BW() { return fakeWin; }
-  const calls = [];
-  setupSettings({
-    fromPanel: (e) => e.sender === fakeWin.webContents,
-    ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } },
-    shell: {}, request: async () => ({ ok: true }), preload: 'p', html: 'h',
-    calendars: () => ({ ok: true, items: [{ id: '0123456789abcdef', kind: 'gcal', title: '구글 캘린더', label: 'chae…@gmail.com' }] }),
-    removeCalendar: async (id) => { calls.push(id); return { ok: true, items: [] }; },
-  });
-  const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
-  assert.equal((await handlers['settings-calendars'](mine)).items.length, 1);
-  assert.equal((await handlers['settings-calendars'](other)).ok, false);
-  assert.deepEqual(await handlers['settings-calendar-remove'](mine, '0123456789abcdef'), { ok: true, items: [] });
-  assert.equal((await handlers['settings-calendar-remove'](mine, G1)).ok, false, '주소는 받지 않는다');
-  assert.equal((await handlers['settings-calendar-remove'](other, '0123456789abcdef')).ok, false);
-  assert.deepEqual(calls, ['0123456789abcdef']);
+test('캘린더 IPC: 목록·빼기는 패널에서만(main 의 공용 채널)', () => {
+  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+  assert.match(main, /ipcMain\.handle\('calendar-list', \(e\) => \(fromPanel\(e\)/);
+  assert.match(main, /ipcMain\.handle\('calendar-remove', \(e, id\) => \(fromPanel\(e\) && okCalendarId\(id\)/);
 });
 
 test('화면 연결: 패널 설치 탭·설정 창·프리로드·main 이 캘린더 더하기·목록·빼기를 부른다', () => {
@@ -161,7 +143,7 @@ test('화면 연결: 패널 설치 탭·설정 창·프리로드·main 이 캘�
   assert.match(settings, /cy\.removeCalendar\(c\.id\)/);
   assert.match(settings, /캘린더 하나 더 추가/);
   assert.match(read('../preload-panel.cjs'), /calendarRemove: .*'calendar-remove'/);
-  assert.match(read('../preload-panel.cjs'), /removeCalendar: .*'settings-calendar-remove'/);
+  assert.match(read('../preload-panel.cjs'), /removeCalendar: .*'calendar-remove'/);
   const main = read('../main.js');
   assert.match(main, /ipcMain\.handle\('calendar-remove'/);
   assert.match(main, /if \(wrote === 'dup'\) return \{ ok: false, duplicate: true/);

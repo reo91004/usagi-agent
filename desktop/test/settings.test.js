@@ -83,13 +83,11 @@ test('groupRows·pendingChecks·mergeRows·toggleExclude', () => {
 
 test('설정 IPC: 패널에서 온 것만(오버레이·세션 창은 거절), 저장 본문은 걸러서 PUT', async () => {
   const handlers = {}, listeners = {}, requests = [];
-  let caps = { claude: false, codex: false };
   const fakeWin = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {}, once() {}, on() {}, show() {}, focus() {}, isDestroyed: () => false };
   setupSettings({
     fromPanel: (e) => e.sender === fakeWin.webContents,
     ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } },
     shell: { openExternal: async () => { throw new Error('밖으로 열지 않는다'); } },
-    caps: async () => caps,
     request: async (...a) => { requests.push(a); return { ok: true }; },
   });
   const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
@@ -100,10 +98,6 @@ test('설정 IPC: 패널에서 온 것만(오버레이·세션 창은 거절), �
   await handlers['connections-check'](mine, 'services');
   assert.deepEqual(await handlers['connections-check'](mine, '../x'), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } });
   assert.deepEqual(requests.map((r) => r.slice(0, 3)), [['GET', '/settings'], ['PUT', '/settings', { models: { quick: 'claude-haiku-5-5' } }], ['POST', '/connections/check', { id: 'services' }]]);
-  assert.deepEqual(await handlers['settings-caps'](mine), { claude: false, codex: false });
-  caps = { claude: true, codex: true };
-  assert.deepEqual(await handlers['settings-caps'](mine), { claude: true, codex: true });
-  assert.deepEqual(await handlers['settings-caps'](other), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } });
 });
 
 test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더블클릭 → 입력창 닫고 패널, 보내면 hover 스레드(chat-send 가 kind hover)', () => {
@@ -117,7 +111,7 @@ test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더�
   assert.match(m, /settings: \(\) => showPanel\('settings'\)/);
   assert.match(m, /accelerator: 'CmdOrCtrl\+,', click: \(\) => showPanel\('settings'\)/);
   assert.doesNotMatch(m, /settingsUi|preload-settings/);
-  assert.match(m, /fromPanel: \(e\) => !!panel && !panel\.isDestroyed\(\) && e\.sender === panel\.webContents,/); // 설정 IPC 는 패널만
+  assert.match(m, /const fromPanel = \(e\) => !!panel && !panel\.isDestroyed\(\) && e\.sender === panel\.webContents;/); // 설정 IPC 는 패널만
   assert.doesNotMatch(readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8'), /id="open-settings"/);
   // PUT 도 X-CY-Agent 헤더를 단다
   assert.match(m, /if \(method === 'POST' \|\| method === 'PUT'\) \{\s*headers\['X-CY-Agent'\] = '1';/);

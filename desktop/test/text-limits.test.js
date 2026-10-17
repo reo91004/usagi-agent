@@ -29,7 +29,7 @@ test('main.js: 메인과 설정 창이 같은 denied 를 쓰고, 복사·대화 
   assert.match(m, /import \{ denied \} from '\.\/src\/denied\.js';/);
   assert.doesNotMatch(m, /const denied = /);
   assert.doesNotMatch(m, /error: 'bad args'/, '거절은 모두 denied() 로');
-  assert.match(m, /ipcMain\.handle\('copy-text', \(e, text\) => \{\n\s+if \(!fromOurs\(e\) \|\| typeof text !== 'string' \|\| !text\) return denied\(\);/);
+  assert.match(m, /ipcMain\.handle\('copy-text', \(e, text\) => \{\n\s+if \(!fromPanel\(e\) \|\| typeof text !== 'string' \|\| !text\) return denied\(\);/);
   assert.doesNotMatch(m, /text\.length > \d/);
   assert.doesNotMatch(m, /title\.trim\(\)\.slice\(0/);
   const s = read('../src/settings-window.js');

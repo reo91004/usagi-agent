@@ -8,10 +8,11 @@ import { restartDelay, nextFailures, EXIT_PORT_TAKEN } from './bundle.js';
 export const WATCH_MS = 60_000; // 남의 데몬이 살아 있나 다시 보는 간격
 export const FAST_MS = 2000; // 지켜보기 시작 직후의 간격
 export const FAST_FOR_MS = 60_000; // 이만큼 동안은 FAST_MS 마다
+export const OTHER_MS = 300_000; // 다른 프로그램이 포트를 쥐고 있으면 이 간격으로만 다시 본다(띄우지 않는다)
 export const STOPPING_MS = 1000; // 그 데몬이 "꺼지는 중"이라고 답하면
 export const KILL_AFTER_MS = 4000; // SIGTERM 뒤 이만큼 기다려도 안 꺼지면 SIGKILL
 
-// deps: { spawn() → child(on('exit'), kill(sig), pid) · probe() → Promise<true|false|'stopping'> · now() · setTimeout · clearTimeout · log?(msg) · onSpawn?(child) }
+// deps: { spawn() → child(on('exit'), kill(sig), pid) · probe() → Promise<true|false|'stopping'|'other'> · now() · setTimeout · clearTimeout · log?(msg) · onSpawn?(child) }
 export function createDaemonHost(deps) {
   const log = deps.log ?? (() => {});
   // watchSince: 지켜보기(external·port-taken)를 시작한 때. 지켜보던 데몬이 사라지거나 우리 데몬이 제대로 뜨고 죽으면 비운다
@@ -78,13 +79,20 @@ export function createDaemonHost(deps) {
       watch('external', STOPPING_MS);
       return;
     }
+    if (alive === 'other') {
+      // 시사 데몬이 아닌 프로그램이 응답한다: 띄워 봐야 포트를 못 잡으니 spawn 없이 드물게 다시 본다
+      if (st.mode !== 'occupied') log('이 포트를 다른 프로그램이 쓰고 있어요. 데몬을 띄우지 않고 5분마다 다시 봐요');
+      st.mode = 'occupied';
+      later(OTHER_MS, check);
+      return;
+    }
     if (alive) {
       if (st.mode !== 'external') log('이 포트에 이미 데몬이 떠 있어요. 그 데몬을 써요');
       watch('external');
       return;
     }
     // 지켜보던 데몬이 사라졌다 → 새로 띄운다(또 부딪히면 지켜보기를 처음부터 빠르게)
-    if (st.mode === 'external') st.watchSince = null;
+    if (st.mode === 'external' || st.mode === 'occupied') st.watchSince = null;
     launch();
   }
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createDaemonHost, WATCH_MS, FAST_MS, FAST_FOR_MS, STOPPING_MS, KILL_AFTER_MS } from '../src/daemon-host.js';
+import { createDaemonHost, WATCH_MS, FAST_MS, FAST_FOR_MS, STOPPING_MS, KILL_AFTER_MS, OTHER_MS } from '../src/daemon-host.js';
 import { EXIT_PORT_TAKEN } from '../src/bundle.js';
 
 // 가짜 시계·프로세스
@@ -225,4 +225,21 @@ test('stop 은 아무것도 안 띄웠어도 바로 끝난다', async () => {
   assert.equal(host.mode, 'stopped');
   await h.advance(WATCH_MS * 3);
   assert.equal(h.children.length, 0);
+});
+
+test('다른 프로그램이 포트에 응답하면 띄우지 않고 5분마다만 다시 본다, 비면 띄운다', async () => {
+  const h = harness({ alive: ['other', 'other', 'other', false] });
+  const host = createDaemonHost(h.deps);
+  await host.start();
+  assert.equal(host.mode, 'occupied');
+  assert.equal(h.children.length, 0);
+  assert.equal([...h.timers.values()][0].ms, OTHER_MS);
+  await h.advance(OTHER_MS);
+  assert.equal(host.mode, 'occupied');
+  assert.equal(h.children.length, 0);
+  assert.equal(h.logs.filter((m) => m.includes('다른 프로그램')).length, 1);
+  await h.advance(OTHER_MS);
+  await h.advance(OTHER_MS);
+  assert.equal(host.mode, 'child');
+  assert.equal(h.children.length, 1);
 });

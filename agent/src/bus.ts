@@ -64,6 +64,7 @@ export type BusHandlers = {
   todoReject?(id: string, text?: string, ops?: TodoOp[], rule?: unknown): boolean;
   // 할 일 규칙(todo-rules.ts): 목록 · 켜기/끄기·글 고치기 · 지우기. 없는 id면 undefined/false → 404
   todoRules?(): unknown;
+  doingTodos?(): { id: string; title: string }[]; // 캐릭터 「진행 중」 말풍선용(사용자가 ▶ 켠 열린 할 일)
   todoLedger?(day?: string): unknown; // 하루치 할 일 일지(todo-ledger.ts). day = KST YYYY-MM-DD, 없으면 오늘
   todoRuleEdit?(id: string, patch: { enabled?: boolean; text?: string }): unknown;
   todoRuleDelete?(id: string): boolean;
@@ -482,6 +483,10 @@ export class Bus {
     if (req.method === "GET" && url.pathname === "/todo-rules") {
       if (!h.todoRules) return json(res, 503, { error: "todo rules unavailable" });
       return json(res, 200, { rules: await h.todoRules() });
+    }
+    if (req.method === "GET" && url.pathname === "/todos/doing") {
+      if (!h.doingTodos) return json(res, 503, { error: "doing todos unavailable" });
+      return json(res, 200, { todos: h.doingTodos() });
     }
     if (req.method === "GET" && url.pathname === "/todos/ledger") {
       if (!h.todoLedger) return json(res, 503, { error: "todo ledger unavailable" });

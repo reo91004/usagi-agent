@@ -474,10 +474,10 @@ html, body {
 #char.scene, #char-closed.scene { border-radius: 24px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22); }
 
 /* 쉬는 동안 계속 도는 애니메이션은 투명 창을 매 프레임 다시 그리게 해 CPU·배터리를 먹는다(가만히 있어도 15%).
-   쉬는 상태(대기·연결 끊김·진행 중·집중 점)는 몇 번만 움직이고 멈춘다. 바쁨·생각 중은 잠깐이라 그대로 */
+   쉬는 상태(대기·연결 끊김·진행 중·집중 점)는 몇 번만 움직이고 멈춘다. 바쁨은 잠깐이라 그대로, 생각 중은 큐 대기처럼 길어질 수 있어 몇 번만 */
 .mood-idle #char-body { animation: bob 3.2s ease-in-out 3; }
 .mood-working #char-body { animation: bob-fast 0.9s ease-in-out infinite; }
-.mood-thinking #char-body { animation: sway 2.6s ease-in-out infinite; }
+.mood-thinking #char-body { animation: sway 2.6s ease-in-out 4; } /* 몇 번 흔들고 멈춘다(긴 대기에도 계속 그리지 않게) */
 .mood-alert #char-body { animation: bounce 0.7s cubic-bezier(0.3, 0, 0.3, 1) 3, bob 3.2s ease-in-out 2.1s 3; }
 /* 영상이 돌 땐 영상 자체가 움직이므로 흔들지 않는다 */
 #char-wrap.video-on #char-body { animation: none; }
@@ -513,7 +513,7 @@ html, body {
   height: 5px;
   border-radius: 50%;
   background: var(--bubble-muted);
-  animation: dot 1.2s ease-in-out infinite;
+  animation: dot 1.2s ease-in-out 8;
 }
 #dots i:nth-child(2) { animation-delay: 0.15s; }
 #dots i:nth-child(3) { animation-delay: 0.3s; }

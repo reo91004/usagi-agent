@@ -47,6 +47,7 @@ import { NEW_DAEMON_CONFIG, cleanSetupPatch, openSetupAtLaunch, setupView } from
 import { attachConsole, assembleBundle, collectLogFiles, createRing, formatLogLine, redact, shapeConnectorsSafe } from './src/debug-share.js';
 import { bundlePaths, launchdOwns, spawnDecision, daemonEnv, daemonArgs, loginItemPlan, loginItemHint, defaultLoginPref, daemonStatusKind, LAUNCHD_DAEMON, DAEMON_LOG } from './src/bundle.js';
 import { createDaemonHost } from './src/daemon-host.js';
+import { createCoalescer, createDelayed } from './src/coalesce.js';
 import { RELEASES_API, checkDue, newestRelease, shouldNotify, updateBubble } from './src/update-check.js';
 import { denied } from './src/denied.js';
 import { withCalendarAdded, withCalendarRemoved, calendarRows, calendarUrlById, calendarUrls, hubDoneFor, calendarReloadNote, okCalendarId, CALENDAR_DUP } from './src/calendars.js';
@@ -744,8 +745,10 @@ function wakeConnect(ms) {
 
 // 캐릭터 캡션 "에이전트 N개 실행 중": 대화별 돌고 있는 서브에이전트 수(SSE agents 가 오면 그 대화만 다시 센다)
 const agentCounts = new Map(); // threadId → 수
+// 같은 대화의 목록 조회는 메인 안(캡션)과 패널(IPC)이 한 번에 받는다: 진행 중이면 같이, 1.5초 안이면 재사용. agents·chat 이벤트가 오면 비운다
+const threadAgents = createCoalescer((id) => request('GET', `/chat/threads/${id}/agents`), { ttlMs: 1500 });
 async function refreshAgentCount(threadId) {
-  const r = await request('GET', `/chat/threads/${threadId}/agents`);
+  const r = await threadAgents.get(threadId);
   if (r.ok) {
     const n = runningCount(normAgents(r.data));
     if (n) agentCounts.set(threadId, n); else agentCounts.delete(threadId);
@@ -757,6 +760,7 @@ async function refreshAgentCount(threadId) {
 function setConnected(v) {
   if (connected === v) return;
   connected = v;
+  threadAgents.clear();
   if (agentCounts.size) { agentCounts.clear(); send('agents', { running: 0 }); } // 데몬이 다시 뜨면 돌던 것은 끊겼다
   send('connection', { connected: v });
   sendPanel('connection', { connected: v });
@@ -816,12 +820,13 @@ function onSSE({ event, data }) {
     sendSession('runs', payload);
   }
   else if (event === 'chat') {
+    if (okThreadId(payload?.threadId)) threadAgents.invalidate(payload.threadId); // 끝나면 에이전트 상태도 바뀐다
     send('chat', payload);
     sendPanel('chat', payload);
   } else if (event === 'threads') sendPanel('threads', payload);
   else if (event === 'agents') {
+    if (okThreadId(payload?.threadId)) { threadAgents.invalidate(payload.threadId); refreshAgentCount(payload.threadId); } // 패널의 조회가 이 요청에 합류한다
     sendPanel('agents', payload);
-    if (okThreadId(payload?.threadId)) refreshAgentCount(payload.threadId);
   }
   else if (event === 'action') {
     send('action', payload);
@@ -1269,20 +1274,16 @@ function endDrag() {
 
 // 우리 창에서 온 IPC 만 받는다
 const fromOurs = (e) => e.sender === win?.webContents || e.sender === panel?.webContents || e.sender === sessionWin?.webContents;
+// 설정·연결 해제처럼 쓰는 쪽이 패널뿐인 IPC 는 오버레이·세션 창을 받지 않는다
+const fromPanel = (e) => !!panel && !panel.isDestroyed() && e.sender === panel.webContents;
 const fromDebug = (e) => e.sender === debugWin?.webContents;
+// 뇌가 agy 면 데몬이 예비 agy 를 띄운다(아니면 204 로 무시)
+const prewarm = createDelayed(() => { post('/chat/prewarm', {}, 3000).catch(() => {}); }, 280);
 function setupIPC() {
   // 패널의 설정 화면용 IPC(모델·브리핑 출처·연결 상태…): 패널에서 온 요청만 받는다. 열기는 트레이 "설정…", 앱 메뉴 ⌘,
   setupSettings({
     ipcMain, shell, request,
-    fromPanel: (e) => !!panel && !panel.isDestroyed() && e.sender === panel.webContents,
-    startTour: () => startTour(),
-    caps: () => refreshCaps(false),
-    sisa: () => sisaPublic(readSisa()),
-    disconnectBrain: (p) => disconnectBrain(p),
-    disconnectConnector: (cap) => disconnectConnector(cap),
-    calendars: () => ({ ok: true, items: calendarList() }),
-    removeCalendar: (id) => removeCalendar(id),
-    copyText: (text) => { clipboard.writeText(text); return { ok: true }; },
+    fromPanel,
     appPrefs,
     upload: (method, pathname, name, mime, bytes) => uploadBytes(method, pathname, name, mime, bytes),
   });
@@ -1326,7 +1327,7 @@ function setupIPC() {
     if (typeof url === 'string' && isSafeLink(url)) shell.openExternal(url).catch(() => {});
   });
   ipcMain.handle('copy-text', (e, text) => {
-    if (!fromOurs(e) || typeof text !== 'string' || !text) return denied(); // 글자 수 제한 없음
+    if (!fromPanel(e) || typeof text !== 'string' || !text) return denied(); // 글자 수 제한 없음
     clipboard.writeText(text);
     return { ok: true };
   });
@@ -1334,7 +1335,7 @@ function setupIPC() {
     if (!fromOurs(e) || (agent !== 'claude' && agent !== 'codex' && agent !== 'agy')) return denied();
     return agentLogin(agent);
   });
-  ipcMain.handle('sisa-get', (e) => (fromOurs(e) ? sisaPublic(readSisa()) : denied()));
+  ipcMain.handle('sisa-get', (e) => (fromPanel(e) ? sisaPublic(readSisa()) : denied()));
   // 키를 싣는 요청: 리다이렉트 안 따라감·쿠키 안 보냄(llm-check.js 도 덧붙인다)
   const keyNetFetch = (u, o) => net.fetch(u, { ...o, ...KEY_REQ });
   ipcMain.handle('sisa-check', async (e, provider, apiKey) => {
@@ -1405,11 +1406,11 @@ function setupIPC() {
     return { ok: true, done, configured: wrote, reload };
   });
   // [연결 해제] AI(provider = sisa id) · 커넥터(cap)
-  ipcMain.handle('sisa-disconnect', (e, provider) => (fromOurs(e) && okBrainId(provider) ? disconnectBrain(provider) : denied()));
-  ipcMain.handle('connector-disconnect', (e, cap) => (fromOurs(e) && okCap(cap) ? disconnectConnector(cap) : denied()));
+  ipcMain.handle('sisa-disconnect', (e, provider) => (fromPanel(e) && okBrainId(provider) ? disconnectBrain(provider) : denied()));
+  ipcMain.handle('connector-disconnect', (e, cap) => (fromPanel(e) && okCap(cap) ? disconnectConnector(cap) : denied()));
   // 연결된 캘린더 목록(가린 이름만) · 하나 빼기(id)
-  ipcMain.handle('calendar-list', (e) => (fromOurs(e) ? { ok: true, items: calendarList() } : denied()));
-  ipcMain.handle('calendar-remove', (e, id) => (fromOurs(e) && okCalendarId(id) ? removeCalendar(id) : denied()));
+  ipcMain.handle('calendar-list', (e) => (fromPanel(e) ? { ok: true, items: calendarList() } : denied()));
+  ipcMain.handle('calendar-remove', (e, id) => (fromPanel(e) && okCalendarId(id) ? removeCalendar(id) : denied()));
   // 연결된 AI의 쓸 수 있는 모델 목록. 키는 돌려주지 않는다.
   ipcMain.handle('sisa-models', async (e, provider) => {
     if (!fromOurs(e) || typeof provider !== 'string') return denied();
@@ -1485,7 +1486,7 @@ function setupIPC() {
   // 진행 중 말풍선: 열린 할 일 중 ▶ 로 켠 것(제목·id 만 넘긴다)
   ipcMain.handle('doing-get', async (e) => {
     if (!fromOurs(e)) return denied();
-    const r = await request('GET', '/dashboard');
+    const r = await request('GET', '/todos/doing');
     if (!r.ok) return { ok: false, status: r.status };
     return { ok: true, todos: doingTodos(r.data?.todos).map((t) => ({ ...t, doing: true })) };
   });
@@ -1498,7 +1499,7 @@ function setupIPC() {
     if (cmd === 'stop') endTour();
     else nextTour();
   });
-  ipcMain.on('start-tour', (e) => { if (fromOurs(e)) startTour(); });
+  ipcMain.on('start-tour', (e) => { if (fromPanel(e)) startTour(); });
   // 설치 마법사: 이름·레포 폴더·작업 기록 읽기·마법사 마침(데몬 설정 user.name·repoRoots·readSessions·onboarded: 바로 반영)
   ipcMain.handle('setup-load', async (e) => {
     if (!fromOurs(e)) return denied();
@@ -1823,7 +1824,7 @@ function setupIPC() {
   // ↻ 이 대화의 run 들이 터미널 Claude Code 에서 이어 간 말 불러오기
   ipcMain.handle('chat-thread-sync', (e, id) => (fromOurs(e) && okThreadId(id) ? post(`/chat/threads/${id}/sync`) : denied()));
   // 이 대화에서 띄운 서브에이전트들(패널 채팅의 에이전트 줄·카드)
-  ipcMain.handle('chat-thread-agents', (e, id) => (fromOurs(e) && okThreadId(id) ? request('GET', `/chat/threads/${id}/agents`) : denied()));
+  ipcMain.handle('chat-thread-agents', (e, id) => (fromOurs(e) && okThreadId(id) ? threadAgents.get(id) : denied()));
   // 채팅이 백그라운드로 넘긴 에이전트 멈추기(대화 속 카드의 [멈추기]·[취소])
   ipcMain.handle('agent-stop', (e, toolUseId) => (fromOurs(e) && okToolUseId(toolUseId) ? post(`/chat/agents/${toolUseId}/stop`) : denied()));
   ipcMain.handle('chat-thread-messages', (e, id, before) => {
@@ -1837,11 +1838,12 @@ function setupIPC() {
     if (!win || e.sender !== win.webContents) return false;
     keepOverlayPos(() => {
       if (on) {
-        post('/chat/prewarm', {}, 3000).catch(() => {}); // 뇌가 agy 면 데몬이 예비 agy 를 띄운다(아니면 204 로 무시)
+        prewarm.schedule(); // 더블클릭(패널 열기)이면 곧 닫히니 280ms 뒤에 띄운다
         quietActivation(1500); // 입력창 포커스로 앱이 활성화돼도 패널을 띄우지 않음
         win.setFocusable(true);
         win.focus();
       } else {
+        prewarm.cancel();
         win.blur();
         win.setFocusable(false);
       }
@@ -1910,7 +1912,7 @@ function setupIPC() {
 // ---- cy-asset:// — ~/.cy-agent/assets 의 허용된 그림만. 캐릭터는 없으면 번들 플레이스홀더 ----
 // stream: <video>(공부 중·춤 webm)가 Range 로 끊어 읽고 되감게
 protocol.registerSchemesAsPrivileged([
-  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, stream: true } },
+  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, stream: true, corsEnabled: true } }, // corsEnabled: 움직이는 그림을 한 장으로 굳힐 때 캔버스가 막히지 않게
   { scheme: ATTACH_SCHEME, privileges: { standard: true, secure: true } }, // 채팅 첨부 미리보기(아래)
 ]);
 
@@ -1938,7 +1940,7 @@ function registerAssetProtocol() {
     // Range(영상): 206 + Content-Range. 그림은 예전처럼 통째로
     const size = (await fs.promises.stat(file)).size;
     const range = parseRange(req.headers.get('range'), size);
-    const base = { 'content-type': a.type, 'cache-control': 'no-cache', 'accept-ranges': 'bytes' };
+    const base = { 'content-type': a.type, 'cache-control': 'no-cache', 'accept-ranges': 'bytes', 'access-control-allow-origin': '*' };
     if (range === 'invalid') return new Response(null, { status: 416, headers: { ...base, 'content-range': `bytes */${size}` } });
     if (range) {
       const fh = await fs.promises.open(file, 'r');
@@ -1960,14 +1962,14 @@ let daemonStopping = false;
 // 윈도우엔 launchd 가 없다(터미널 설치도 없음)
 const launchdPlist = () => process.platform !== 'win32' && fs.existsSync(path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_DAEMON}.plist`));
 
-// 그 포트의 주인이 시사 데몬인가 → true · 'stopping'(꺼지는 중) · false(아무도 없음·다른 프로그램·오류 응답)
+// 그 포트의 주인이 시사 데몬인가 → true · 'stopping'(꺼지는 중) · 'other'(다른 프로그램이 응답) · false(아무도 답하지 않음)
 // 2xx JSON 이고 daemon: "shisa"(또는 그 칸 전의 데몬 모양 brain.provider)여야 한다(bundle.js daemonStatusKind)
 async function daemonAlive() {
   try {
     const r = await fetch(`${BASE}/status`, { signal: AbortSignal.timeout(1500), headers: { Accept: 'application/json' } });
     const ok = r.ok && /json/i.test(r.headers.get('content-type') ?? '');
     const kind = daemonStatusKind(ok, ok ? await r.json().catch(() => null) : null);
-    return kind === 'stopping' ? 'stopping' : kind === 'daemon';
+    return kind === 'stopping' ? 'stopping' : kind === 'daemon' ? true : 'other';
   } catch {
     return false;
   }
