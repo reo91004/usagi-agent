@@ -25,13 +25,17 @@ export const sessionDirs = (cfg: Pick<Config, "claudeProjectsDir" | "codexSessio
   ...cfg.sessionHosts.map((host) => ({ ...remoteSessionDirs(host, root), host })),
 ];
 
-// 「크기 상대경로」 한 줄씩(POSIX find·grep·wc 만). 폴더가 없으면 빈 출력.
+// 「크기 상대경로」 한 줄씩(POSIX find·grep·head·wc 만). 폴더가 없으면 빈 출력.
+// 프로그램이 돌린 세션(codex exec·Codex 하위 에이전트·claude -p)은 받지 않는다: 수집(sessions.ts)이 사람 대화로 세지 않아 받아도 버려진다.
+//   그 표시는 앞쪽(Codex 첫 줄 session_meta, Claude 는 줄마다 entrypoint)에 있어 앞 64KB 만 본다.
 // mine(공용 계정의 내 폴더, jobs.ts sharedMineDir): 기록 안에 cwd 가 내 폴더나 그 아래인 파일만 — 남의 세션은 이 맥으로 받지 않는다.
 //   cwd 는 앞쪽에 없을 수 있어(긴 제목 줄, 홈에서 시작해 옮겨 간 세션) 파일 전체를 보되 grep -l 은 첫 일치에서 멈춘다. mine 은 okJobDir 를 지난 글자뿐이라 따옴표로 넣는다
 const FIND = `find .claude/projects .codex/sessions -type f -name '*.jsonl' -mtime -${SINCE_DAYS}`;
+const AUTO = `-e '"originator":"codex_exec"' -e '"source":"exec"' -e '"source":{"subagent"' -e '"entrypoint":"sdk-cli"'`;
+const SIZES = `while IFS= read -r f; do head -c 65536 "$f" | grep -qF ${AUTO} || wc -c "$f"; done; true`;
 export const listCmd = (mine?: string) => !mine
-  ? `cd && ${FIND} -exec wc -c {} + 2>/dev/null; true`
-  : `cd && M=${mine.startsWith("~/") ? `"$HOME"/'${mine.slice(2)}'` : `'${mine}'`} && ${FIND} -exec grep -lF -e "\\"cwd\\":\\"$M\\"" -e "\\"cwd\\":\\"$M/" {} + 2>/dev/null | while IFS= read -r f; do wc -c "$f"; done; true`;
+  ? `cd && ${FIND} -print 2>/dev/null | ${SIZES}`
+  : `cd && M=${mine.startsWith("~/") ? `"$HOME"/'${mine.slice(2)}'` : `'${mine}'`} && ${FIND} -exec grep -lF -e "\\"cwd\\":\\"$M\\"" -e "\\"cwd\\":\\"$M/" {} + 2>/dev/null | ${SIZES}`;
 const SAFE_REL = /^\.(claude\/projects|codex\/sessions)\/[A-Za-z0-9_.\/-]+\.jsonl$/;
 
 export type RemoteFile = { rel: string; size: number };
