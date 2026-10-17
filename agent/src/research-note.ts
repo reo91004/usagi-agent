@@ -1,9 +1,9 @@
-// 연구 노트: 그날 한 일을 Tine(Logseq 형식) 그래프의 그날 저널에 「우사기 기록」 블록 하나로 남긴다(#30, #39, 저널로 #129).
+// 연구 노트: 그날 한 일을 Tine(Logseq 형식) 그래프의 그날 저널에 「오늘 한 일」 블록 하나로 남긴다(#30, #39, 저널로 #129).
 //   config tineGraph = 그래프 폴더(logseq/config.edn 이 있어야). 파일은 config.edn 의 :journals-directory·:journal/file-name-format 대로
 //   (기본 journals/yyyy_MM_dd.md).
 // 재료: 실험(usagi-run: 서버·폴더·명령·바뀐 파일)·회의·코드(커밋·작업 세션)·할 일(끝냄·새로 생김)·집중 시간.
 //   하루가 끝난 날에는 다음 날 한 번 뇌(어떤 뇌든)로 세 줄 요약과 다음 할 일을 붙인다(summarizeDay — 하루에 모델 호출 한 번).
-// 저널은 사용자 것: 「usagi-auto:: true」 블록의 줄만 바꾸고 나머지는 한 바이트도 건드리지 않는다(없으면 끝에 덧붙이고, 파일이 없으면 만든다).
+// 저널은 사용자 것: 우리 블록(숨은 속성 id:: 75736167-6900-…)의 줄만 바꾸고 나머지는 한 바이트도 건드리지 않는다(없으면 끝에 덧붙이고, 파일이 없으면 만든다).
 //   우사기 블록 안을 사용자가 고쳤거나 블록을 지웠으면 그 뒤로는 덮지도 다시 넣지도 않는다(마지막으로 쓴 블록의 해시로 안다).
 //   예전 pages/우사기 연구 노트___*.md 페이지는 더 만들지도 지우지도 않는다.
 import { query as sdkQuery } from "./claude-sdk.ts";
@@ -83,6 +83,7 @@ export async function collectDay(
   for (const s of sessionsAllowed(cfg) ? nodes("session") : []) {
     const cwd = String(s.props.cwd ?? "");
     if (cwd && (store.isHiddenPath(cwd, hidden) || isNoisePath(cwd))) continue; // 임시·스크래치 폴더·홈 자체는 대시보드처럼 뺀다
+    if (!(Number(s.props.turns) > 0)) continue; // 0턴은 사람이 말한 적 없는 앱 안 세션(하위 에이전트 등) — 수집은 0턴을 안 남긴다
     const items = byProject.get(cwd || "(폴더 모름)") ?? [];
     items.push({ title: s.label, tool: s.props.tool === "codex" ? "Codex" : "Claude Code", turns: Number(s.props.turns) || 0, ...(s.props.lastPrompt ? { lastPrompt: String(s.props.lastPrompt) } : {}) });
     byProject.set(cwd || "(폴더 모름)", items);
@@ -132,13 +133,16 @@ export async function collectDay(
 // 요약은 재료가 아니다(재료가 없으면 페이지도 없다)
 export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.added.length && !n.commits.length;
 
-export const AUTO_PROP = "usagi-auto:: true";
+// 우리 블록 표시: Logseq 가 화면에 안 보이는 id 속성. 앞 「75736167-6900」(usag i)으로 알아보고 뒤는 그날마다 다르게(블록 id 는 겹치면 안 된다)
+const ID_PREFIX = "75736167-6900-5";
+export const autoId = (day: string) => { const h = createHash("sha1").update(`usagi-note:${day}`).digest("hex"); return `${ID_PREFIX}${h.slice(0, 3)}-8${h.slice(3, 6)}-${h.slice(6, 18)}`; };
+const isMark = (l: string | undefined) => !!l && (l.trim().startsWith(`id:: ${ID_PREFIX}`) || l.trim() === "usagi-auto:: true"); // usagi-auto 는 0.6.0 이 쓴 표시(보이는 속성) — 다음 쓰기 때 새 모양으로
 const code = (s: string) => `\`${s.replace(/`/g, "'")}\``;
 
 // 우사기 블록(Logseq: 블록 속성은 두 칸, 자식은 탭). 사용자 블록과 섞이지 않게 한 블록 아래에 다 넣는다
 export function autoBlock(n: DayNote): string {
-  const out = ["- 우사기 기록", `  ${AUTO_PROP}`];
-  const sec = (title: string, lines: string[]) => { if (lines.length) out.push(`\t- ### ${title}`, ...lines); };
+  const out = ["- 오늘 한 일", `  id:: ${autoId(n.day)}`];
+  const sec = (title: string, lines: string[]) => { if (lines.length) out.push(`\t- ${title}`, ...lines); };
   if (n.summary && (n.summary.lines.length || n.summary.next.length)) {
     sec("요약", [...n.summary.lines.map((l) => `\t\t- ${plain(l, 200)}`), ...n.summary.next.map((l) => `\t\t- 다음: ${plain(l, 160)}`)]);
   }
@@ -163,9 +167,9 @@ export function autoBlock(n: DayNote): string {
 
 const AUTO_HEAD = /^-( |$)/; // 맨 위 블록은 0칸에서 「-」로 시작한다
 
-// 우사기 블록의 줄 범위 [시작, 끝): 맨 위 「- 」줄 바로 다음이 usagi-auto 속성인 블록, 다음 맨 위 블록(또는 끝)까지. 뒤따르는 빈 줄은 사용자 몫
+// 우리 블록의 줄 범위 [시작, 끝): 맨 위 「- 」줄 바로 다음이 우리 표시인 블록, 다음 맨 위 블록(또는 끝)까지. 뒤따르는 빈 줄은 사용자 몫
 export function findAuto(lines: string[]): [number, number] | null {
-  const i = lines.findIndex((l, k) => AUTO_HEAD.test(l) && lines[k + 1]?.trim() === AUTO_PROP);
+  const i = lines.findIndex((l, k) => AUTO_HEAD.test(l) && isMark(lines[k + 1]));
   if (i < 0) return null;
   let end = lines.findIndex((l, k) => k > i && AUTO_HEAD.test(l));
   if (end < 0) end = lines.length;
@@ -190,7 +194,7 @@ export function writeNote(store: Store, graph: string, n: DayNote): WriteResult 
   if (!at) {
     if (isEmpty(n)) return "empty";
     if (store.markOf(blockKey(path))) return "removed";
-    md = !cur ? `${block}\n` : `${cur}${cur.endsWith("\n") ? "" : "\n"}${block}\n`;
+    md = !cur?.trim() ? `${block}\n` : `${cur}${cur.endsWith("\n") ? "" : "\n"}${block}\n`; // 빈 일지(Tine 이 줄바꿈만 넣어 만든 것 포함)는 블록만
   } else {
     const now = lines.slice(at[0], at[1]).join("\n");
     if (now === block) return "same";
