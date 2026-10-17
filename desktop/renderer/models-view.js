@@ -225,7 +225,7 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
     if (!rows.length) return null;
     return h('div.card.models-card', null,
       h('h2', { text: 'AI 더 연결하기' }),
-      h('p.muted.small', { text: '연결하면 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙어요. 키로 쓰는 AI 는 설치 화면에서 붙여요.' }),
+      h('p.muted.small', { text: '연결하면 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙어요. 키로 쓰는 AI 는 초기 설정 화면에서 붙여요.' }),
       h('ul.priority-list', null, rows.map((r) => h('li.row', null,
         h('span.t', { text: PROVIDER_TITLE[r.provider] }),
         r.state ? h('span.muted.small', { text: r.state }) : null,
@@ -326,7 +326,7 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
     if (!connected.length) {
       kids.push(h('div.card.models-card.empty', null,
         h('p', { text: '연결된 AI 없음' }),
-        h('button.primary', { type: 'button', text: '설치 열기', onclick: gotoSetup })));
+        h('button.primary', { type: 'button', text: '초기 설정 열기', onclick: gotoSetup })));
     } else {
       kids.push(chatCard(sisa), priorityCard(sisa), addCard(sisa), codeCard(sisa));
     }

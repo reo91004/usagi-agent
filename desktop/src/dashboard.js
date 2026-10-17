@@ -4,9 +4,9 @@ import { shapeRules } from './todo-rules.js';
 import { PRIORITIES, TODAY_GROUP } from './todos.js';
 
 export const SECTIONS = ['overview', 'todos', 'chat', 'research', 'projects', 'setup', 'settings'];
-export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '작업 폴더', todos: '할 일', chat: '채팅', research: '연구', settings: '설정' };
+export const SECTION_LABELS = { setup: '초기 설정', overview: '개요', projects: '작업 폴더', todos: '할 일', chat: '채팅', research: '연구', settings: '설정' };
 
-// 사이드바 두 묶음: 자주 쓰는 화면(위) · 설정(맨 아래). 설치는 위쪽 단추로 연다
+// 사이드바 두 묶음: 자주 쓰는 화면(위) · 설정(맨 아래). 초기 설정은 위쪽 단추로 연다
 export const NAV_BOTTOM = ['settings'];
 export function navGroups(sections) {
   const main = sections.filter((s) => s !== 'setup' && !NAV_BOTTOM.includes(s));

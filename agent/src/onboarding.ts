@@ -56,4 +56,4 @@ export const sessionsAllowed = (cfg: { onboarded?: boolean; readSessions?: boole
 // 레포 폴더의 git 커밋을 읽어도 되나(폴더는 사용자가 고른 것만: repoRoots)
 export const gitAllowed = (cfg: { onboarded?: boolean; repoRoots?: string[] }): boolean => cfg.onboarded !== false && (cfg.repoRoots?.length ?? 0) > 0;
 
-export const WAIT_SETUP = "처음 설정을 마치면 시작해요. 패널의 「설치」에서 이어서 할 수 있어요";
+export const WAIT_SETUP = "처음 설정을 마치면 시작해요. 패널 위쪽 「초기 설정」에서 이어서 할 수 있어요";

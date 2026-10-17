@@ -143,7 +143,7 @@ export const QUICK_LINES = {
   todaySome: "오늘 할 일 {total}개 중 {done}개 끝냈어요. 남은 건 {rest}예요.",
   todoEmpty: "지금 보이는 할 일이 없어요. 쉬어 가는 날도 필요해요.",
   todoTop: "지금은 '{title}'부터 해 보면 좋겠어요.",
-  calOff: "캘린더를 연결하면 다음 일정도 알려 드릴게요. 설치 탭의 더 연결하기에서 할 수 있어요.",
+  calOff: "캘린더를 연결하면 다음 일정도 알려 드릴게요. 초기 설정의 더 연결하기에서 할 수 있어요.",
   calNone: "오늘과 내일은 잡힌 일정이 없어요. 여유 있게 보내요.",
   calNow: "지금 〈{title}〉 일정 중이에요. {end}에 끝나요{where}.",
   calNext: "다음 일정은 〈{title}〉, {when}이에요{where}.",
