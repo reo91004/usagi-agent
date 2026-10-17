@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "./config.ts";
 import { ask, REQUEST_SCHEMA, SCHEMA, TEXT_SCHEMA } from "./brain.ts";
-import { CHAT_SCHEMA, TITLE_SCHEMA } from "./chat.ts";
+import { CHAT_SCHEMA, HOVER_SCHEMA, TITLE_SCHEMA } from "./chat.ts";
 import { ASK_SCHEMA } from "./todo-ask.ts";
 import { MERGE_ASK_SCHEMA } from "./reactions.ts";
 import { DESC_SCHEMA } from "./todo-source.ts";
@@ -11,7 +11,7 @@ import { OPENAI_URL, openaiStrict, openaiUnstrict, type FetchLike } from "./prov
 
 // 뇌 ask 로 OpenAI 에 실제 넘어가는 스키마 전부(정기 브리핑·DM·채팅·제목·팝오버·머지 질문·할 일 설명·슬래시 명령 글).
 // kg·profile·todo-auto·todo-progress·fixer 의 스키마는 Codex·Claude 경로만 탄다
-const BRAIN_SCHEMAS: Record<string, unknown> = { SCHEMA, REQUEST_SCHEMA, TEXT_SCHEMA, CHAT_SCHEMA, TITLE_SCHEMA, ASK_SCHEMA, MERGE_ASK_SCHEMA, DESC_SCHEMA };
+const BRAIN_SCHEMAS: Record<string, unknown> = { SCHEMA, REQUEST_SCHEMA, TEXT_SCHEMA, CHAT_SCHEMA, HOVER_SCHEMA, TITLE_SCHEMA, ASK_SCHEMA, MERGE_ASK_SCHEMA, DESC_SCHEMA };
 
 // strict 에서 쓸 수 있는 키워드(https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas, 2026-10 확인).
 // 구조 키워드 + 지원 제약(string: pattern·format, number: multipleOf·minimum·maximum·exclusive*, array: minItems·maxItems).
