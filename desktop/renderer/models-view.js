@@ -17,6 +17,17 @@ export const PROVIDER_TITLE = {
 };
 
 // 목록 오류: 본문이 JSON(OpenAI 등 {error:{message}})이면 message 만. 아니면 그대로
+// 데몬 id(claude-code·codex·agy·gemini·openai·anthropic·genspark) → 앱 id
+const FROM_DAEMON = { 'claude-code': 'claudecode', codex: 'codexcli', agy: 'agycli', gemini: 'gemini', openai: 'openai', anthropic: 'claude', genspark: 'genspark' };
+const clock = (ms) => new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+// 우선순위 카드의 상태 줄: 지금 실제로 쓰는 AI 와 쉬는 AI(없으면 빈 글)
+export function priorityStatus(brain) {
+  const cooling = (brain?.cooling || []).map((c) => `${PROVIDER_TITLE[FROM_DAEMON[c.provider]] || c.provider}는 ${clock(c.until)}까지 쉬어요`);
+  if (!cooling.length) return '';
+  const active = PROVIDER_TITLE[FROM_DAEMON[brain.active]] || brain.active;
+  return `지금은 ${active}로 하고 있어요. ${cooling.join(', ')}`;
+}
+
 export function listErrorText(error) {
   const s = String(error ?? '');
   try {
@@ -66,7 +77,7 @@ export function cannedOverrideOf(draft, stored) {
   return out;
 }
 
-export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
+export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBrain = () => null }) {
   const lists = {};
   let note = '';
   let busy = false;
@@ -101,12 +112,12 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
     busy = true;
     note = '';
     let r;
-    try { r = await cy.sisaSetModels(pick); } catch { r = { ok: false }; }
+    try { r = 'order' in pick ? await cy.sisaSetOrder(pick.order) : await cy.sisaSetModels(pick); } catch { r = { ok: false }; }
     busy = false;
     if (r?.ok) {
       onSisa(r);
       // 대화 AI·코딩 모델은 데몬이 다시 켜질 때 읽는다
-      note = 'code' in pick || r.brainSaved ? `저장함. ${who()}를 다시 켜면 대화·브리핑에도 적용돼요` : '저장함';
+      note = 'code' in pick || 'order' in pick || r.brainSaved ? `저장함. ${who()}를 다시 켜면 대화·브리핑에도 적용돼요` : '저장함';
     } else {
       note = r?.error || '저장하지 못했어요.';
     }
@@ -153,6 +164,24 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
         }, providerRows.map((r) => h('option', { value: r.id, selected: r.id === active, text: r.id === 'none' ? r.label : PROVIDER_TITLE[r.id] })))),
       active === 'none' ? null : h('label.model-row', null, h('span', { text: '모델' }),
         select(optionsFor(active, lists[active], model), model, (m) => save({ chat: { provider: active, model: m } }), busy)));
+  }
+
+  // 우선순위: 앞의 AI 가 사용량을 다 쓰면 다음 AI 가 이어 받는다(연결한 AI 가 둘 이상일 때)
+  function priorityCard(sisa) {
+    const order = sisa.order || [];
+    if (order.length < 2) return null;
+    const move = (i, d) => { const next = [...order]; [next[i], next[i + d]] = [next[i + d], next[i]]; save({ order: next }); };
+    const status = priorityStatus(getBrain());
+    return h('div.card.models-card', null,
+      h('h2', { text: 'AI 우선순위' }),
+      h('p.muted.small', { text: '맨 위 AI 를 먼저 쓰고, 사용량을 다 쓰면 아래 AI 가 이어서 해요. 코드 고치기 도중에는 바꾸지 않아요.' }),
+      h('ol.priority-list', null, order.map((p, i) => h('li.row', null,
+        h('span.t', { text: PROVIDER_TITLE[p] || p }),
+        h('span.chip', { text: i === 0 ? '먼저' : '이어서' }),
+        h('span.spacer'),
+        h('button.ghost.small', { type: 'button', text: '위로', 'aria-label': `${PROVIDER_TITLE[p]} 위로`, disabled: busy || i === 0, onclick: () => move(i, -1) }),
+        h('button.ghost.small', { type: 'button', text: '아래로', 'aria-label': `${PROVIDER_TITLE[p]} 아래로`, disabled: busy || i === order.length - 1, onclick: () => move(i, 1) })))),
+      status ? h('p.muted.small', { role: 'status', text: status }) : null);
   }
 
   // 코드 고치기·이어 하기: 뇌가 Codex·Antigravity 면 그 CLI 로(데몬 fixer), 그 밖에는 Claude Code 로 — 여기 모델은 Claude 쪽만
@@ -249,7 +278,7 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
         h('p', { text: '연결된 AI 없음' }),
         h('button.primary', { type: 'button', text: '설치 열기', onclick: gotoSetup })));
     } else {
-      kids.push(chatCard(sisa), codeCard(sisa));
+      kids.push(chatCard(sisa), priorityCard(sisa), codeCard(sisa));
     }
     kids.push(voiceCard(), cannedCard());
     if (note) kids.push(h('p.muted.small.models-note', { role: 'status', text: note }));
