@@ -131,7 +131,7 @@ test('캘린더 IPC: 목록·빼기는 패널에서만(main 의 공용 채널)',
   const run = (ch, e, ...a) => buildHandler(h.get(ch), deps)(e, ...a);
   assert.deepEqual(run('calendar-list', { panel: false }), denied());
   assert.deepEqual(run('calendar-list', { panel: true }), { ok: true, items: ['row'] });
-  assert.deepEqual(await run('calendar-remove', { panel: false }, hash(G1)), denied());
+  assert.deepEqual(await run('calendar-remove', { panel: false }, 'a1b2c3d4e5f60718'), denied());
   assert.deepEqual(await run('calendar-remove', { panel: true }, '../x'), denied());
   assert.deepEqual(removed, []);
   await run('calendar-remove', { panel: true }, 'a1b2c3d4e5f60718');
