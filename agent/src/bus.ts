@@ -90,7 +90,6 @@ export type BusHandlers = {
   chatEdit?(threadId: string, n: number, text: string, opts: { stopAgents?: boolean; clientId?: string; model?: string }): Promise<{ error: string; [k: string]: unknown } | Record<string, unknown>>;
   chatEditQueued?(chatId: string, text: string): { error: string; [k: string]: unknown } | Record<string, unknown>;
   todoExists?(id: string): boolean; // POST /chat 의 todoId 확인용(없는 id면 404)
-  chatHistory(): unknown;
   profileFacts?(): unknown;
   profileRemember?(text: string, category?: string): unknown;
   profileForget?(idOrText: string): boolean;
@@ -365,7 +364,6 @@ export class Bus {
       const p = h.researchNote(url.searchParams.get("day") ?? "");
       return p ? json(res, 200, { path: p }) : json(res, 404, { error: "no note" });
     }
-    if (req.method === "GET" && url.pathname === "/chat/history") return json(res, 200, await h.chatHistory());
     // 첨부 파일 하나 — 읽기라도 쓰기와 같은 헤더 규칙(다른 웹 페이지가 <img> 로 못 읽게)
     const af = url.pathname.match(/^\/chat\/attachments\/([\w-]{1,64})\/([^/]{1,600})$/);
     if (req.method === "GET" && af) {

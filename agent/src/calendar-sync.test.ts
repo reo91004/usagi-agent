@@ -6,75 +6,33 @@ import { join } from "node:path";
 import { Store } from "./store.ts";
 import type { Config } from "./config.ts";
 import {
-  CalendarSync, alertDetail, alertKey, alertText, extractLocation, icsSource, onlineLabel, kstHHMM, parseCalendarView, planAlerts, skipReason, toIso, toMeetings,
+  CalendarSync, alertDetail, alertKey, alertText, icsSource, onlineLabel, kstHHMM, planAlerts, skipReason, toMeetings,
   type CalEvent, type Meeting,
 } from "./calendar-sync.ts";
 
-const SAMPLE = {
-  items: [
-    {
-      id: "evt-cancelled", subject: "Canceled: 외부 파트너 정기 미팅",
-      start: { dateTime: "2026-10-08T16:00:00.0000000", timeZone: "Asia/Seoul" }, end: { dateTime: "2026-10-08T17:00:00.0000000", timeZone: "Asia/Seoul" },
-      isAllDay: false, location: { displayName: "Lobby", locationType: "default" },
-      showAs: "free", isCancelled: true, isOnlineMeeting: false,
-      webLink: "https://outlook.office365.com/owa/?itemid=cancelled&path=/calendar/item",
-      responseStatus: { response: "notResponded" },
-    },
-    {
-      id: "evt-workout", subject: "운동",
-      start: { dateTime: "2026-10-08T08:00:00.0000000", timeZone: "Asia/Seoul" }, end: { dateTime: "2026-10-08T10:00:00.0000000", timeZone: "Asia/Seoul" },
-      isAllDay: false, location: { displayName: "", locationType: "default" },
-      showAs: "busy", isCancelled: false, isOnlineMeeting: false,
-      webLink: "https://outlook.office365.com/owa/?itemid=workout&path=/calendar/item",
-      responseStatus: { response: "organizer" },
-    },
-    {
-      id: "evt-review", subject: "[Office] 과제 현황 공유 ",
-      start: { dateTime: "2026-10-08T13:00:00.0000000", timeZone: "Asia/Seoul" }, end: { dateTime: "2026-10-08T14:00:00.0000000", timeZone: "Asia/Seoul" },
-      isAllDay: false,
-      location: { displayName: "Conference Room A", locationType: "conferenceRoom" },
-      showAs: "busy", isCancelled: false, isOnlineMeeting: true,
-      onlineMeeting: { joinUrl: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_X%40thread.v2/0?context=%7b%7d" },
-      webLink: "https://outlook.office365.com/owa/?itemid=review&path=/calendar/item",
-      responseStatus: { response: "accepted" },
-    },
-  ],
-  cursor: null,
-};
-
-test("toIso: Asia/Seoul 오프셋 없는 값 → UTC, UTC 는 그대로, 이상하면 null", () => {
-  assert.equal(toIso({ dateTime: "2026-10-12T13:00:00.0000000", timeZone: "Asia/Seoul" }), "2026-10-12T04:00:00.000Z");
-  assert.equal(toIso({ dateTime: "2026-10-12T13:00:00.0000000", timeZone: "UTC" }), "2026-10-12T13:00:00.000Z");
-  assert.equal(toIso({ dateTime: "2026-10-12T13:00:00+09:00" }), "2026-10-12T04:00:00.000Z");
-  assert.equal(toIso({ dateTime: "어제" }), null);
-  assert.equal(toIso(undefined), null);
-});
-
-test("parseCalendarView: Graph 모양 — Teams 링크, 응답·표시 상태", () => {
-  const p = parseCalendarView(SAMPLE);
-  assert.ok(!("error" in p));
-  assert.equal(p.events.length, 3);
-  assert.equal(p.cursor, null);
-  const r = p.events.find((e) => e.id === "evt-review")!;
-  assert.equal(r.subject, "[Office] 과제 현황 공유");
-  assert.equal(r.start, "2026-10-08T04:00:00.000Z");
-  assert.equal(r.end, "2026-10-08T05:00:00.000Z");
-  assert.equal(r.response, "accepted");
-  assert.equal(r.online, true);
-  assert.match(r.joinUrl!, /^https:\/\/teams\.microsoft\.com\//);
-  assert.match(r.webLink!, /^https:\/\/outlook\.office365\.com\//);
-  assert.equal(r.locationType, "conferenceRoom");
-  assert.deepEqual(parseCalendarView({ items: [], cursor: "abc" }), { events: [], cursor: "abc" });
-  assert.ok("error" in parseCalendarView({ error: "403" }));
-  assert.ok("error" in parseCalendarView([]));
-  assert.ok("error" in parseCalendarView({ foo: 1 }));
-});
+const EVENTS: CalEvent[] = [
+  {
+    id: "evt-cancelled", subject: "Canceled: 외부 파트너 정기 미팅", start: "2026-10-08T07:00:00.000Z", end: "2026-10-08T08:00:00.000Z",
+    allDay: false, cancelled: true, showAs: "free", response: "notresponded", online: false,
+    webLink: "https://outlook.office365.com/owa/?itemid=cancelled&path=/calendar/item", locationType: "default", location: "Lobby",
+  },
+  {
+    id: "evt-workout", subject: "운동", start: "2026-10-07T23:00:00.000Z", end: "2026-10-08T01:00:00.000Z",
+    allDay: false, cancelled: false, showAs: "busy", response: "organizer", online: false,
+    webLink: "https://outlook.office365.com/owa/?itemid=workout&path=/calendar/item", locationType: "default",
+  },
+  {
+    id: "evt-review", subject: "[Office] 과제 현황 공유", start: "2026-10-08T04:00:00.000Z", end: "2026-10-08T05:00:00.000Z",
+    allDay: false, cancelled: false, showAs: "busy", response: "accepted", online: true,
+    joinUrl: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_X%40thread.v2/0?context=%7b%7d",
+    webLink: "https://outlook.office365.com/owa/?itemid=review&path=/calendar/item", locationType: "conferenceRoom", location: "Conference Room A",
+  },
+];
 
 test("거르기: 취소·종일·거절·free·나 혼자(운동) 빼고, 같은 회의는 하나로", () => {
-  const p = parseCalendarView(SAMPLE) as any;
-  const byId = Object.fromEntries(p.events.map((e: any) => [e.id, skipReason(e)]));
+  const byId = Object.fromEntries(EVENTS.map((e: any) => [e.id, skipReason(e)]));
   assert.deepEqual(byId, { "evt-cancelled": "cancelled", "evt-workout": "solo", "evt-review": null });
-  const base = p.events.find((e: any) => e.id === "evt-review");
+  const base = EVENTS[2];
   assert.equal(skipReason({ ...base, allDay: true }), "all-day");
   assert.equal(skipReason({ ...base, response: "declined" }), "declined");
   assert.equal(skipReason({ ...base, showAs: "free" }), "free");
@@ -82,39 +40,17 @@ test("거르기: 취소·종일·거절·free·나 혼자(운동) 빼고, 같은
   assert.equal(skipReason({ ...base, showAs: "tentative" }), null);
   assert.equal(skipReason({ ...base, subject: "취소됨: 주간회의", cancelled: false }), "cancelled");
   assert.equal(skipReason({ ...base, attendees: 0 }), "solo");
-  assert.equal(skipReason({ ...p.events[1], attendees: 3 }), null);
-  assert.equal(skipReason({ ...p.events[1], online: true }), null);
-  assert.equal(skipReason({ ...p.events[1], locationType: "conferenceRoom" }), null);
+  assert.equal(skipReason({ ...EVENTS[1], attendees: 3 }), null);
+  assert.equal(skipReason({ ...EVENTS[1], online: true }), null);
+  assert.equal(skipReason({ ...EVENTS[1], locationType: "conferenceRoom" }), null);
 
-  const ms = toMeetings([...p.events, { ...base }, { ...base, id: "dup-other-calendar" }]);
+  const ms = toMeetings([...EVENTS, { ...base }, { ...base, id: "dup-other-calendar" }]);
   assert.equal(ms.length, 1);
   assert.deepEqual(ms[0], {
     id: "evt-review", subject: "[Office] 과제 현황 공유", start: "2026-10-08T04:00:00.000Z", end: "2026-10-08T05:00:00.000Z",
     link: base.joinUrl, webLink: base.webLink, response: "accepted", // 내 응답(회의 응답 카드 맥락용)
     location: "Conference Room A",
   });
-});
-
-test("extractLocation: 회의실 이름 — 비면 없음, 여러 곳, Teams 자리표시·링크는 장소가 아님", () => {
-  const p = parseCalendarView(SAMPLE) as any;
-  assert.equal(p.events.find((e: any) => e.id === "evt-review").location, "Conference Room A");
-  assert.equal(p.events.find((e: any) => e.id === "evt-workout").location, undefined); // displayName ""
-  assert.deepEqual(extractLocation({}), { rooms: [] });
-  assert.deepEqual(extractLocation({ location: { displayName: "Room_B(8P)" } }), { rooms: ["Room_B(8P)"] });
-  assert.deepEqual(extractLocation({ location: { displayName: "Room A; Room B" } }), { rooms: ["Room A", "Room B"] });
-  // locations[] 가 있으면 그것부터, 같은 이름은 하나로
-  assert.deepEqual(extractLocation({ location: { displayName: "Room A; Room B" }, locations: [{ displayName: "Room A" }, { displayName: "Room B" }] }), { rooms: ["Room A", "Room B"] });
-  assert.deepEqual(extractLocation({ location: { displayName: "Microsoft Teams 모임" } }), { rooms: [] });
-  assert.deepEqual(extractLocation({ location: { displayName: "Microsoft Teams Meeting" } }), { rooms: [] });
-  assert.deepEqual(extractLocation({ location: { displayName: "https://zoom.us/j/123" } }), { rooms: [], url: "https://zoom.us/j/123" });
-  assert.deepEqual(extractLocation({ location: { displayName: "javascript:alert(1)" } }), { rooms: ["javascript:alert(1)"] }); // 그냥 글자 — 링크로 쓰지 않는다
-  // 장소 칸의 Zoom 링크 → 온라인 링크(Teams 가 없을 때만)
-  const zoom = parseCalendarView({ items: [{ ...SAMPLE.items[1], location: { displayName: "Room_D; https://zoom.us/j/9" } }] }) as any;
-  assert.equal(zoom.events[0].joinUrl, "https://zoom.us/j/9");
-  assert.equal(zoom.events[0].online, true);
-  assert.equal(zoom.events[0].location, "Room_D");
-  const both = parseCalendarView({ items: [{ ...SAMPLE.items[2], location: { displayName: "https://zoom.us/j/9" } }] }) as any;
-  assert.match(both.events[0].joinUrl, /teams\.microsoft\.com/);
 });
 
 test("alertText: 회의실·온라인(Teams) — 둘 다, 하나만, 없음, 긴 장소는 detail 로", () => {
@@ -185,12 +121,7 @@ test("planAlerts: 여러 번([15, 5]), 끔([]), 설정을 바꿔도 이미 지�
   assert.deepEqual(fires(min(1440), undefined, [1440, 10]).fire.map((x) => x.mins), [1440]);
 });
 
-function eventsOf(data: unknown): CalEvent[] {
-  const p = parseCalendarView(data);
-  return "error" in p ? [] : p.events;
-}
-
-function harness(nowIso: string, pages: unknown[] = [SAMPLE], cfg = { models: { light: "x" } } as Config) {
+function harness(nowIso: string, pages: (CalEvent[] | null)[] = [EVENTS], cfg = { models: { light: "x" } } as Config) {
   const store = new Store(join(mkdtempSync(join(tmpdir(), "cal-")), "t.db"));
   let now = Date.parse(nowIso);
   const timers: { at: number; fn: () => void; id: number }[] = [];
@@ -201,10 +132,9 @@ function harness(nowIso: string, pages: unknown[] = [SAMPLE], cfg = { models: { 
     setTimer: (fn, ms) => { const t = { at: now + ms, fn, id: ++seq }; timers.push(t); return t.id as any; },
     clearTimer: (id: any) => { const i = timers.findIndex((t) => t.id === id); if (i >= 0) timers.splice(i, 1); },
     source: async () => {
-      const data = pages[Math.min(run++, pages.length - 1)];
-      const p = parseCalendarView(data);
-      if ("error" in p) return { ok: false, events: [], calls: 1, errors: 1, costUsd: 0 };
-      return { ok: true, events: p.events, calls: 1, errors: 0, costUsd: 0 };
+      const events = pages[Math.min(run++, pages.length - 1)];
+      if (!events) return { ok: false, events: [], calls: 1, errors: 1, costUsd: 0 };
+      return { ok: true, events, calls: 1, errors: 0, costUsd: 0 };
     },
   });
   const advance = async (ms: number) => {
@@ -223,8 +153,8 @@ function harness(nowIso: string, pages: unknown[] = [SAMPLE], cfg = { models: { 
 }
 
 test("CalendarSync: 오늘·내일 창으로 가져와 저장, /dashboard 용 upcoming", async () => {
-  const page2 = { items: [{ ...SAMPLE.items[2], id: "evt-p2", subject: "2쪽 회의", start: { dateTime: "2026-10-09T10:00:00", timeZone: "Asia/Seoul" }, end: { dateTime: "2026-10-09T11:00:00", timeZone: "Asia/Seoul" } }], cursor: null };
-  const h = harness("2026-10-08T02:00:00Z", [{ items: [...SAMPLE.items, ...page2.items], cursor: null }]);
+  const page2 = { ...EVENTS[2], id: "evt-p2", subject: "2쪽 회의", start: "2026-10-09T01:00:00.000Z", end: "2026-10-09T02:00:00.000Z" };
+  const h = harness("2026-10-08T02:00:00Z", [[...EVENTS, page2]]);
   const r = await h.cal.sync();
   assert.equal(r.events, 4);
   assert.equal(r.meetings, 2);
@@ -232,7 +162,7 @@ test("CalendarSync: 오늘·내일 창으로 가져와 저장, /dashboard 용 up
   assert.deepEqual(h.cal.upcoming().map((m) => m.subject), ["[Office] 과제 현황 공유", "2쪽 회의"]);
   assert.deepEqual(h.cal.upcoming().map((m) => m.location), ["Conference Room A", "Conference Room A"]);
   // 다시 가져왔는데 회의가 취소돼 사라졌으면 지운다
-  const h2 = harness("2026-10-08T02:00:00Z", [SAMPLE, { items: [], cursor: null }]);
+  const h2 = harness("2026-10-08T02:00:00Z", [EVENTS, []]);
   await h2.cal.sync();
   assert.equal(h2.cal.upcoming().length, 1);
   await h2.cal.sync();
@@ -254,7 +184,7 @@ test("CalendarSync.schedule: T-10 에 한 번 울림, 재시작해도 다시 안
   stop();
   const again = new CalendarSync({ models: { light: "x" } } as Config, h.store, {
     now: () => new Date("2026-10-08T03:55:00Z"), setTimer: () => 0 as any, clearTimer: () => {},
-    source: async () => ({ ok: true, events: eventsOf(SAMPLE), calls: 0, errors: 0, costUsd: 0 }),
+    source: async () => ({ ok: true, events: EVENTS, calls: 0, errors: 0, costUsd: 0 }),
   });
   const fired2: string[] = [];
   again.schedule((_m, t) => fired2.push(t))();
@@ -272,7 +202,7 @@ test("CalendarSync.schedule: T-10 에 한 번 울림, 재시작해도 다시 안
 test("CalendarSync.schedule: 설정 calendarAlert 대로(여러 번·끔), 바꾸면 바로, 이미 울린 건 다시 안 울림", async () => {
   // 회의는 13:00 KST(04:00Z). 12:30 에 켬
   const cfg = { models: { light: "x" }, calendarAlert: { minutesBefore: [15, 5] } } as Config;
-  const h = harness("2026-10-08T03:30:00Z", [SAMPLE], cfg);
+  const h = harness("2026-10-08T03:30:00Z", [EVENTS], cfg);
   const fired: [string, number][] = [];
   h.cal.schedule((_m, text, mins) => fired.push([text, mins]));
   await h.advance(10);
@@ -294,7 +224,7 @@ test("CalendarSync.schedule: 설정 calendarAlert 대로(여러 번·끔), 바�
 
   // 끔: 일정은 가져오지만 울리지 않는다
   const off = { models: { light: "x" }, calendarAlert: { minutesBefore: [] } } as unknown as Config;
-  const h2 = harness("2026-10-08T03:30:00Z", [SAMPLE], off);
+  const h2 = harness("2026-10-08T03:30:00Z", [EVENTS], off);
   const fired2: number[] = [];
   h2.cal.schedule((_m, _t, mins) => fired2.push(mins));
   await h2.advance(25 * 60e3);
@@ -322,7 +252,7 @@ test("CalendarSync: 예전 알림 기록(id@start, 분 없음)은 10분 전에 �
 });
 
 test("CalendarSync: 가져오기가 실패하면 저장된 회의를 지우지 않는다", async () => {
-  const h = harness("2026-10-08T02:00:00Z", [SAMPLE, { error: "429" }]);
+  const h = harness("2026-10-08T02:00:00Z", [EVENTS, null]);
   await h.cal.sync();
   const r = await h.cal.sync();
   assert.equal(r.errors, 1);

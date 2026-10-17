@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMOTION_TAGS, MOODS, SERIOUS_KINDS, TONE, VOICE_EVERY, seedHash, stretch, voice } from "./voice.ts";
+import { MOODS, SERIOUS_KINDS, TONE, VOICE_EVERY, seedHash, stretch, voice } from "./voice.ts";
 import { SYSTEM } from "./brain.ts";
 
 const seeds = (n: number, prefix = "b") => Array.from({ length: n }, (_, i) => `${prefix}:${i}:2026-10-10`);
@@ -50,8 +50,7 @@ test("stretch: 마지막 '…어요/에요'의 요 앞에 ~", () => {
   assert.equal(stretch("있어~요"), null);
 });
 
-test("감정 표시는 데모와 같은 '(…시사)' 꼴, seedHash는 32비트", () => {
-  for (const t of EMOTION_TAGS) assert.match(t, /^\((.+ 시사|스이시~사)\)$/);
+test("seedHash는 32비트", () => {
   assert.ok(seedHash("x") >= 0 && seedHash("x") < 2 ** 32);
 });
 

@@ -45,8 +45,6 @@ export function mergeRows(m) {
     ...(m.draft ? [{ label: '상태', value: '초안(draft)', tone: 'warn' }] : []),
   ];
 }
-// 패널·오버레이에서 누를 수 있는 결정: confirm(실행·허용) · always(항상 허용 — 도구 승인만) · cancel(취소·거부)
-export const DECISIONS = ['confirm', 'always', 'cancel'];
 
 // 데몬 payload → 카드 데이터. 잘못된 건 null
 export function normalizeAction(raw) {

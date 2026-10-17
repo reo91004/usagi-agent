@@ -145,7 +145,7 @@ test("bus: GET /focus · /focus/stats · POST /focus/:cmd (헤더 필수) · SSE
   s.f.onChange = (v) => bus.focusChanged(v);
   await bus.listen(0, {
     approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c1", chatHistory: () => [], focus: focusApi(s.f),
+    todoDone: () => true, chat: () => "c1", focus: focusApi(s.f),
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   const post = (p: string, headers: Record<string, string> = { "x-cy-agent": "1" }) => fetch(`${base}${p}`, { method: "POST", headers });

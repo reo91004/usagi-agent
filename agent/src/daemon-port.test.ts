@@ -12,7 +12,7 @@ import { Bus, DAEMON_ID, EXIT_PORT_TAKEN, type BusHandlers } from "./bus.ts";
 
 const handlers = (extra: Partial<BusHandlers> = {}): BusHandlers => ({
   approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}),
-  todoDone: () => true, chat: () => "c1", chatHistory: () => [], ...extra,
+  todoDone: () => true, chat: () => "c1", ...extra,
 });
 
 async function occupy(): Promise<Server> {

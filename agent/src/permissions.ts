@@ -1034,8 +1034,6 @@ export function waitStep(via: ActionVia): string {
 }
 export const DENIED_STEP = "승인되지 않았어요 — 다른 방법을 생각하고 있어요";
 
-export const DENIED_MSG = "사용자가 이 작업을 거부했어요. 같은 호출을 다시 시도하지 말고, 다른 방법을 제안하거나 무엇을 원하는지 물어보세요.";
-
 // 하드 차단된 gh pr merge 시도(셸 명령·cwd·어느 대화) → core 가 받아 두었다가 답이 끝나면 머지 승인 카드로(모델이 시도한 것이라 ✓ 필요 —
 // 사용자가 말로 시킨 머지는 merges[].userSaid 로)
 export type MergeAttemptSink = (a: { command: string; cwd: string; origin?: PermOrigin }) => void;

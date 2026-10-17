@@ -60,9 +60,6 @@ const resetTo = (target, base) => {
   Object.assign(target, structuredClone(base));
 };
 
-let last = null;
-export const lastCharacters = () => last;
-
 // data: GET /characters. 모양이 틀리면 기본값만 남기고 false
 export function applyCharacters(data) {
   resetTo(CHARACTERS, BASE.characters);
@@ -74,7 +71,6 @@ export function applyCharacters(data) {
   for (const k of Object.keys(CHARACTER_BASES)) delete CHARACTER_BASES[k];
   Object.assign(CHARACTER_BASES, BASE.bases);
   const list = Array.isArray(data?.characters) ? data.characters : null;
-  last = list ? data : null;
   if (!list) return false;
   for (const e of list) {
     if (!isObj(e) || typeof e.id !== 'string' || BAD.has(e.id)) continue;

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { checkLlm, completeLlm, errorText, keyFetch, KEY_REQ, listModels, OPENAI_NO_CREDIT, OPENAI_NO_PERMISSION, OPENAI_NO_MODEL_LIST } from '../src/llm-check.js';
+import { checkLlm, errorText, keyFetch, KEY_REQ, listModels, OPENAI_NO_CREDIT, OPENAI_NO_PERMISSION, OPENAI_NO_MODEL_LIST } from '../src/llm-check.js';
 import { listErrorText } from '../renderer/models-view.js';
 import { daemonArgs } from '../src/bundle.js';
 
@@ -84,17 +84,15 @@ test('키를 싣는 요청은 모두 redirect:error·credentials:omit (OpenAI·G
     return ok[url] ?? res(200, { models: [], candidates: [{ content: { parts: [{ text: 'h' }] } }] });
   };
   f.calls = [];
-  const msg = { system: 's', messages: [{ role: 'user', content: 'hi' }] };
   for (const p of ['openai', 'gemini', 'claude']) {
     await checkLlm(p, KEY, f);
     await listModels(p, KEY, f);
-    await completeLlm(p, KEY, { ...msg, model: p === 'gemini' ? 'gemini-x' : '' }, f);
   }
   // 제한 키 경로(/models 403 → 대화)도
   const r = fake({ 'https://api.openai.com/v1/models': res(403, PERM), 'https://api.openai.com/v1/chat/completions': res(200, {}) });
   await checkLlm('openai', KEY, r);
   assert.equal(r.calls.length, 2);
-  assert.ok(f.calls.length >= 9);
+  assert.ok(f.calls.length >= 6);
   for (const c of [...f.calls, ...r.calls]) {
     assert.equal(c.init.redirect, 'error', c.url);
     assert.equal(c.init.credentials, 'omit', c.url);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SISA_BASE, PROVIDER_STYLE, personaFor, systemFor, isStockPersona } from '../src/persona.js';
+import { SISA_BASE, PROVIDER_STYLE, personaFor, isStockPersona } from '../src/persona.js';
 
 const PROVIDERS = ['gemini', 'claude', 'openai', 'claudecode', 'codexcli', 'agycli'];
 
@@ -43,26 +43,6 @@ test('AI별 문구는 서로 다르고, 코딩 에이전트형은 코딩 에이�
 test('알 수 없는 provider 는 공통 설정만 쓴다', () => {
   for (const p of ['', 'none', 'toString', '__proto__', undefined, null]) {
     assert.equal(personaFor(p), SISA_BASE);
-    assert.equal(systemFor(p, ''), SISA_BASE);
-  }
-  assert.equal(systemFor('nope', '나만의 말투'), '나만의 말투');
-});
-
-test('systemFor: custom 이 없으면 personaFor 와 같다', () => {
-  for (const p of PROVIDERS) {
-    assert.equal(systemFor(p, ''), personaFor(p));
-    assert.equal(systemFor(p, '   '), personaFor(p));
-    assert.equal(systemFor(p), personaFor(p));
-  }
-});
-
-test('systemFor: custom 이 있어도 AI별 규칙은 항상 붙는다', () => {
-  const custom = '너는 시사야. 아주 짧고 차분하게 말해요.';
-  for (const p of PROVIDERS) {
-    const t = systemFor(p, custom);
-    assert.ok(t.startsWith(custom), p);
-    assert.ok(t.endsWith(PROVIDER_STYLE[p]), p);
-    assert.equal(t.includes(SISA_BASE), false, p);
   }
 });
 

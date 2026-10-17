@@ -132,24 +132,8 @@ export function providerById(id) {
   return AI_PROVIDERS.find((p) => p.id === id) ?? null;
 }
 
-export function wantsPersonaEdit(text) {
-  return /말투|톤|반말|존댓|다정|짧게|길게|부드럽게|차갑|귀엽|차분/.test(String(text ?? ''));
-}
-
 // AI가 없을 때 시사가 하는 정해진 말(돌려 쓴다)은 canned.js 에 있다.
 export { CANNED, cannedReply, resetCanned } from './canned.js';
-
-// AI에게 알려 줄 오늘 할 일 현황 글
-export function todoBrief({ open = [], done = [] } = {}) {
-  const cut = (list) => list.slice(0, 15).map((t) => String(t).replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
-  const o = cut(open);
-  const d = cut(done);
-  return [
-    '[오늘 할 일 현황]',
-    `끝낸 일 ${done.length}개${d.length ? `: ${d.join(', ')}` : ''}`,
-    `남은 일 ${open.length}개${o.length ? `: ${o.join(', ')}` : ''}`,
-  ].join('\n');
-}
 
 export const HUB = [
   { id: 'claude', title: 'Claude Code', blurb: '코드 작업을 맡길 때 씁니다. 연결하지 않아도 할 일 비서는 됩니다.', kind: 'code' },
@@ -172,19 +156,6 @@ export const PLANS = [
 
 export function planById(id) {
   return PLANS.find((p) => p.id === id) ?? null;
-}
-
-export function hubFor(planId) {
-  const plan = planById(planId);
-  if (!plan) return [];
-  return plan.hub.map((id) => hubItem(id)).filter(Boolean);
-}
-
-export function aiProvidersFor(planId) {
-  const plan = planById(planId);
-  if (plan?.ai === 'key') return AI_PROVIDERS;
-  if (plan?.ai === 'cli') return CLI_PROVIDERS;
-  return [];
 }
 
 // 시사가 말풍선으로 하는 말

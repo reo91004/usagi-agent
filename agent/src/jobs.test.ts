@@ -95,7 +95,7 @@ test("HTTP: POST /jobs/done 은 헤더 필수, 잘못된 본문은 400, 맞으�
   const got: unknown[] = [];
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     jobDone: (j) => { got.push(j); },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;

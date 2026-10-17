@@ -65,7 +65,7 @@ test("HTTP: POST /directives/<id>/todo|dismiss 는 헤더 필수, 모르는 지�
   const bus = new Bus();
   const got: unknown[] = [];
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     directiveDecide: (id, decision) => { got.push([id, decision]); return id === "message:D1:1.1" ? { ok: true } : { ok: false }; },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;

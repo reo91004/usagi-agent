@@ -137,7 +137,6 @@ export const LIMITS = {
 
 // Slack·메일·캘린더 중계 run: 본문을 남기지 않는다(도구 이름·크기만)
 const QUIET: ReadonlySet<RunKind> = new Set(["slack-ingest", "calendar"]);
-export const isQuietKind = (k: RunKind) => QUIET.has(k);
 
 const SECRET_PATTERNS: RegExp[] = [
   /xox[abposr]-[A-Za-z0-9-]{8,}/g,

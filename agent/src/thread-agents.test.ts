@@ -112,7 +112,7 @@ test("GET /chat/threads/:id/agents → { agents } · 없는 대화 404 · 핸들
   const reg = new RunRegistry(new DatabaseSync(":memory:"));
   const r = reg.startRun({ kind: "chat", title: "채팅", ref: "th1" });
   r.log({ type: "tool_use", name: "Agent", input: "조사", toolUseId: "A" });
-  const base = { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [], runs: reg,
+  const base = { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", runs: reg,
     chatThreads: { list: () => [], create: () => ({}), edit: () => ({}), remove: () => true, messages: () => undefined } };
   const bus = new Bus();
   await bus.listen(0, { ...base, threadAgents: (id) => (id === "th1" ? agentsForThread(reg, id) : undefined) });
@@ -212,7 +212,7 @@ test("GET /chat/threads/:id/agents → threadSessions 가 있으면 { agents, se
   const fix = reg.startRun({ kind: "fix", title: "수정", repo: "/x/cy-agent", origin: { type: "proposal", proposalId: "p1", threadId: "th1" } });
   fix.log({ type: "assistant", text: "고치는 중" });
   const bus = new Bus();
-  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [], runs: reg,
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", runs: reg,
     chatThreads: { list: () => [], create: () => ({}), edit: () => ({}), remove: () => true, messages: () => undefined },
     threadAgents: (id) => (id === "th1" ? agentsForThread(reg, id) : undefined),
     threadSessions: (id) => (id === "th1" ? sessionsForThread(reg, id) : undefined) });

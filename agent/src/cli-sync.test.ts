@@ -263,7 +263,7 @@ test("POST /runs/:id/sync · /chat/threads/:id/sync: CSRF·입력 검증·결과
   const bus = new Bus();
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     runSync: (id, o) => { calls.push([id, o.watch]); return id === "gone" ? { ok: false, status: 404, error: "no such run" } : { ok: true, imported: 3 }; },
     threadSync: (id) => ({ ok: true, imported: id.length }),
     runImport: (sid) => { calls.push(["import", sid]); return sid === "gone" ? { ok: false, status: 404, error: "없음" } : { ok: true, runId: "r9", imported: 2 }; },

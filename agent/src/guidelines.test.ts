@@ -193,7 +193,7 @@ test("HTTP /guidelines: GET 목록·범위, POST 추가, PUT 고치기·끄기, 
   let changed = 0;
   const bus = new Bus();
   const h: BusHandlers = {
-    approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     guidelines: guidelinesApi(gs, () => changed++),
   };
   await bus.listen(0, h);
@@ -227,7 +227,7 @@ test("HTTP /guidelines: GET 목록·범위, POST 추가, PUT 고치기·끄기, 
   } finally { bus.close(); }
   // 핸들러가 없으면 503
   const bare = new Bus();
-  await bare.listen(0, { approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bare.listen(0, { approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   try { assert.equal((await fetch(`http://127.0.0.1:${(bare.server!.address() as any).port}/guidelines`)).status, 503); } finally { bare.close(); }
 });
 

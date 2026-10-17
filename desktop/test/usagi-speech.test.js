@@ -5,7 +5,7 @@ import { CANNED, cannedReply, resetCanned } from '../src/canned.js';
 import { sayFor } from '../src/ai-onboard.js';
 import { tourSteps } from '../src/tour.js';
 import { localSay } from '../src/character.js';
-import { personaFor, systemFor } from '../src/persona.js';
+import { personaFor } from '../src/persona.js';
 import { answerBubble } from '../src/quick-ask.js';
 import { createMarkdown } from '../src/markdown.js';
 import { Marked } from '../renderer/vendor/marked.js';
@@ -49,7 +49,6 @@ test('우사기: 모든 AI 연결에 같은 외침·괄호 지시를 주고 사�
     assert.match(text, /괄호 밖에는/);
     assert.match(text, /하아~~\?\(어느 할 일을 말하는 거야\?\)/);
     assert.match(text, /대사 필드에만/);
-    assert.ok(systemFor(provider, '내 말투', 'usagi').startsWith('내 말투'));
   }
 });
 

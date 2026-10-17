@@ -87,7 +87,7 @@ test("HTTP: /apple/status·connect·disconnect 는 헤더 필수, 몸통은 cale
   const bus = new Bus();
   const got: unknown[] = [];
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     apple: { status: async () => ({ calendar: "granted" }), connect: (o) => { got.push(["c", o]); return { ok: true, pending: true }; }, disconnect: (o) => { got.push(["d", o]); return { ok: true }; } },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;

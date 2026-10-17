@@ -158,7 +158,6 @@ export function setCharacter(id: unknown): CharacterId {
 }
 export const characterId = (): CharacterId => current;
 export const character = (): Character => table[current] ?? SHISA;
-export const characterById = (id: string): Character | undefined => (isCharacterId(id) ? table[id] : undefined);
 export const characterOptions = () => order.map((id) => ({ id, name: table[id].name, ...(table[id].custom ? { custom: true } : {}) }));
 
 // 프롬프트의 시사 첫 문장+말투(brain.ts BASE)를 지금 캐릭터 것으로 바꾼다. 시사 그대로면 글자 하나 안 바뀐다(프롬프트 캐시도 그대로).

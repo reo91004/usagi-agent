@@ -55,11 +55,3 @@ export function personaFor(provider, character) {
   const style = Object.hasOwn(PROVIDER_STYLE, provider) ? PROVIDER_STYLE[provider] : '';
   return style ? `${base}\n${style}` : base;
 }
-
-// custom: 사용자가 말투를 직접 고친 설명문. 있으면 기본 대신 쓰되, AI별 규칙은 항상 덧붙인다.
-export function systemFor(provider, custom = '', character) {
-  const own = typeof custom === 'string' ? custom.trim() : '';
-  if (!own) return personaFor(provider, character);
-  const style = Object.hasOwn(PROVIDER_STYLE, provider) ? PROVIDER_STYLE[provider] : '';
-  return style ? `${own}\n${style}` : own;
-}

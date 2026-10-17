@@ -340,10 +340,6 @@ export class Agent {
     return { thread, messages, more, actions: this.actions.list({ threadId: id, limit: 50 }) };
   }
 
-  // GET /chat/history(예전 모양 + 첨부는 절대 경로까지)
-  chatHistory(limit = 50) {
-    return this.store.chatHistory(limit).map(({ threadId, ...t }) => (t.attachments && threadId ? { ...t, attachments: this.attachments.withPath(threadId, t.attachments) } : t));
-  }
   // 첨부 올리기(POST /chat/attachments) → 임시 보관. 말을 보낼 때 attachments: [id] 로 붙인다
   stageAttachment(name: string, mime: string, bytes: Uint8Array) {
     const s = this.attachments.stage(name, mime, bytes);

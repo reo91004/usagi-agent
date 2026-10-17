@@ -9,7 +9,7 @@ import { resolveAsset } from '../src/assets.js';
 import { sanitizeSettingsPatch } from '../src/settings.js';
 import { cannedReply, resetCanned, CANNED_KEYS } from '../src/canned.js';
 import { CHARACTER_CANNED } from '../src/character-canned.js';
-import { personaFor, systemFor, isStockPersona, SISA_BASE, CHARACTER_BASES } from '../src/persona.js';
+import { personaFor, isStockPersona, SISA_BASE, CHARACTER_BASES } from '../src/persona.js';
 
 const OTHERS = CHARACTER_IDS.filter((id) => id !== 'shisa');
 const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets');
@@ -136,8 +136,6 @@ test('말투 글(persona): 캐릭터마다, 기본 글은 다 「안 고친 것�
     assert.ok(p.startsWith(CHARACTER_BASES[id]), id);
     assert.match(p, new RegExp(CHARACTERS[id].name));
     assert.ok(isStockPersona(CHARACTER_BASES[id]), id);
-    assert.equal(systemFor('claude', '', id), p);
-    assert.ok(systemFor('claude', '내 말투', id).startsWith('내 말투'));
   }
   assert.equal(personaFor('gemini', 'nope'), personaFor('gemini'));
 });

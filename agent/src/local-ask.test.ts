@@ -110,7 +110,7 @@ test("bus: POST /local/ask", async () => {
   const asked: string[] = [];
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     localAsk: (id) => { asked.push(id); return id === "cheer" ? { id, text: "힘내요", kind: "done" } : undefined; },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
@@ -129,7 +129,7 @@ test("bus: POST /local/ask", async () => {
     bus.close();
   }
   const bare = new Bus();
-  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   try {
     const r = await fetch(`http://127.0.0.1:${(bare.server!.address() as any).port}/local/ask`, { method: "POST", headers: { "x-cy-agent": "1" }, body: JSON.stringify({ id: "cheer" }) });
     assert.equal(r.status, 503);

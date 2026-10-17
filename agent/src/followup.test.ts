@@ -321,7 +321,7 @@ test("라우트: POST /runs/:id/continue · POST /proposals · GET /repos — CS
   const got: any[] = [];
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     runContinue: (id, text) => { got.push([id, text]); return id === "gone" ? { ok: false, status: 404, error: "no such run" } : { ok: true, mode: "fix", runId: "r2" }; },
     newTask: async (repo, text) => (repo === "/etc" ? { ok: false, status: 400, error: "nope" } : { ok: true, proposal: { id: "p1", repo, title: text, status: "pending" } }),
     repos: () => [{ path: "/r/app", name: "app" }],
@@ -349,7 +349,7 @@ test("라우트: POST /runs/:id/continue · POST /proposals · GET /repos — CS
   } finally { bus.close(); }
   // 핸들러가 없으면 503
   const bare = new Bus();
-  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   const b2 = `http://127.0.0.1:${(bare.server!.address() as any).port}`;
   try {
     assert.equal((await fetch(`${b2}/runs/r1/continue`, { method: "POST", headers: { "x-cy-agent": "1" }, body: JSON.stringify({ text: "x" }) })).status, 503);

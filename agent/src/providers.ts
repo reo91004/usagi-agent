@@ -295,7 +295,6 @@ function geminiFailText(f: { status: number; day?: boolean; limit?: number }): s
 
 // 하루 한도를 다 쓴 모델 — 키 지문:모델 → 다시 쓸 수 있는 때(ms). 그때까지는 그 모델을 건너뛰고 바로 flash-lite 로(헛걸음 요청을 줄인다)
 const geminiSpent = new Map<string, { until: number; limit?: number }>();
-export function resetGeminiState() { geminiSpent.clear(); geminiPicked.clear(); geminiLites.clear(); }
 
 export async function geminiJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,

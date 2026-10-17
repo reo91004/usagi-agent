@@ -99,24 +99,6 @@ export function isBusinessDay(day: Date | string, extra: readonly string[] = [])
   return !(ymd in KR_HOLIDAYS) && !extra.includes(ymd);
 }
 
-// ymd 직전 영업일(ymd 자신은 제외)
-export function prevBusinessDay(ymd: string, extra: readonly string[] = []): string {
-  let d = addDays(ymd, -1);
-  for (let i = 0; i < 30 && !isBusinessDay(d, extra); i++) d = addDays(d, -1);
-  return d;
-}
-
-// 다음 영업일 hh:mm(KST)까지 남은 ms. 지금 시각과 같으면 다음 번으로 넘긴다.
-export function msUntilNext(hh: number, mm: number, now: Date = new Date(), extra: readonly string[] = []): number {
-  const today = kstDate(now);
-  for (let i = 0; i < 40; i++) {
-    const ymd = addDays(today, i);
-    const at = Date.parse(`${ymd}T00:00:00Z`) - KST + (hh * 60 + mm) * 60e3;
-    if (at > now.getTime() && isBusinessDay(ymd, extra)) return at - now.getTime();
-  }
-  throw new Error("40일 안에 영업일이 없음 — 공휴일 목록 확인");
-}
-
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 export function weekdayKo(ymd: string): string {
   return WEEKDAYS[new Date(`${ymd}T00:00:00Z`).getUTCDay()];

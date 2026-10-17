@@ -1463,7 +1463,6 @@ function setupIPC() {
   ipcMain.handle('get-character', (e) => (fromOurs(e) ? charId : null));
   // 사용자 캐릭터·고친 대사 목록(GET /characters 를 받아 둔 것). 아직 없으면 null — 받으면 'characters' 로 알린다
   ipcMain.handle('characters-get', (e) => (fromOurs(e) || settingsUi?.isSender(e) ? charactersData : null));
-  ipcMain.handle('click-target', (e) => (fromOurs(e) ? clickTarget(lastState, activeRuns) : null));
 
   // ---- 작업 세션 ----
   ipcMain.on('open-session', (e, runId, toolUseId) => { if (fromOurs(e)) showSession(okRunId(runId) ? runId : pickRun(lastState, activeRuns), okRunId(runId) ? toolUseId : null); });
@@ -1613,7 +1612,6 @@ function setupIPC() {
     return err ? { ok: false, error: err } : { ok: true };
   });
   ipcMain.handle('refresh-sources', (e) => (fromOurs(e) ? post('/refresh') : denied()));
-  ipcMain.handle('get-chat-history', (e) => (fromOurs(e) ? request('GET', '/chat/history') : denied()));
   ipcMain.handle('todo-done', (e, id) => {
     if (!fromOurs(e) || typeof id !== 'string' || !id) return denied();
     return post(`/todos/${encodeURIComponent(id)}/done`);
@@ -1801,10 +1799,6 @@ function setupIPC() {
   ipcMain.handle('permission-delete', (e, id) => {
     if (!fromOurs(e) || !okPermRuleId(id)) return denied();
     return post(`/permissions/${id}/delete`);
-  });
-  ipcMain.handle('actions-list', (e, threadId) => {
-    if (!fromOurs(e)) return denied();
-    return request('GET', `/actions?limit=50${okThreadId(threadId) ? `&threadId=${threadId}` : ''}`);
   });
   // 말풍선을 누르면 패널의 그 섹션·항목
   ipcMain.on('open-item', (e, section, id) => {

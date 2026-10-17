@@ -128,7 +128,7 @@ png가 없으면 `assets/character.svg`를 씁니다. 플레이스홀더는 `npm
 | 프로젝트 | 프로젝트 카드: 이름·브랜치·경로, 마지막 활동, 24h 세션, 오늘 커밋, 마지막 세션 제목/요청, 최근 커밋 |
 | 할 일 | 우선순위별 묶음, 체크 → `POST /todos/:id/done`. 줄을 한 번 누르면 아래에 설명·원본이 펼쳐지고, 두 번 누르면(키보드는 Shift+Enter) 그 자리에서 제목과 설명을 함께 고칩니다. 제목 칸에서는 Enter, 설명 칸에서는 Enter나 ⌘Enter로 저장하고 Shift+Enter로 줄을 바꿉니다. Esc는 취소, 바깥을 누르면 저장입니다. 바뀐 것만 `POST /todos/:id {title?, description?}`로 보내고, 빈 제목은 저장하지 않습니다. AI 연결 여부와 상관없이 똑같이 동작합니다. 꾹 눌러 끌면 순서·우선순위가 바뀝니다 |
 | 오늘 할 일 | 할 일 중 오늘로 고른 것. 할 일 탭과 같은 줄(P1·P2·P3·백로그 묶음, 체크·▶·휴지통·끌기·Alt+1..4). 추가는 `POST /todos {title, priority, today: true}`, 고르기·빼기는 `POST /todos/:id {today}`. 서버에 올리지 않습니다 |
-| 채팅 | `GET /chat/history` + SSE `chat` 실시간, Enter 전송 / Shift+Enter 줄바꿈 |
+| 채팅 | 스레드 API + SSE `chat` 실시간, Enter 전송 / Shift+Enter 줄바꿈 |
 
 SSE `dashboard`가 오면 다시 가져오고, `open_panel {section}`이 오면 그 탭으로 엽니다. 마크다운은 `marked`(원시 HTML·이미지는 글자로, 링크는 http/https/slack만) → `DOMPurify`로 그립니다. 링크를 누르면 메인이 스킴을 한 번 더 확인한 뒤 외부 브라우저로 엽니다.
 
