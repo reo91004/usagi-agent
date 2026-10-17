@@ -156,7 +156,7 @@ export function importNote(d) {
 // ↻ 새로고침(터미널에서 이어 간 대화 불러오기): Claude Code 세션 id 가 있을 때만
 export const canSync = (run) => okSessionId(run?.sdkSessionId) || !!codexId(run);
 export function syncTip(run) {
-  const base = '터미널 Claude Code 에서 이어 간 대화(서브에이전트 포함)를 불러와요';
+  const base = codexId(run) ? '터미널 Codex 에서 이어 간 대화를 불러와요' : '터미널 Claude Code 에서 이어 간 대화(서브에이전트 포함)를 불러와요';
   return run?.watching ? `${base} — 지금 터미널 기록을 지켜보며 자동으로 불러오는 중이에요` : base;
 }
 // 불러온 결과 한 줄

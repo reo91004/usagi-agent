@@ -69,6 +69,7 @@ test('canSync·syncTip·syncNote', () => {
   assert.equal(canSync({ sdkSessionId: 'x' }), false);
   assert.match(syncTip({ watching: true }), /지켜보며/);
   assert.doesNotMatch(syncTip({}), /지켜보며/);
+  assert.match(syncTip({ sdkSessionId: 'codex:0199a1b2-c3d4' }), /Codex/);
   assert.equal(syncNote(3), '터미널에서 이어 간 기록 3줄을 불러왔어요.');
   assert.equal(syncNote(0), '새로 불러올 터미널 기록이 없어요.');
 });
