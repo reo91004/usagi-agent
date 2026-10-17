@@ -108,6 +108,10 @@ test("진행 확인: 새 세션·run 이 없으면 모델을 안 부르고, 할 
   s.store.upsertTodo({ id: "a", title: "배포 확인", source: "session", priority: 2 });
   assert.equal((await checkProgress(s.cfg, s.store, s.agent, { query: q, now: NOW, runs: fakeRuns(), log: () => {} })).skipped, "no_activity");
   assert.equal(calls.length, 0);
+  // 대화 제목 짓기 run 은 일을 한 게 아니다 — 진행 확인을 깨우지 않는다
+  const titleRun = fakeRuns([{ id: "T1", kind: "chat", title: "대화 제목 짓기", status: "done", endedAt: ago(5), startedAt: ago(6) }]);
+  assert.equal((await checkProgress(s.cfg, s.store, s.agent, { query: q, now: NOW, runs: titleRun, log: () => {} })).skipped, "no_activity");
+  assert.equal(calls.length, 0);
   s.store.upsertNode("session:n", "session", "배포", { cwd: "/x", lastAssistant: "배포함" }, new Date(NOW.getTime() + 60e3).toISOString());
   const low = fakeQuery(s.cfg, (p) => ({ done: [{ todo: tAlias(p, "배포 확인"), evidence: [wAlias(p, "배포")], confidence: PROGRESS.threshold - 0.1, reason: "배포" }] }));
   const r = await checkProgress(s.cfg, s.store, s.agent, { query: low.q, now: new Date(NOW.getTime() + 2 * 60e3), runs: fakeRuns(), log: () => {} });

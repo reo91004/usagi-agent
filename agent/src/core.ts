@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Bus } from "./bus.ts";
 import { LEDGER_KEEP_DAYS, TRASH_KEEP_DAYS, type Store, type Proposal, type Todo, type TodoPatch, type AutoEvidence, type TrashedTodo } from "./store.ts";
-import { buildPreview, focusOps, opPatch, opsSummary, todoRev, trashedNote, type NewTodo, type PreviewItem, type TodoOp } from "./todos.ts";
+import { buildPreview, focusOps, opPatch, opsSummary, todoRev, type NewTodo, type PreviewItem, type TodoOp } from "./todos.ts";
 import { askTodo as realAskTodo, getAsk, lastExchange, markAsk, saveAsk, type AskTodo, type AskOutcome } from "./todo-ask.ts";
 import { TodoRules, evaluateRules, parseRule, ruleChanges, ruleMatches, ruleSummary, withNote, RULE_GUIDE, type RuleProposal, type RuleChange, type RuleSkip, type TodoRule } from "./todo-rules.ts";
 import { ledgerDay } from "./todo-ledger.ts";
@@ -18,7 +18,7 @@ import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, li
 import { think as realThink, type Thought } from "./brain.ts";
 import { briefingMilestone, briefingTask, readySources, type SourceId } from "./briefing-sources.ts";
 import { runFix as realRunFix, mergePr as realMergePr, normalizeBase, resolveRepo, type FixResult } from "./fixer.ts";
-import { Chat, converse as realConverse, todoThreadFor, unfinishedLine, RESTART_WHY, type Converse, type RunCommand, type SendOpts, type Sent } from "./chat.ts";
+import { Chat, applyTodoChanges, converse as realConverse, todoThreadFor, unfinishedLine, RESTART_WHY, type Converse, type RunCommand, type SendOpts, type Sent } from "./chat.ts";
 import type { SlashCommands } from "./commands.ts";
 import type { Thread, ThreadKind } from "./store.ts";
 import { buildDashboard, dashboardSummary, type Dashboard } from "./dashboard.ts";
@@ -578,15 +578,12 @@ export class Agent {
   private async absorb(t: Thought, threadTs?: string, explicit = false): Promise<Posted | undefined> {
     for (const id of t.done_todo_ids) this.store.setTodoStatus(id, "done", { by: "briefing" });
     let reply = t.reply_md;
-    if (explicit && t.rule) reply += `\n\n${this.ruleFromModel(t.rule)}`; // 규칙을 먼저 저장해야 아래 새 할 일에도 적용된다
-    const added: Todo[] = this.addTodos(t.todos); // 새로 생긴 할 일 → to_do_new 반응
-    if (explicit && t.todo_ops?.length) {
-      const r = this.applyTodoOps(t.todo_ops);
-      const trashNote = trashedNote(r.trashed, reply);
-      if (trashNote) reply += `\n\n${trashNote}`;
-      if (r.errors.length) reply += `\n\n${r.errors.map((e) => `⚠️ ${e}`).join("\n")}`;
-      added.push(...r.added);
-    }
+    const added: Todo[] = []; // 새로 생긴 할 일 → to_do_new 반응
+    const changes = applyTodoChanges(reply, explicit ? { rule: t.rule, ops: t.todo_ops } : {}, {
+      addRule: (rule) => this.ruleFromModel(rule), todoOps: (ops) => this.applyTodoOps(ops), between: () => { added.push(...this.addTodos(t.todos)); },
+    });
+    reply = changes.reply;
+    added.push(...changes.added);
     if (t.plan_ops?.length) {
       const r = this.plan.applyOps(t.plan_ops);
       if (r.errors.length) reply += `\n\n${r.errors.map((e) => `⚠️ ${e}`).join("\n")}`;

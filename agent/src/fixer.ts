@@ -3,6 +3,7 @@
 // 수정 run 은 여러 개가 동시에 돈다(각자 워크트리). 같은 레포의 공유 참조를 바꾸는 git(fetch·worktree add/remove·branch -D·push)만
 // git-mutex.ts 로 짧게 줄 세우고, 테스트·네트워크 명령은 비동기라 데몬(다른 run·채팅)을 멈추지 않는다.
 // 수정 run 안의 서브에이전트는 isolation: "worktree" 로 각자 워크트리를 하나씩 팔 수 있다(agent-worktrees.ts)
+import { forgetCheckouts } from "./code-read.ts";
 import { getSessionInfo, type HookCallback, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "./claude-sdk.ts";
 import { randomUUID } from "node:crypto";
@@ -349,7 +350,8 @@ async function drive(s: Session, sdkQuery: typeof query, options: Record<string,
           st.maxTurns = true;
           run.log({ type: "system", text: MAX_TURNS_NOTE });
         }
-        if (m.subtype === "success" && (m as any).structured_output) out = (m as any).structured_output;
+        // 결과는 마지막 턴 것만 쓴다(앞 턴 성공 뒤 error_max_turns 로 끝났을 때 옛 결과를 내보내지 않게)
+        out = m.subtype === "success" ? (m as any).structured_output : undefined;
         if (st.stopped) break;
         if (input.pending > 0) continue; // 보낸 메시지가 다음 턴으로 이어진다
         if (st.interrupted) {
@@ -590,6 +592,7 @@ async function driveAgy(s: Session, cfg: Config, wt: string, deps: FixDeps, step
       const model = agyModel(cfg); // 코드 고치기는 고른 모델이 없으면 agy 자체 기본(Flash 기본값은 대화·정리 몫)
       const args = ["-p", text, "--output-format", "stream-json", "--sandbox", "--dangerously-skip-permissions", "--mode", "accept-edits", "--json-schema", JSON.stringify(FIX_SCHEMA), ...(conv ? ["--conversation", conv] : []), ...(model ? ["--model", model] : [])];
       turn++;
+      out = undefined; // 이 턴의 결과만 쓴다 — 종료 코드 0 인데 구조화 결과가 없으면 옛 결과가 남지 않게
       let failed: string | undefined, said = new Map<number, string>();
       const id = (n: unknown) => `ag${turn}-${String(n)}`;
       cur = new AbortController();
@@ -805,6 +808,7 @@ export async function pickBase(repo: string, want: string | undefined, step: (s:
 }
 
 export async function runFix(cfg: Config, p: Proposal, onStep: (s: string) => void, deps: FixDeps = {}): Promise<FixResult> {
+  forgetCheckouts(); // 실제 코드 작업 전: 채팅이 캐시해 둔 체크아웃 상태를 다시 읽게
   const log: string[] = [];
   const step = (s: string) => { log.push(s); onStep(s); };
   const repo = resolveRepo(cfg, p.repo);
@@ -880,6 +884,7 @@ export type Continuation = { run: RunHandle; start(onStep: (s: string) => void):
 
 // run 기록은 바로 만들고(세션 창이 곧장 고를 수 있게), 실제 작업은 start() 에서(바로 — 다른 수정 run 을 기다리지 않는다)
 export function prepareContinue(cfg: Config, spec: ContinueSpec, deps: FixDeps = {}): Continuation {
+  forgetCheckouts();
   const reg = deps.runs ?? runs;
   const wtDir = deps.worktreesDir ?? join(HOME_DIR, "worktrees");
   const log: string[] = [];

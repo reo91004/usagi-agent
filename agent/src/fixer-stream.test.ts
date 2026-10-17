@@ -462,7 +462,33 @@ test("닿기 전에 정지하면 그 말은 unsent(세션 창이 이어서 묻�
   assert.equal(git(app, "branch", "--list", "cy/*"), "");
 });
 
-test("턴 한도 없음 · 그래도 error_max_turns 가 나면 실패가 아니라 멈춤 — 뒤따르는 exit code 1 도 충돌로 안 봄, 저장 안 된 작업은 워크트리째 남김", async () => {
+test("앞 턴이 성공한 뒤 마지막 턴이 error_max_turns 로 끝나면 옛 결과로 커밋하지 않고 멈춤 처리", async () => {
+  const { root, app, wts } = setupRepo();
+  const reg = new RunRegistry(new DatabaseSync(":memory:"));
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const sdk = fakeSdk(async (n, _msg, { cwd, emit }) => {
+    if (n === 1) {
+      emit({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } });
+      await gate;
+      emit(ok(REPORT("첫 턴 성공")));
+    } else {
+      writeFileSync(join(cwd, "half.txt"), "반쯤\n");
+      emit({ type: "result", subtype: "error_max_turns", is_error: true, total_cost_usd: 0 });
+    }
+  });
+  const p = runFix(cfgFor(root), proposal(app, "prop-stale-1"), () => {}, { query: sdk.fn, runs: reg, worktreesDir: wts, idleAfterResultMs: 50 });
+  await until(() => reg.listRuns().length === 1 && reg.getRun(reg.listRuns()[0].id)!.events.some((e) => e.type === "tool_result"));
+  const id = reg.listRuns()[0].id;
+  await reg.sendMessage(id, "하나 더");
+  release();
+  const r = await p;
+  assert.equal(r.ok, false);
+  assert.match(r.summary, /턴 한도/);
+  assert.equal(existsSync(join(reg.summary(id)!.cwd!, "half.txt")), true); // 저장 안 된 작업은 워크트리째 남김
+});
+
+test("턴 한도 없음 · 그래도 error_max_turns가 나면 실패가 아니라 멈춤 — 뒤따르는 exit code 1 도 충돌로 안 봄, 저장 안 된 작업은 워크트리째 남김", async () => {
   const { root, app, wts } = setupRepo();
   const reg = new RunRegistry(new DatabaseSync(":memory:"));
   const sdk = fakeSdk(async (_n, _msg, { cwd, emit }) => {

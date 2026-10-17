@@ -129,7 +129,18 @@ export function relatedRepo(
 // 로컬 체크아웃 상태(네트워크 없이 — 원격 refs 는 마지막 fetch 기준): 지금 브랜치 + origin/HEAD·origin/develop 보다 몇 커밋 뒤인지.
 // 로컬이 옛 브랜치에 있으면 이미 원격에 들어간 변경을 또 계획하게 된다 → 프롬프트에 알려 원격 기준으로 확인하게
 export type Checkout = { branch: string; behind: { ref: string; n: number }[] };
-export function checkoutState(path: string): Checkout | undefined {
+// 레포별 짧은 캐시(60초): 대화 턴마다 git 을 3~5번 동기로 부르지 않게. 실제 코드 작업(수정 run)이 시작될 때 forgetCheckouts 로 비운다
+const CHECKOUT_TTL_MS = 60e3;
+const checkoutCache = new Map<string, { at: number; value: Checkout | undefined }>();
+export const forgetCheckouts = () => checkoutCache.clear();
+export function checkoutState(path: string, now = Date.now()): Checkout | undefined {
+  const hit = checkoutCache.get(path);
+  if (hit && now - hit.at < CHECKOUT_TTL_MS) return hit.value;
+  const value = readCheckout(path);
+  checkoutCache.set(path, { at: now, value });
+  return value;
+}
+function readCheckout(path: string): Checkout | undefined {
   const g = (...a: string[]) => execFileSync("git", a, { cwd: path, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).trim();
   try {
     const branch = g("rev-parse", "--abbrev-ref", "HEAD");

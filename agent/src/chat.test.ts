@@ -611,3 +611,38 @@ test("로컬 뇌·Gemini 면 대화 제목 짓기 run 을 만들지 않는다(�
     assert.equal(runs.listRuns({ limit: 200 }).length, before, provider);
   }
 });
+
+test("chat: 제안을 기다리는 사이 stop 하면 남은 제안은 수정 세션을 시작하지 않는다", async () => {
+  const store = new Store(":memory:");
+  const events: ChatEvent[] = [];
+  const started: string[] = [];
+  let chat!: Chat, chatId = "";
+  chat = new Chat(loadConfig(), store, {
+    emit: (e) => events.push(e), openPanel: () => {}, changed: () => {},
+    propose: async (pr) => { started.push(pr.title); chat.stop(chatId); return { id: "p1", title: pr.title }; },
+  }, async () => reply({ proposals: [{ repo: "/r", title: "A", plan: "a" }, { repo: "/r", title: "B", plan: "b" }] }));
+  chatId = sent(chat.send("둘 다 고쳐줘")).chatId;
+  await chat.idle();
+  assert.deepEqual(started, ["A"]);
+  assert.equal(events.at(-1)!.status, "stopped");
+});
+
+test("chat: Codex·agy 는 MCP 가 준비됐을 때만 작은 머리말, 아니면 inline 큰 맥락 — 프롬프트 크기 비교", async () => {
+  const { setCliMcpUrl } = await import("./providers.ts");
+  const { inlineContext } = await import("./chat.ts");
+  const store = new Store(":memory:");
+  for (let i = 0; i < 40; i++) store.upsertTodo({ id: `t${i}`, title: `할 일 ${i} — 보고서 초안과 실험 결과 정리하고 교수님께 공유`, source: "user", priority: (i % 4) + 1, note: "메모 ".repeat(20) });
+  const cfg = { ...loadConfig(), brain: { provider: "codex" } } as any;
+  try {
+    setCliMcpUrl(undefined);
+    assert.equal(inlineContext(cfg), true, "MCP 가 안 열렸으면 inline 으로 되돌아간다");
+    const before = chatPrompt(cfg, store, [], "안녕", "## 요약\n" + "프로젝트 현황 ".repeat(150));
+    setCliMcpUrl("http://127.0.0.1:1/mcp");
+    assert.equal(inlineContext(cfg), false);
+    assert.equal(inlineContext({ ...cfg, contextMode: "inline" }), true);
+    assert.equal(inlineContext({ ...cfg, brain: { provider: "gemini" } }), true);
+    const after = chatPrompt(cfg, store, [], "안녕", undefined);
+    console.log(`prompt chars inline=${before.length} mcp=${after.length}`);
+    assert.ok(after.length < before.length / 2);
+  } finally { setCliMcpUrl(undefined); }
+});

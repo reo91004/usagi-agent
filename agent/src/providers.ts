@@ -956,6 +956,12 @@ function agyMcpReady(url: string, servers: CliMcpServer[]): boolean {
   }
 }
 
+// 이 CLI 뇌(codex·agy)의 채팅에 우사기 맥락 도구(MCP)가 실제로 붙는가 — chat.ts 가 큰 맥락 대신 작은 머리말을 보낼지 정한다. agy 는 설정 파일에 넣는 데 성공해야 한다
+export function cliMcpReady(provider: string, servers: CliMcpServer[]): boolean {
+  if (!cliMcp) return false;
+  return provider === "codex" || (provider === "agy" && agyMcpReady(cliMcp, servers));
+}
+
 // agy 에 보낼 글. 앞쪽은 잘 안 바뀌는 것(시스템·도구 안내·형식·스키마), 뒤쪽이 이번 프롬프트와 첨부 — 프롬프트 캐시에 맞게
 export function agyInput(prompt: string, schema: unknown, opts: AgyOpts, mcp: boolean | string | undefined): string {
   const [system, ...rest] = cliParts(prompt, opts, "Antigravity", false, mcp ? cliToolGuide(connectorGuide(opts.servers ?? [], AGY_PREFIX)) : undefined);
