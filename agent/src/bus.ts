@@ -21,7 +21,8 @@ export type Bubble = {
   id?: string; text: string; kind: "info" | "todo" | "proposal" | "done" | "error"; ttlMs?: number; proposalId?: string; link?: string;
   image?: BubbleImage; // 그림 말풍선(스티커) — 오버레이가 그림 다음 ~600ms 뒤 글 말풍선을 띄운다
   detail?: string; // 긴 말풍선 본문(4–6줄 보이고, 누르면 open 으로)
-  open?: { section: PanelSection; id?: string }; // 누르면 패널의 그 섹션·항목
+  open?: { section: PanelSection | "setup"; id?: string }; // 누르면 패널의 그 섹션·항목(setup 이면 id = 마법사 단계)
+  openLabel?: string; // open 버튼 글(없으면 「패널에서 보기」)
   // merge: 머지 승인 ✓/✗/추가질문 (proposalId 필수) · action: 확인 카드 ✓ 실행/✗ 취소 (actionId 필수)
   // permission: 도구 승인 허용/항상 허용/거부 (actionId 필수)
   actions?: "merge" | "action" | "permission";

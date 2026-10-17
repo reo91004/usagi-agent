@@ -207,6 +207,14 @@ async function syncRemindersNow() {
   finally { remindersBusy = false; }
 }
 setTimeout(() => void syncRemindersNow(), 20e3).unref();
+// 앱을 업데이트하면 서명(ad-hoc)이 바뀌어 macOS 가 캘린더·미리알림 허락을 다시 묻는다. 연결해 둔 것인데 허락이 없으면 한 번 알린다(누르면 설치 탭 「더 연결하기」)
+setTimeout(async () => {
+  const calOn = conns.calendar.mode === "api" && !!(conns.calendar as any).local, remOn = !!cfg.appleReminders;
+  if (!(calOn || remOn) || !eventkitAvailable() || !modelWorkAllowed(cfg)) return;
+  const st = await appleStatus().catch(() => null);
+  const lost = [calOn && st?.calendar !== "granted" ? "캘린더" : "", remOn && st?.reminders !== "granted" ? "미리알림" : ""].filter(Boolean);
+  if (st && lost.length) bus.bubble({ id: "apple-regrant", kind: "info", ttlMs: 10 * 60e3, text: `이 Mac 의 ${lost.join("·")} 허락이 풀렸어요(앱을 업데이트하면 macOS 가 다시 물어요). 눌러서 다시 허락해 주세요`, open: { section: "setup", id: "extras" }, openLabel: "다시 허락하기" });
+}, 8e3).unref();
 setInterval(() => void syncRemindersNow(), 10 * 60e3).unref();
 
 // 맥락 도구 MCP(mcp-http.ts): Codex·agy 뇌의 채팅이 Claude 와 같은 cy 도구를 부른다
@@ -239,7 +247,7 @@ await bus.listen(cfg.port, {
         if ((o.calendar && !cal) || (o.reminders && !rem)) appleError = "macOS 권한을 받지 못했어요. 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림에서 우사기를 켜 주세요";
         setAppleFlags(join(HOME_DIR, "config.json"), { ...(cal ? { calendar: true } : {}), ...(rem ? { reminders: true } : {}) });
         if (rem) { cfg.appleReminders = true; void syncRemindersNow(); }
-        if (cal) reloadConnectors();
+        if (cal && !reloadConnectors().changed && calendar.enabled) calendar.sync().catch(() => {}); // 이미 연결돼 있던 것을 다시 허락함(앱 업데이트 뒤) → 바로 가져온다
         pushStatus();
         bus.dashboardChanged();
       }).catch((e) => { appleError = String(e?.message ?? e).slice(0, 200); }).finally(() => { applePending = false; });

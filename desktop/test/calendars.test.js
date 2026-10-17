@@ -243,3 +243,24 @@ test('설치 탭 「더 연결할까요?」: 연결된 캘린더 목록(가린 �
   assert.equal(readSlot('gcal'), '');
   delete globalThis.document;
 });
+
+test('설치 탭 이 Mac 캘린더·미리알림: 앱 업데이트로 허락이 풀리면 「연결됨」 대신 [다시 허락하기], 누르면 풀린 것만 다시 묻는다', async () => {
+  globalThis.document = { createElement: (t) => new Node(t), createTextNode: (t) => { const n = new Node('#text'); n.textContent = t; return n; }, title: '' };
+  const { renderSetup } = await import('../renderer/setup-view.js');
+  const asked = [];
+  const base = { phase: 'extras', done: {}, repos: [], calendars: [], onAppleConnect: (o) => asked.push(o), onAppleDisconnect: () => {}, onOpenPrivacy: () => {} };
+  const root = new Node('div');
+  renderSetup(root, { ...base, apple: { available: true, calendar: 'notDetermined', reminders: 'granted', connected: { calendar: true, reminders: true } } });
+  const box = root.byClass('setup-apple')[0];
+  assert.match(box.text, /미리알림 연결됨/);
+  assert.doesNotMatch(box.text, /캘린더·미리알림 연결됨/);
+  assert.match(box.text, /허락이 풀렸어요/);
+  box.all((n) => n.tagName === 'BUTTON' && n.text === '다시 허락하기')[0].fire('click');
+  assert.deepEqual(asked, [{ calendar: true, reminders: false }]);
+  assert.equal(box.all((n) => n.tagName === 'BUTTON' && n.text === '캘린더 빼기').length, 1, '연결해 둔 것은 뺄 수도 있다');
+  renderSetup(root, { ...base, apple: { available: true, calendar: 'granted', reminders: 'granted', connected: { calendar: true, reminders: true } } });
+  const ok = root.byClass('setup-apple')[0];
+  assert.match(ok.text, /캘린더·미리알림 연결됨/);
+  assert.equal(ok.all((n) => n.tagName === 'BUTTON' && n.text === '다시 허락하기').length, 0);
+  delete globalThis.document;
+});
