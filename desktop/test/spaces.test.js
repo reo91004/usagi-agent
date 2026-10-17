@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { buildHandler, decl } from './helpers/main-calls.js';
 import { showOnCurrentSpace } from '../src/spaces.js';
 
 const fakes = () => {
@@ -28,7 +28,10 @@ test('macOS 밖: show·focus 만', () => {
 });
 
 test('패널·세션 창은 이 도우미로 연다', () => {
-  const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(m, /function showPanel\([^)]*\) \{[\s\S]*?showOnCurrentSpace\(panel, app\);[\s\S]*?\n\}/);
-  assert.match(m, /function showSession\([^)]*\) \{[\s\S]*?showOnCurrentSpace\(sessionWin, app\);\n\}/);
+  const calls = [];
+  const app = 'app', panel = 'panel', sessionWin = 'session';
+  const common = { app, showOnCurrentSpace: (...a) => calls.push(a), refreshCaps() {}, sendPanel() {}, sendSession() {}, okRunId: () => false, okToolUseId: () => false };
+  buildHandler(decl('showPanel'), { ...common, panel, panelReady: true })('settings');
+  buildHandler(decl('showSession'), { ...common, sessionWin, sessionReady: true })();
+  assert.deepEqual(calls, [[panel, app], [sessionWin, app]]);
 });

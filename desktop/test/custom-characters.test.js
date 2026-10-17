@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { CHARACTERS, characterAssets, customAssets, clipFor, clipKind, fitBox, okCharacter, okCharacterId, characterName, appName, localSay, CHARACTER_IDS } from '../src/character.js';
 import { applyCharacters, effectiveLines, defaultsOf, shisaDesktopLines, mergeLines } from '../src/character-registry.js';
 import { editorSections, fieldText, fieldValue, fieldProblem, linesFromTexts, diffLines, flattenLines, unflattenLines, slotRows, okMediaName, missingRequired, SECTIONS } from '../src/character-edit.js';
-import { resolveAsset, userCharacterFile } from '../src/assets.js';
+import { resolveAsset, userCharacterFile, assetCandidates, parseRange } from '../src/assets.js';
+import { blocks, decl, buildHandler } from './helpers/main-calls.js';
 import { sanitizeSettingsPatch, sanitizeCharacterBody, okMediaSlot } from '../src/settings.js';
 import { setupSettings } from '../src/settings-window.js';
 import { sayFor, SISA_SAY } from '../src/ai-onboard.js';
@@ -277,9 +278,6 @@ test('설정 저장·IPC: 사용자 캐릭터 id 를 고를 수 있고, 만들�
   assert.match(sjs, /add\.id = 'char-new'/, '새 캐릭터도 같은 크기 카드');
   assert.match(sjs, /fl\.append\(fc, document\.createTextNode\('테두리'\)\)/, '칸마다 테두리');
   assert.match(html, /media-src blob: cy-asset:/);
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(main, /if \(event === 'characters'\) loadCharacters\(\)/);
-  assert.match(main, /a\.user \? userCharacterFile\(/);
   for (const p of ['../preload.cjs', '../preload-panel.cjs', '../preload-session.cjs']) assert.match(readFileSync(new URL(p, import.meta.url), 'utf8'), /getCharacters: \(\) => ipcRenderer\.invoke\('characters-get'\)/, p);
 });
 
@@ -302,4 +300,34 @@ test('시사 대사 모양: 데스크톱 코드 기본값을 lines.json 과 같�
   assert.deepEqual(keys(s.overlay), keys(CHARACTER_LINES.hachi.overlay));
   assert.deepEqual(keys(s.tour), keys(CHARACTER_LINES.hachi.tour));
   assert.equal(s.prompt.persona, SISA_BASE);
+});
+
+test('SSE characters 이벤트가 오면 캐릭터 목록을 다시 읽는다(만들거나 고치거나 지움)', () => {
+  const loads = [];
+  const onSSE = buildHandler(decl('onSSE'), { loadCharacters: () => loads.push(1) });
+  onSSE({ event: 'characters', data: '{}' });
+  onSSE({ event: 'characters', data: 'not json' });
+  assert.equal(loads.length, 1, '깨진 데이터는 무시');
+});
+
+test('cy-asset 프로토콜 핸들러: 사용자 캐릭터 파일은 데몬 목록에 있는 것만 내주고 나머지는 404', async () => {
+  const root0 = fs.mkdtempSync(path.join(os.tmpdir(), 'cy-proto-'));
+  const home = path.join(root0, 'home');
+  fs.mkdirSync(path.join(home, 'characters', U), { recursive: true });
+  fs.writeFileSync(path.join(home, 'characters', U, 'cheer-0a1b2c3d.gif'), 'GIF89a');
+  fs.writeFileSync(path.join(home, 'characters', U, 'dance-0a1b2c3d.gif'), 'GIF89a');
+  const [args] = blocks('protocol.handle(').filter((a) => a.startsWith('ASSET_SCHEME'));
+  const handle = (characters) => buildHandler(args.slice(args.indexOf(',') + 1).trim(), {
+    resolveAsset, userCharacterFile, assetCandidates, parseRange, fs, path, Response, AGENT_HOME: home, charactersData: { characters },
+    app: { isPackaged: true }, USER_ASSETS: null, REPO_ASSETS: null, BUNDLE: {}, __dirname: root0, pathToFileURL: (f) => ({ href: f }),
+    net: { fetch: async (f) => new Response(fs.readFileSync(f)) },
+  });
+  const get = (h, f) => h({ method: 'GET', url: `cy-asset://app/user-characters/${U}/${f}`, headers: new Headers() });
+  const list = [{ id: U, custom: true, media: { cheer: 'cheer-0a1b2c3d.gif' } }];
+  const ok = await get(handle(list), 'cheer-0a1b2c3d.gif');
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), 'GIF89a');
+  assert.equal((await get(handle(list), 'dance-0a1b2c3d.gif')).status, 404, '목록에 없는 파일');
+  assert.equal((await get(handle(undefined), 'cheer-0a1b2c3d.gif')).status, 404, '목록을 아직 못 받음');
+  assert.equal((await handle(list)({ method: 'POST', url: `cy-asset://app/user-characters/${U}/cheer-0a1b2c3d.gif`, headers: new Headers() })).status, 404);
 });

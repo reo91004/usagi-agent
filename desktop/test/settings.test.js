@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { ipcHandlers, buildHandler, decl, requestSent } from './helpers/main-calls.js';
+import { denied } from '../src/denied.js';
 import {
   sanitizeAppPrefs, sanitizeSettingsPatch, needsSetupHint, okCheckId, dotClass, agoText, latencyText, groupRows, pendingChecks, mergeRows, toggleExclude, metaText,
   phraseGroups, phraseText, phraseCustom, phraseSaveValue, phraseProblem, repoSlugFrom, autoMergeNext,
@@ -106,15 +108,11 @@ test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더�
   assert.match(r, /function talk\(\) \{\s*if \(brain\.ready === false\) return noBrain\(\);\s*showAsk\(\);/);
   assert.match(r, /dispatchActivity\(\{ type: 'localDance', on: true, clip \}\)/); // 칩 춤·응원은 고른 영상(clip)
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(m, /hover \? \{ kind: 'hover' \}/);
   // 설정으로 가는 길: 트레이·앱 메뉴(⌘,) 모두 패널의 설정 화면. 따로 뜨는 설정 창은 없다
   assert.match(m, /settings: \(\) => showPanel\('settings'\)/);
   assert.match(m, /accelerator: 'CmdOrCtrl\+,', click: \(\) => showPanel\('settings'\)/);
   assert.doesNotMatch(m, /settingsUi|preload-settings/);
-  assert.match(m, /const fromPanel = \(e\) => !!panel && !panel\.isDestroyed\(\) && e\.sender === panel\.webContents;/); // 설정 IPC 는 패널만
   assert.doesNotMatch(readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8'), /id="open-settings"/);
-  // PUT 도 X-CY-Agent 헤더를 단다
-  assert.match(m, /if \(method === 'POST' \|\| method === 'PUT'\) \{\s*headers\['X-CY-Agent'\] = '1';/);
 });
 
 test('문구: 저장 본문(키 → 글|null)·묶기·보일 글·저장 값·검사', () => {
@@ -236,4 +234,25 @@ test('sanitizeAppPrefs: 로그인할 때 켜기·새 버전 알림·Dock 아이�
   assert.equal(sanitizeAppPrefs({ panelPinned: 1 }), null);
   assert.deepEqual(sanitizeAppPrefs({ updateCheck: false, openAtLogin: false }), { updateCheck: false, openAtLogin: false });
   for (const bad of [null, [], {}, { openAtLogin: 'yes' }, { other: true }, { openAtLogin: true, x: 1 }]) assert.equal(sanitizeAppPrefs(bad), null, JSON.stringify(bad));
+});
+
+test('chat-send: 오버레이에서 보내면 kind hover(늘 새 스레드), 패널에서 보내면 고른 스레드', async () => {
+  const posts = [];
+  const send = buildHandler(ipcHandlers().get('chat-send'), {
+    denied, fromOurs: () => true, cleanAttachIds: () => [], okThreadId: (id) => id === 't-1', okModelId: () => false, win: { webContents: 'overlay' },
+    post: async (...a) => { posts.push(a); return { ok: true, status: 200, data: { chatId: 'c', threadId: 't-1' } }; },
+  });
+  await send({ sender: 'overlay' }, ' 안녕 ', { threadId: 't-1' });
+  await send({ sender: 'panel' }, '안녕', { threadId: 't-1' });
+  assert.deepEqual(posts, [['/chat', { text: '안녕', kind: 'hover' }], ['/chat', { text: '안녕', threadId: 't-1' }]]);
+});
+
+test('설정 IPC 는 패널만(fromPanel), 데몬 PUT 요청도 X-CY-Agent 헤더를 단다', async () => {
+  const panel = { webContents: 'p', isDestroyed: () => false };
+  const fromPanel = (win) => buildHandler(decl('fromPanel'), { panel: win });
+  assert.equal(fromPanel(panel)({ sender: 'p' }), true);
+  assert.equal(fromPanel(panel)({ sender: 'overlay' }), false);
+  assert.equal(fromPanel(null)({ sender: 'p' }), false);
+  assert.equal(fromPanel({ ...panel, isDestroyed: () => true })({ sender: 'p' }), false);
+  assert.equal((await requestSent('PUT', '/settings', {}))[1].headers['X-CY-Agent'], '1');
 });

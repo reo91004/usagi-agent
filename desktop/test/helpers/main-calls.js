@@ -51,7 +51,28 @@ export function ipcHandlers(src = mainSource) {
   return map;
 }
 
+// 최상위 선언 하나의 소스: `[async ]function name(...) {...}` 또는 한 줄짜리 `const name = ...;` (값만 돌려준다).
+// 한 줄 const 는 줄 끝(;)까지 보니 여러 줄에 걸친 값은 못 뽑는다.
+export function decl(name, src = mainSource) {
+  const f = new RegExp(`^(async )?function ${name}\\(`, 'm').exec(src);
+  if (f) {
+    const params = closeAt(src, f.index + f[0].length - 1, '(', ')');
+    return src.slice(f.index, closeAt(src, src.indexOf('{', params), '{', '}') + 1);
+  }
+  const c = new RegExp(`^const ${name} = (.*);$`, 'm').exec(src);
+  if (!c) throw new Error(`${name} 선언을 못 찾음`);
+  return c[1];
+}
+
 // 핸들러 소스를 가짜 의존물로 실제로 실행할 수 있는 함수로 만든다.
 export function buildHandler(source, deps) {
   return new Function(...Object.keys(deps), `return (${source});`)(...Object.values(deps));
+}
+
+// main.js 의 request() 를 가짜 fetch 로 돌려, 데몬에 실제로 나가는 [url, init(method·headers·body)] 를 돌려준다.
+export async function requestSent(method, pathname, body) {
+  const out = [];
+  const fetch = async (url, init) => { out.push([url, init]); return { ok: true, status: 200, text: async () => '{}' }; };
+  await buildHandler(decl('request'), { BASE: 'http://d', fetch })(method, pathname, body);
+  return out[0];
 }
