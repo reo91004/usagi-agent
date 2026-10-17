@@ -14,6 +14,7 @@ import { who, setWho } from './who.js';
 import { characterAssets, okCharacter, localSay, clipFor, danceClipOf, DANCE_MAX_MS, nextBlinkDelay, blinkPlan, initialActivity, activityReducer, viewOf, fitBox, START_CHARACTER } from '../src/character.js';
 import { applyCharacters } from '../src/character-registry.js';
 import { createPress, createClicks } from '../src/press.js';
+import { setText, oncePerFrame } from '../src/render-sched.js';
 
 const cy = window.cy;
 const stack = document.getElementById('stack');
@@ -692,9 +693,9 @@ function drawFocus() {
   document.getElementById('ask-focus').hidden = !!v; // 타이머가 돌고 있으면 시작 단추는 숨긴다
   if (v) {
     focusEl.classList.toggle('paused', v.paused);
-    focusLabel.textContent = v.label;
-    focusTime.textContent = v.time;
-    focusToggle.textContent = v.toggle.label;
+    setText(focusLabel, v.label);
+    setText(focusTime, v.time);
+    setText(focusToggle, v.toggle.label);
     focusToggle.dataset.cmd = v.toggle.cmd;
     focusToggle.disabled = focusStopBtn.disabled = focusBusy;
   }
@@ -963,6 +964,9 @@ function recheckHit() {
   setInteractive(!!el?.closest('.hit'));
 }
 
+// mousemove 는 클릭 투과 중에도 계속 오니 hit test(elementFromPoint)는 프레임당 한 번, 마지막 좌표로만 한다
+const recheckHitSoon = oncePerFrame(recheckHit, requestAnimationFrame);
+
 // 눌린 상태로 알았는데 실제로는 버튼이 안 눌려 있으면(메뉴가 mouseup 을 삼킨 경우) 드래그를 풀어 준다
 function resetPress() {
   if (press.reset(performance.now())) cy.dragEnd();
@@ -976,7 +980,7 @@ document.addEventListener('mousemove', (e) => {
     if (clicks.cancel(press.at) && tapOpened) { hideAsk(); dismiss(QUICK_ID); }
     cy.dragStart();
   }
-  recheckHit();
+  recheckHitSoon();
 });
 document.addEventListener('mouseleave', (e) => {
   // 포커스가 바뀔 때도 mouseleave 가 오니, 진짜로 캐릭터 밖에서 나간 경우만 호버 재무장

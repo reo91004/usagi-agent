@@ -1,5 +1,20 @@
 // 패널 다시 그리기·주기 확인을 줄이는 작은 순수 도우미(DOM 은 모른다)
 
+// 글이 달라졌을 때만 쓴다(같은 글을 다시 쓰면 텍스트 노드가 새로 만들어져 다시 그려진다)
+export function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+// 프레임당 한 번만 fn 을 부른다: 이미 예약돼 있으면 다시 예약하지 않는다(raf 는 requestAnimationFrame)
+export function oncePerFrame(fn, raf) {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    raf(() => { queued = false; fn(); });
+  };
+}
+
 // 같은 key·글이면 이미 만든 노드를 다시 쓴다(마크다운 파싱·정화를 건너뜀). get 으로 쓴 것만 end() 뒤에 남는다
 export function createNodeCache() {
   let old = new Map();

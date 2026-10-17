@@ -2877,7 +2877,7 @@ function refreshSessionCards() {
   for (const s of agentsFor === selectedId ? sessions : []) sessionCardEls.get(s.runId)?.replaceWith(sessionCardEl(s));
 }
 // 돌고 있는 작업 세션의 경과(5분·1시간)는 30초마다 그 카드만 고친다
-setInterval(() => { if (agentsFor === selectedId && sessions.some((s) => s.status === 'running')) refreshSessionCards(); }, 30e3);
+setInterval(() => { if (panelShown() && agentsFor === selectedId && sessions.some((s) => s.status === 'running')) refreshSessionCards(); }, 30e3);
 
 // 입력창 위: 돌고 있는 에이전트 한 줄씩(점이 깜빡임) + 끝난 것 "에이전트 N개 끝남 ▸". 돌고 있는 게 없으면 숨김
 function renderAgents() {
@@ -3308,7 +3308,9 @@ cy.onChat(onChatEvent);
 cy.onThreads?.(onThreadsEvent);
 cy.onAgents?.((p) => { if (p?.threadId && p.threadId === selectedId) loadAgentsSoon(); });
 cy.onAction?.(onActionEvent);
-cy.onDashboard(loadSoon);
+// 창이 숨어 있으면 가져오지 않고 표시만 해 두었다가 다시 보일 때 한 번 가져온다(onPanelVisibility)
+let dashStale = false;
+cy.onDashboard(() => { if (panelShown()) loadSoon(); else dashStale = true; });
 // id(선택): 오버레이 말풍선(새 할 일)에서 연 그 할 일을 펼친다
 cy.onSection(({ section: s, id } = {}) => {
   if (s === 'chat' && typeof id === 'string' && id) { openThread(id); return; } // 말풍선(호버 답) → 그 대화
@@ -3441,6 +3443,7 @@ setInterval(() => {
 // 창이 숨겨지면 주기 확인을 멈추고, 다시 보이면 밀린 그리기·확인을 이어 간다(focus 는 visibilitychange 가 없는 경우의 대비)
 function onPanelVisibility() {
   if (!panelShown()) { appleWatch.stop(); loginWatch.stop(); return; }
+  if (dashStale) { dashStale = false; loadSoon(); }
   if (raw && (timeStale || dirtySecs.has(section))) { timeStale = false; renderAll(); }
   if (section === 'chat') { flushChat(); afterThreadsChanged(); }
   if (section === 'setup') { renderSetupView(false); if (setupApple?.pending) loadApple(); }
