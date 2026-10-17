@@ -302,3 +302,27 @@ test("validatePatch slackMuted: Slack 채널 id 목록만, 모르는 모양은 �
   for (const bad of [{ slackMuted: "C01ABC" }, { slackMuted: ["학생-식사"] }, { slackMuted: ["D01ABC"] }, { slackMuted: [1] }])
     assert.throws(() => validatePatch(bad, cfgOf()), SettingsError, JSON.stringify(bad));
 });
+
+test("서버 설정: 검증 · 파일에 합쳐 쓰기 · cfg(jobHosts 포함)에 바로 반영 · onChange 키", () => {
+  assert.deepEqual(validatePatch({ sshHosts: ["a", "a", "b"], jobDirs: { a: "~/reo/.usagi-agent/jobs" } }, cfgOf()), { sshHosts: ["a", "b"], jobDirs: { a: "~/reo/.usagi-agent/jobs" } });
+  for (const bad of [{ sshHosts: ["-oProxyCommand=x"] }, { sessionHosts: "a" }, { jobDirs: { a: "reo/jobs" } }, { jobDirs: { a: "~/../x" } }, { jobDirs: { "a b": "~/x" } }])
+    assert.throws(() => validatePatch(bad, cfgOf()), SettingsError, JSON.stringify(bad));
+  const p = join(mkdtempSync(join(tmpdir(), "usagi-sv-")), "config.json");
+  writeFileSync(p, JSON.stringify({ token: "keep", jobHosts: ["own"], sshHosts: ["a", "b"] }));
+  const cfg = loadConfig({}, JSON.parse(readFileSync(p, "utf8")));
+  assert.deepEqual(cfg.jobHosts, ["own", "a", "b"]);
+  const seen: string[][] = [];
+  const s = new Settings(cfg, { path: p, env: {}, onChange: (k) => seen.push(k) });
+  const r = s.put({ sshHosts: ["b", "c"], sessionHosts: ["c"], jobDirs: { c: "~/reo/.usagi-agent/jobs" } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(cfg.sshHosts, ["b", "c"]);
+  assert.deepEqual(cfg.jobHosts, ["own", "b", "c"]); // a 는 빠지고 config.json 의 jobHosts 는 남는다
+  assert.deepEqual(cfg.sessionHosts, ["c"]);
+  assert.deepEqual(cfg.jobDirs, { c: "~/reo/.usagi-agent/jobs" });
+  assert.deepEqual(seen, [["sshHosts", "sessionHosts", "jobDirs"]]);
+  const file = JSON.parse(readFileSync(p, "utf8"));
+  assert.equal(file.token, "keep");
+  assert.deepEqual(file.sshHosts, ["b", "c"]);
+  assert.deepEqual(file.jobDirs, { c: "~/reo/.usagi-agent/jobs" });
+  assert.deepEqual([s.view().sshHosts, s.view().sessionHosts, s.view().jobDirs], [["b", "c"], ["c"], { c: "~/reo/.usagi-agent/jobs" }]);
+});
