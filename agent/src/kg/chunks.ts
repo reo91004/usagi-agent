@@ -7,7 +7,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
 import type { Store } from "../store.ts";
 import { IS_WIN, winNorm } from "../plat.ts";
-import { permalinkOf } from "../ingest/slack.ts";
+import { mutedIds, permalinkOf } from "../ingest/slack.ts";
 
 export const CHUNK_TARGET = 7000;
 const MAX_PROMPT = 4000, MAX_ASSISTANT = 2500, MAX_SUB_TASK = 1500, MAX_SUB_TEXT = 1500, MAX_TOOLS_LINE = 400;
@@ -332,7 +332,8 @@ export function buildSlackChunks(store: Store, opts: { sinceIso?: string } = {})
     return { id: r.id, channel: p.channel, ts: p.ts, thread, author: p.author, name: p.authorName ?? p.author, text: String(p.text ?? ""), at: r.updated };
   };
   const groupKey = (m: M) => (m.thread ? `${m.channel}:t${m.thread}` : `${m.channel}:d${kstDay(m.at)}`);
-  let msgs: M[] = rows.map(parse);
+  const muted = mutedIds(store);
+  let msgs: M[] = rows.map(parse).filter((m) => !muted.has(m.channel)); // 끈 채널은 새 청크를 만들지 않는다
   if (opts.sinceIso) {
     // 바뀐 묶음 전체를 다시 읽는다. 채널 전체 이력을 훑지 않는다:
     // 날짜 묶음은 그날(KST)의 updated 범위(인덱스), 스레드 묶음은 thread_ts·ts 가 그 스레드인 것만
@@ -348,7 +349,7 @@ export function buildSlackChunks(store: Store, opts: { sinceIso?: string } = {})
       const q = threads.map(() => "?").join(",");
       for (const r of db.prepare(`SELECT id, props, updated FROM nodes WHERE kind = 'message' AND (json_extract(props, '$.thread_ts') IN (${q}) OR json_extract(props, '$.ts') IN (${q}))`).all(...threads, ...threads) as any[]) found.set(r.id, r);
     }
-    msgs = [...found.values()].map(parse).filter((m) => keys.has(groupKey(m)));
+    msgs = [...found.values()].map(parse).filter((m) => !muted.has(m.channel) && keys.has(groupKey(m)));
   }
   const groups = new Map<string, M[]>();
   for (const m of msgs) {

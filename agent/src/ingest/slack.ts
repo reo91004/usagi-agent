@@ -70,6 +70,24 @@ CREATE INDEX IF NOT EXISTS slack_threads_activity ON slack_threads(activity);
 CREATE TABLE IF NOT EXISTS slack_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS slack_convs (id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, user TEXT, quiet INTEGER NOT NULL DEFAULT 0, next_sync TEXT NOT NULL DEFAULT '');
 `;
+// 설정 slackMuted(무시 채널 id)를 DB에 옮겨 둔다 — 읽는 쪽(브리핑·할 일·지시사항·지식그래프·크롤 프로세스)이 store 만으로 거르게
+export function syncMuted(store: Store, ids: readonly string[]) {
+  store.db.prepare("INSERT OR REPLACE INTO slack_meta (key, value) VALUES ('muted', ?)").run(JSON.stringify([...new Set(ids)].sort()));
+}
+export function mutedJson(store: Store): string {
+  try { return (store.db.prepare("SELECT value FROM slack_meta WHERE key = 'muted'").get() as any)?.value ?? "[]"; } catch { return "[]"; } // 수집 전엔 표가 없다
+}
+// 설정 화면 Slack 칸: 내가 들어가 있는 채널(공개·비공개, DM 제외)을 이름순으로
+export function slackChannels(store: Store): { id: string; name: string; type: string }[] {
+  try {
+    return (store.db.prepare("SELECT id, coalesce(name, id) AS name, type FROM slack_convs WHERE type IN ('public', 'private') AND next_sync != '9999' ORDER BY lower(coalesce(name, id))").all() as any[])
+      .map((r) => ({ id: r.id, name: r.name, type: r.type }));
+  } catch { return []; } // 수집 전엔 표가 없다
+}
+export const mutedIds = (store: Store): Set<string> => new Set(JSON.parse(mutedJson(store)) as string[]);
+// 메시지 노드 SQL 에 붙이는 조건. 인자 하나 = mutedJson(store)
+export const NOT_MUTED = "coalesce(json_extract(props, '$.channel'), '') NOT IN (SELECT value FROM json_each(?))";
+
 // 연결·이름 찾기 실패(인터넷 문제). 이때는 토큰·설치 문제가 아니라고 알려 준다
 export const NET_ERR = /ENOTFOUND|EAI_AGAIN|getaddrinfo|fetch failed|request error|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|socket hang up/i;
 export function ingestErrorText(c: { errors: number; calls: number }, last: string): string {
@@ -158,6 +176,7 @@ export class SlackIngester {
     store.db.exec(META);
     try { store.db.exec("ALTER TABLE slack_threads ADD COLUMN polled TEXT"); } catch { /* 이미 있음 */ }
     try { store.db.exec("ALTER TABLE slack_threads ADD COLUMN read_ts TEXT"); } catch { /* 이미 있음 */ }
+    syncMuted(store, cfg.slackMuted); // 크롤 같은 별도 프로세스도 시작할 때 설정을 읽어 맞춘다
   }
 
   // 다른 프로세스가 남긴 레이트리밋 쿨다운(실제 시각 ms). 꺼져 있으면 0
@@ -308,11 +327,13 @@ export class SlackRun {
   protected throttled = false;
   protected batchAt = Date.now();               // 마지막 묶음을 내준 시각(paceMs용)
   protected historied = false;
+  protected muted: Set<string>;                 // 설정에서 끈 채널 — 이번 사이클 동안 고정
 
   constructor(ing: SlackIngester, counts: SlackIngestCounts) {
     this.ing = ing;
     this.store = ing.store;
     this.counts = counts;
+    this.muted = mutedIds(ing.store);
     this.me = ing.meta("me") ?? undefined;
     this.teamUrl = ing.meta("teamUrl");
     this.budget = ing.deps.maxCalls;
@@ -440,6 +461,7 @@ export class SlackRun {
       if (base) { this.teamUrl = base; this.ing.setMeta("teamUrl", base); }
     }
     const ch: string = m.channel_id;
+    if (this.muted.has(ch)) return;
     if (isDm && !this.ing.conv(ch)) {
       this.store.db.prepare("INSERT OR IGNORE INTO slack_convs (id, type) VALUES (?, ?)").run(ch, ch.startsWith("D") ? "im" : "mpim");
     }
@@ -452,6 +474,7 @@ export class SlackRun {
   }
 
   protected collect(conv: string, m: RawMsg) {
+    if (this.muted.has(conv)) return; // 검색·스레드 결과로 온 무시 채널 글은 저장하지 않는다
     this.msgs.push({ conv, m });
   }
 
@@ -461,7 +484,7 @@ export class SlackRun {
     const cutoff = new Date(d.now() - d.threadActiveDays * 864e5).toISOString();
     const rows = this.store.db.prepare(`SELECT channel, thread_ts FROM slack_threads WHERE activity >= ?
       ORDER BY coalesce(polled, '') ASC, activity DESC LIMIT ?`).all(cutoff, d.maxThreadPolls * 2) as any[];
-    const want = [...this.newThreads, ...rows.map((r) => ({ channel: r.channel, ts: r.thread_ts }))];
+    const want = [...this.newThreads, ...rows.map((r) => ({ channel: r.channel, ts: r.thread_ts }))].filter((t) => !this.muted.has(t.channel));
     let n = 0;
     for (const t of want) {
       if (n >= d.maxThreadPolls) break;
@@ -479,7 +502,7 @@ export class SlackRun {
     const d = this.ing.deps;
     const nowIso = new Date(d.now()).toISOString();
     const convs = this.store.db.prepare(`SELECT id FROM slack_convs WHERE type IN ('public', 'private') AND next_sync <= ?
-      ORDER BY next_sync ASC LIMIT ?`).all(nowIso, this.historyLeft) as any[];
+      AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY next_sync ASC LIMIT ?`).all(nowIso, mutedJson(this.store), this.historyLeft) as any[];
     for (const c of convs) this.history(c.id);
   }
 
@@ -726,7 +749,7 @@ export function attentionSince(store: Store, sinceIso: string, opts: { limit?: n
     (store.db.prepare(sql).all(...args) as any[]).map((r) => ({ ...r, props: JSON.parse(r.props) }));
   const cands = rows(`SELECT id, label, updated, props FROM nodes WHERE kind = 'message' AND updated >= ?
     AND (json_extract(props, '$.isDM') = 1 OR json_extract(props, '$.mentionsMe') = 1)
-    AND coalesce(json_extract(props, '$.fromMe'), 0) = 0 ORDER BY updated`, sinceIso);
+    AND coalesce(json_extract(props, '$.fromMe'), 0) = 0 AND ${NOT_MUTED} ORDER BY updated`, sinceIso, mutedJson(store));
   if (!cands.length) return [];
   const mine = rows(`SELECT id, label, updated, props FROM nodes WHERE kind = 'message' AND updated >= ?
     AND json_extract(props, '$.fromMe') = 1`, sinceIso);

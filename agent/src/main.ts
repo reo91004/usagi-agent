@@ -14,7 +14,7 @@ import { briefingDue } from "./briefing-sources.ts";
 import { loadCommands, SlashCommands } from "./commands.ts";
 import { createSlack } from "./slack/app.ts";
 import { TodoCanvas, openDm } from "./slack/canvas.ts";
-import { SlackIngester } from "./ingest/slack.ts";
+import { SlackIngester, slackChannels, syncMuted } from "./ingest/slack.ts";
 import { learnFrom } from "./profile.ts";
 import { runAfterSlackIngest } from "./todo-auto.ts";
 import { checkProgress } from "./todo-progress.ts";
@@ -179,6 +179,7 @@ const settings = new Settings(cfg, { onChange: (keys) => {
   if (keys.some((k) => k === "brain" || k === "user" || k === "onboarded")) pushStatus();
   if (keys.includes("onboarded") && modelWorkAllowed(cfg)) setTimeout(() => onboardedNow(), 0); // 마법사를 막 마침 → 첫 정리
   else if (keys.includes("readSessions") && sessionsAllowed(cfg)) setTimeout(() => ingest(), 0);
+  if (keys.includes("slackMuted")) syncMuted(store, cfg.slackMuted);
   if (keys.includes("calendarAlert")) calendar.check(); // 알림 시각을 바로 다시 잡는다
   if (keys.includes("character")) bus.characterChanged(); // 앱 그림·영상을 바로 바꾼다
 } });
@@ -350,7 +351,7 @@ await bus.listen(cfg.port, {
     list: () => agent.listPermissions(),
     remove: (id) => agent.deletePermission(id),
   },
-  settings: { get: () => settings.view(), put: (body) => settings.put(body) },
+  settings: { get: () => ({ ...settings.view(), slackChannels: slackChannels(store) }), put: (body) => settings.put(body) },
   characters: characterStore,
   // AI 없이 고르는 질문(캐릭터 더블클릭 칩): 오늘 할 일·열린 할 일·캘린더만 보고 정해진 말로
   // 응원해 줘·춤춰 줘: 답과 함께 그 캐릭터의 응원·춤 영상(앱이 캐릭터마다 고른다)

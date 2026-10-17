@@ -5,7 +5,7 @@
 //   새 지시는 core 의 Slack → 할 일 자동 흐름에서 빼고(중복 방지 — DM·멘션은 core 가 지시자 글을 걸러내고, 채널 글은 그 흐름에 원래 들어오지 않는다), 패널 카드의 [할 일로]·[괜찮아요]로 사용자가 정한다.
 //   정한 것은 directive_state 표(메시지 id → todo|dismissed)에 남긴다.
 import type { DatabaseSync } from "node:sqlite";
-import { permalinkOf } from "./ingest/slack.ts";
+import { NOT_MUTED, mutedJson, permalinkOf } from "./ingest/slack.ts";
 import type { Store } from "./store.ts";
 
 export type DirectiveState = "open" | "todo" | "dismissed";
@@ -45,7 +45,8 @@ export function directivesSince(store: Store, from: readonly string[], sinceIso:
       WHERE n.kind = 'message' AND n.updated >= ?
         AND json_extract(n.props, '$.author') IN (${who.map(() => "?").join(", ")})
         AND coalesce(json_extract(n.props, '$.fromMe'), 0) = 0 AND coalesce(json_extract(n.props, '$.bot'), 0) = 0
-      ORDER BY n.updated DESC LIMIT 200`).all(sinceIso, ...who) as any[];
+        AND coalesce(json_extract(n.props, '$.channel'), '') NOT IN (SELECT value FROM json_each(?))
+      ORDER BY n.updated DESC LIMIT 200`).all(sinceIso, ...who, mutedJson(store)) as any[];
   } catch { return []; } // Slack 수집 전
   const teamUrl = (() => {
     try { return (store.db.prepare("SELECT value FROM slack_meta WHERE key = 'teamUrl'").get() as any)?.value as string | undefined; } catch { return undefined; }
@@ -94,8 +95,8 @@ export function directiveCandidates(store: Store, sinceIso: string, limit = 6): 
     return (store.db.prepare(`SELECT json_extract(props, '$.author') AS who, max(json_extract(props, '$.authorName')) AS name,
         sum(coalesce(json_extract(props, '$.isDM'), 0) = 1) AS dm, sum(coalesce(json_extract(props, '$.isDM'), 0) != 1) AS ch FROM nodes
       WHERE kind = 'message' AND updated >= ?
-        AND coalesce(json_extract(props, '$.fromMe'), 0) = 0 AND coalesce(json_extract(props, '$.bot'), 0) = 0
-      GROUP BY who ORDER BY dm + ch DESC, who LIMIT ?`).all(sinceIso, limit) as any[])
+        AND coalesce(json_extract(props, '$.fromMe'), 0) = 0 AND coalesce(json_extract(props, '$.bot'), 0) = 0 AND ${NOT_MUTED}
+      GROUP BY who ORDER BY dm + ch DESC, who LIMIT ?`).all(sinceIso, mutedJson(store), limit) as any[])
       .filter((r) => okSlackUserId(r.who)).map((r) => ({ id: r.who, name: String(r.name ?? r.who), count: Number(r.dm), channel: Number(r.ch) }));
   } catch { return []; }
 }

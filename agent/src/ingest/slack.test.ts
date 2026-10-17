@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Store } from "../store.ts";
 import { loadConfig } from "../config.ts";
-import { SlackIngester, attentionSince, callKey, formatAttention, ingestErrorText, mentions, permalinkOf } from "./slack.ts";
+import { SlackIngester, attentionSince, slackChannels, callKey, formatAttention, ingestErrorText, mentions, permalinkOf } from "./slack.ts";
 
 const ME = "UME";
 const NOW = Date.parse("2026-10-08T12:00:00Z");
@@ -313,4 +313,38 @@ test("ingestErrorText: 이름 찾기·연결 실패는 인터넷 문제로, 그 
   assert.match(ingestErrorText({ errors: 20, calls: 20 }, "A request error occurred: getaddrinfo ENOTFOUND slack.com"), /^인터넷 연결 문제로 Slack 에 닿지 못했어요\(20\/20회\)/);
   assert.match(ingestErrorText({ errors: 1, calls: 5 }, "fetch failed"), /인터넷 연결 문제/);
   assert.equal(ingestErrorText({ errors: 2, calls: 9 }, "invalid_auth"), "Slack 호출 2/9회 실패: invalid_auth");
+});
+
+test("무시 채널: history 를 요청하지 않고, 이미 모은 글도 attentionSince 에서 빠지고, 다시 빼면 들어온다", async () => {
+  const store = new Store(":memory:");
+  const w = baseWorld();
+  const run = async (muted: string[]) => {
+    const f = fakeDirect(slackWorld(w));
+    await new SlackIngester({ ...cfg, slackMuted: muted }, store, deps(f.direct)).run();
+    return f.calls;
+  };
+  const histOf = (calls: { tool: string; args: any }[], ch: string) => calls.filter((c) => c.tool === "slack_get_channel_history" && c.args.channel_id === ch).length;
+  const since = new Date(NOW - 864e5).toISOString();
+
+  assert.ok(histOf(await run([]), "C1") > 0);
+  assert.ok(attentionSince(store, since).some((i) => i.channel === "C1"));
+  assert.deepEqual(slackChannels(store).map((c) => c.name), ["dev", "random"]);
+
+  // 끄면 이미 저장된 글도 안 보인다
+  await run(["C1"]);
+  assert.equal(attentionSince(store, since).some((i) => i.channel === "C1"), false);
+  assert.ok(attentionSince(store, since).some((i) => i.channel === "D1"));
+
+  // 처음부터 꺼 둔 채널은 history 를 요청하지 않고(C2 는 그대로) 글도 저장하지 않는다
+  const fresh = new Store(":memory:");
+  const f2 = fakeDirect(slackWorld(w));
+  await new SlackIngester({ ...cfg, slackMuted: ["C1"] }, fresh, deps(f2.direct)).run();
+  assert.equal(histOf(f2.calls, "C1"), 0);
+  assert.ok(histOf(f2.calls, "C2") > 0);
+  assert.equal(attentionSince(fresh, since).some((i) => i.channel === "C1"), false);
+  assert.equal(fresh.db.prepare("SELECT count(*) n FROM nodes WHERE kind = 'message' AND json_extract(props, '$.channel') = 'C1'").get()!.n, 0);
+
+  // 다시 켜면 모아 둔 글이 다시 보인다
+  new SlackIngester({ ...cfg, slackMuted: [] }, store, deps(null as any));
+  assert.ok(attentionSince(store, since).some((i) => i.channel === "C1"));
 });
