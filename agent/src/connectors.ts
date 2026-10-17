@@ -83,7 +83,7 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : unde
 const secret = (v: unknown) => { const x = str(v); return x && !/\.\.\.|…|YOUR_/.test(x) ? x : undefined; };
 const strs = (v: unknown) => (Array.isArray(v) ? v : [v]).map(str).filter((x): x is string => !!x);
 
-type FileConfig = { connectors?: Record<string, any> };
+export type FileConfig = { connectors?: Record<string, any> };
 
 function readFile(): FileConfig {
   try { return JSON.parse(readFileSync(join(process.env.CY_AGENT_HOME ?? join(homedir(), ".cy-agent"), "config.json"), "utf8")); } catch { return {}; }

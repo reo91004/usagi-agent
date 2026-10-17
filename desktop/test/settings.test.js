@@ -277,3 +277,11 @@ test('서버 설정: 저장 본문 · 내 폴더 ↔ jobDirs · 지금 설정이
   ]);
   assert.deepEqual(serversPatch(rows), st);
 });
+
+test('나·MCP·Tine·연결 저장 본문: 모양만 거르고 데몬이 진짜 검증', () => {
+  const ok = { user: { name: '레오', aliases: ['reo'] }, gitAuthor: { email: 'a@b.c' }, tineGraph: '/g', allowMcp: ['notion', 'notion'], connectors: { mail: { mode: 'mcp', server: 'gmail' }, calendar: { timeZone: 'Asia/Seoul', email: null } } };
+  assert.deepEqual(sanitizeSettingsPatch(ok), { ...ok, allowMcp: ['notion'] });
+  assert.deepEqual(sanitizeSettingsPatch({ tineGraph: null }), { tineGraph: null });
+  for (const bad of [{ user: { x: 1 } }, { gitAuthor: { name: 1 } }, { tineGraph: 3 }, { allowMcp: ['a b'] }, { connectors: { foo: {} } }, { connectors: { mail: { mode: 'api' } } }, { connectors: { mail: { timeZone: 'x' } } }, { connectors: { calendar: {} } }])
+    assert.equal(sanitizeSettingsPatch(bad), null, JSON.stringify(bad));
+});

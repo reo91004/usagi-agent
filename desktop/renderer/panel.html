@@ -190,6 +190,19 @@
         <div id="local-read" class="toggles"></div>
         <p id="local-repos" class="hint"></p>
         <p class="hint"><button id="open-repos" type="button" class="small ghost">레포 폴더 고치기</button></p>
+        <div class="me-line">
+          <span class="gl-text">연구 노트 그래프(Tine)</span>
+          <code id="tine-path" class="faint"></code>
+          <button id="tine-pick" type="button" class="small ghost">폴더 고르기</button>
+          <button id="tine-clear" type="button" class="small ghost" hidden>안 쓰기</button>
+        </div>
+        <p class="hint">고른 그래프의 그날 일지에 「오늘 한 일」을 써요. 그래프 폴더(logseq/config.edn 이 있는 곳)여야 해요.</p>
+        <div id="tine-err" class="ph-err" role="status"></div>
+      </section>
+      <section id="mcp-card" class="card" aria-labelledby="h-mcp" hidden>
+        <h2 id="h-mcp">채팅이 써도 되는 MCP 서버</h2>
+        <p class="hint">Claude Code 에 등록한 MCP 서버예요. 켠 서버만 채팅에서 써요. 메일·일정 등 연결한 서비스의 서버는 따로 쓰여요.</p>
+        <div id="mcp-list" class="toggles"></div>
       </section>
           </div>
           <div class="set-pane" data-tab="rules" hidden>
@@ -219,6 +232,17 @@
       </section>
           </div>
           <div class="set-pane" data-tab="app" hidden>
+      <section class="card" aria-labelledby="h-me">
+        <h2 id="h-me">나</h2>
+        <p class="hint">이름과 다른 이름(쉼표로 나눠요)은 대화·지식그래프에서 나를 알아보는 데 써요. 커밋 작성자는 내 커밋을 알아보고 자동 수정 커밋에 붙어요. 비워 두면 이 맥의 git 설정을 써요.</p>
+        <div class="me-grid">
+          <label>이름 <input id="me-name" type="text"></label>
+          <label>다른 이름 <input id="me-aliases" type="text" placeholder="예: 레오, reo"></label>
+          <label>커밋 작성자 이름 <input id="me-git-name" type="text"></label>
+          <label>커밋 작성자 이메일 <input id="me-git-email" type="text"></label>
+        </div>
+        <div id="me-err" class="ph-err" role="status"></div>
+      </section>
       <section class="card" aria-labelledby="h-app">
         <h2 id="h-app">이 앱</h2>
         <p class="hint" id="app-version"></p>

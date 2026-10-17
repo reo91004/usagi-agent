@@ -182,6 +182,8 @@ const settings = new Settings(cfg, { onChange: (keys) => {
   if (keys.includes("slackMuted")) syncMuted(store, cfg.slackMuted);
   if (keys.some((k) => k === "sshHosts" || k === "jobDirs")) setTimeout(pollJobHosts, 30e3).unref(); // 새 서버는 2분을 기다리지 않고 곧 한 번
   if (keys.some((k) => k === "sessionHosts" || k === "jobDirs")) setTimeout(pollSessionHosts, 30e3).unref();
+  if (keys.includes("connectors")) reloadConnectors(); // 연결(MCP 서버·캘린더 시간대)은 다시 읽어 데몬을 다시 켠다(launchd 아래일 때)
+  if (keys.includes("tineGraph")) setTimeout(() => void writeNotes(), 5e3).unref(); // 새 그래프에 곧 한 번 쓴다
   if (keys.includes("calendarAlert")) calendar.check(); // 알림 시각을 바로 다시 잡는다
   if (keys.includes("character")) bus.characterChanged(); // 앱 그림·영상을 바로 바꾼다
 } });
@@ -392,6 +394,15 @@ setCliMcpUrl(mcpUrl(cfg.port, mcpTok));
 console.log(`[cy-agent] 버스 http://127.0.0.1:${cfg.port}`);
 
 // ── 할 일 캔버스: 데이터가 바뀔 때마다(디바운스·해시로 실제 호출은 변경 시에만)
+// 내 Slack id: config 에 없으면 Slack 수집이 알아낸 값(slack_meta.me)을 메모리에서만 쓴다(config.json 은 건드리지 않는다)
+const fillSlackMe = () => {
+  if (cfg.slackUserId) return;
+  try {
+    const me = (store.db.prepare("SELECT value FROM slack_meta WHERE key = 'me'").get() as any)?.value;
+    if (typeof me === "string" && /^[UW][A-Z0-9]{2,20}$/.test(me)) cfg.slackUserId = me;
+  } catch { /* 수집 전엔 표가 없다 */ }
+};
+fillSlackMe();
 const canvas = new TodoCanvas(store, { userId: cfg.slackUserId });
 let dm: Promise<string> | undefined;
 const syncCanvas = () => {
@@ -464,6 +475,7 @@ const slackTick = asRoutine(safe("slack-ingest", async () => {
   const c = await slackIngester.run().catch((e) => { prog.fail("슬랙 훑다가 막혔어요"); throw e; });
   prog.done(c.messages ? phrase("slack_done", { n: c.messages }) : undefined);
   console.log("[slack-ingest]", JSON.stringify(c)); // 건수·비용만
+  fillSlackMe();
   await safe("todo-auto", () => runAfterSlackIngest(agent, cfg, store))(); // 끝난 할 일 자동 완료(모델은 15분에 한 번)
   await safe("slack-todos", () => agent.slackTodosNow())(); // 새 DM·멘션은 바로 할 일로(정기 브리핑을 기다리지 않는다)
 }));
@@ -564,7 +576,8 @@ const writeNotes = safe("research-note", async () => {
     if ((result === "edited" || result === "removed") && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 우사기 블록을 누가 ${result === "edited" ? "고쳐서" : "지워서"} 그대로 둬요: ${path}`); }
   }
 });
-if (cfg.tineGraph) { setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref(); }
+// 그래프가 없으면 바로 끝나는 타이머라 늘 건다 — 설정에서 그래프를 고르면 재시작 없이 시작한다
+setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref();
 
 // 긴 작업 끝(jobs.ts): 이 맥은 POST /jobs/done, 원격 서버(jobHosts·sshHosts)는 2분마다 ssh 로 가져온다
 // 작업 하나가 노드 하나(job:<서버>:<id>): 도는 동안 running, 끝나면 결과로 덮고, 표시만 남고 프로세스가 없으면 lost

@@ -117,7 +117,7 @@ contextBridge.exposeInMainWorld('cy', {
   // 설치 마법사: 이름·레포 폴더 읽기/쓰기(데몬 설정) · 폴더 고르기 · 사용법 둘러보기
   setupLoad: () => ipcRenderer.invoke('setup-load'),
   setupSave: (patch) => ipcRenderer.invoke('setup-save', patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
-  pickFolder: () => ipcRenderer.invoke('pick-folder'),
+  pickFolder: (kind) => ipcRenderer.invoke('pick-folder', kind),
   startTour: () => ipcRenderer.send('start-tour'),
   // 작업 세션 창(runId 없으면 돌고 있는 것·최근 것)
   // toolUseId(선택): 그 Agent 줄을 펼쳐서 — 채팅의 에이전트 줄·카드

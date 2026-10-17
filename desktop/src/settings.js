@@ -61,7 +61,7 @@ export function serversPatch(rows) {
 export function sanitizeSettingsPatch(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const out = {};
-  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character' && k !== 'slackMuted' && k !== 'sshHosts' && k !== 'sessionHosts' && k !== 'jobDirs') return null;
+  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character' && k !== 'slackMuted' && k !== 'sshHosts' && k !== 'sessionHosts' && k !== 'jobDirs' && k !== 'user' && k !== 'gitAuthor' && k !== 'tineGraph' && k !== 'allowMcp' && k !== 'connectors') return null;
   // 캐릭터(src/character.js 의 id)
   if (p.character !== undefined) {
     if (!okCharacterId(p.character)) return null; // 기본 다섯 또는 사용자 캐릭터 모양(있는지는 데몬이)
@@ -102,6 +102,38 @@ export function sanitizeSettingsPatch(p) {
   if (p.slackMuted !== undefined) {
     if (!Array.isArray(p.slackMuted) || p.slackMuted.length > 2000 || !p.slackMuted.every((x) => typeof x === 'string' && /^[CG][A-Z0-9]{2,20}$/.test(x))) return null;
     out.slackMuted = [...new Set(p.slackMuted)];
+  }
+  // 나(이름·다른 이름)·커밋 작성자·Tine 그래프·채팅이 써도 되는 MCP 서버·연결(데몬 settings.ts 와 같은 모양, 진짜 검증은 데몬이)
+  const plain = (x) => x && typeof x === 'object' && !Array.isArray(x);
+  const okMcp = (x) => typeof x === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(x);
+  if (p.user !== undefined) {
+    if (!plain(p.user) || Object.keys(p.user).some((k) => k !== 'name' && k !== 'aliases')) return null;
+    if (p.user.name !== undefined && p.user.name !== null && typeof p.user.name !== 'string') return null;
+    if (p.user.aliases !== undefined && (!Array.isArray(p.user.aliases) || p.user.aliases.length > 20 || !p.user.aliases.every((x) => typeof x === 'string' && x.trim().length <= 60))) return null;
+    out.user = { ...p.user };
+  }
+  if (p.gitAuthor !== undefined) {
+    if (!plain(p.gitAuthor) || Object.keys(p.gitAuthor).some((k) => (k !== 'name' && k !== 'email') || typeof p.gitAuthor[k] !== 'string')) return null;
+    out.gitAuthor = { ...p.gitAuthor };
+  }
+  if (p.tineGraph !== undefined) {
+    if (p.tineGraph !== null && (typeof p.tineGraph !== 'string' || p.tineGraph.length > 500)) return null;
+    out.tineGraph = p.tineGraph;
+  }
+  if (p.allowMcp !== undefined) {
+    if (!Array.isArray(p.allowMcp) || p.allowMcp.length > 50 || !p.allowMcp.every(okMcp)) return null;
+    out.allowMcp = [...new Set(p.allowMcp)];
+  }
+  if (p.connectors !== undefined) {
+    if (!plain(p.connectors)) return null;
+    const c = {};
+    for (const [cap, v] of Object.entries(p.connectors)) {
+      if (!['slack', 'calendar', 'mail', 'issues'].includes(cap) || !plain(v)) return null;
+      if (v.mode === 'mcp' && okMcp(v.server) && Object.keys(v).length === 2) c[cap] = { mode: 'mcp', server: v.server };
+      else if (cap === 'calendar' && v.mode === undefined && Object.keys(v).length && Object.entries(v).every(([k, x]) => (k === 'timeZone' && typeof x === 'string') || (k === 'email' && (x === null || typeof x === 'string')))) c[cap] = { ...v };
+      else return null;
+    }
+    out.connectors = c;
   }
   // 실험 서버(데몬 settings.ts 와 같은 모양): 별칭 목록·{ 서버: 결과 폴더 } 통째로
   for (const k of ['sshHosts', 'sessionHosts']) {

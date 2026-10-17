@@ -4,18 +4,21 @@
 // config.json 의 다른 키(토큰·repoRoots…)는 그대로 둔다. 쓰기는 임시 파일 → rename(원자적). 파일이 깨져 있으면 덮어쓰지 않는다.
 import { todayReminderOf, validateTodayReminder, type TodayReminder } from "./daily-plan.ts";
 import { calendarAlertOf, validateCalendarAlert, type CalendarAlertConfig } from "./calendar-alert.ts";
-import { readFileSync, renameSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync, mkdirSync, existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { isAbsolute } from "node:path";
 import { resetBrainCooldowns } from "./brain-fallback.ts";
 import { agyWarm } from "./providers.ts";
-import { BRAIN_PROVIDERS, DEFAULT_GENERAL_MODEL, HOME_DIR, configErrorText, type BrainFallback, type BrainProvider, type Config } from "./config.ts";
+import { BRAIN_PROVIDERS, DEFAULT_GENERAL_MODEL, HOME_DIR, configErrorText, tineGraphOf, type BrainFallback, type BrainProvider, type Config } from "./config.ts";
 import { modelLabel } from "./models.ts";
 import { gskLoginKey } from "./providers.ts";
 import { AUTO_MERGE_MAX, inAutoMerge, normSlug } from "./auto-merge.ts";
 import { STEP_HEAD } from "./briefing-sources.ts";
 import { PHRASES, defaultLines, phraseDef, phraseLines, setPhrases, unknownVars } from "./phrases.ts";
 import { okJobDir, okJobHost } from "./jobs.ts";
+import { CAPABILITIES, MODES, PRESETS, resolveConnectors, type Capability, type Connectors } from "./connectors.ts";
+import { registeredMcpServerNames } from "./mcp.ts";
 import { characterOptions, isCharacterId, setCharacter, DEFAULT_CHARACTER, type CharacterId } from "./characters.ts";
 
 export const MODEL_ROLES = ["quick", "general", "code", "light"] as const;
@@ -65,7 +68,14 @@ export type SettingsView = {
   // 캐릭터(characters.ts): 그림·영상·말투·고정 문구 기본값이 바뀐다
   character: CharacterId;
   characters: { id: CharacterId; name: string; custom?: boolean }[];
-  user: { name?: string };
+  user: { name?: string; aliases: string[] };
+  gitAuthor: { name: string; email: string }; // 설정 > env > `git config` 로 정해진 값(데몬이 시작 때 한 번 읽어 둔 것)
+  tineGraph: string | null; // 연구 노트를 쓰는 Tine(Logseq) 그래프 폴더
+  allowMcp: string[]; // 채팅이 써도 되는 MCP 서버(커넥터 서버는 따로 허용)
+  mcpServers: string[]; // Claude Code 에 등록된 MCP 서버 이름(~/.claude.json)
+  // 기능마다 데이터 원천(바뀐 연결은 데몬이 다시 켜져야 적용 — 변경 응답의 note 로 알린다) + 캘린더 ICS 의 시간대·내 이메일
+  connectors: Record<Capability, { mode: string; server?: string }>;
+  calendar: { timeZone: string; email: string } | null;
   repoRoots: string[];
   // 설치 마법사를 마쳤나 · 이 맥의 Claude Code·Codex 작업 기록을 읽나(onboarding.ts)
   onboarded: boolean;
@@ -88,12 +98,15 @@ export type PhraseView = { key: string; group: string; label: string; vars: stri
 // autoMerge: 목록 통째로(빼기 = 그것만 뺀 목록)
 export type SettingsPatch = {
   models?: Partial<Record<ModelRole, string>>; briefing?: { exclude?: string[] }; phrases?: Record<string, string[] | null>; autoMerge?: string[];
-  brain?: BrainPatch; user?: { name: string | null }; repoRoots?: string[]; todayReminder?: TodayReminder;
+  brain?: BrainPatch; user?: { name?: string | null; aliases?: string[] }; repoRoots?: string[]; todayReminder?: TodayReminder;
   onboarded?: boolean; readSessions?: boolean;
   calendarAlert?: CalendarAlertConfig;
   character?: CharacterId;
   directiveFrom?: string[];
   slackMuted?: string[];
+  gitAuthor?: { name?: string; email?: string };
+  tineGraph?: string | null; allowMcp?: string[];
+  connectors?: Partial<Record<Capability, { mode: "mcp"; server: string; preset?: string } | { timeZone?: string; email?: string | null }>>;
   sshHosts?: string[]; sessionHosts?: string[]; jobDirs?: Record<string, string>; // 목록·맵 통째로
 };
 const MODEL_ID = /^[A-Za-z0-9._:/-]{1,100}$/;
@@ -107,7 +120,7 @@ export class ConfigFileError extends Error {}
 export function validatePatch(body: unknown, cfg: Pick<Config, "models">): SettingsPatch {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsError("json object required");
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted", "sshHosts", "sessionHosts", "jobDirs"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
+  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted", "sshHosts", "sessionHosts", "jobDirs", "gitAuthor", "tineGraph", "allowMcp", "connectors"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
   const out: SettingsPatch = {};
   if (b.directiveFrom !== undefined) {
     if (!Array.isArray(b.directiveFrom) || b.directiveFrom.length > 20 || !b.directiveFrom.every((x) => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("directiveFrom: Slack 사용자 id(U…) 목록, 20개까지");
@@ -127,6 +140,33 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
     if (!e || e.length > 50 || !e.every(([h, d]) => okJobHost(h) && okJobDir(d))) throw new SettingsError("jobDirs: { 서버: \"~/폴더/.usagi-agent/jobs\" } 모양");
     out.jobDirs = Object.fromEntries(e) as Record<string, string>;
   }
+  if (b.allowMcp !== undefined) {
+    if (!Array.isArray(b.allowMcp) || b.allowMcp.length > 50 || !b.allowMcp.every(okMcpName)) throw new SettingsError("allowMcp: MCP 서버 이름 목록, 50개까지");
+    out.allowMcp = [...new Set(b.allowMcp as string[])];
+  }
+  if (b.gitAuthor !== undefined) {
+    const g = b.gitAuthor as Record<string, unknown>;
+    if (!g || typeof g !== "object" || Array.isArray(g) || !Object.keys(g).length || Object.keys(g).some((k) => k !== "name" && k !== "email")) throw new SettingsError("gitAuthor must be { name, email }");
+    const a: { name?: string; email?: string } = {};
+    if (g.name !== undefined) {
+      if (typeof g.name !== "string" || !g.name.trim() || g.name.length > 100 || /[\r\n<>]/.test(g.name)) throw new SettingsError("gitAuthor.name: 한 줄 이름, 100자까지");
+      a.name = g.name.trim();
+    }
+    if (g.email !== undefined) {
+      if (typeof g.email !== "string" || !OK_EMAIL.test(g.email.trim()) || g.email.length > 200) throw new SettingsError("gitAuthor.email: 이메일 주소 모양이 아니에요");
+      a.email = g.email.trim();
+    }
+    out.gitAuthor = a;
+  }
+  if (b.tineGraph !== undefined) {
+    if (b.tineGraph === null || b.tineGraph === "") out.tineGraph = null;
+    else {
+      if (typeof b.tineGraph !== "string" || b.tineGraph.length > 500) throw new SettingsError("tineGraph: 폴더 경로");
+      if (!tineGraphOf(b.tineGraph, [])) throw new SettingsError("tineGraph: Tine 그래프 폴더(logseq/config.edn 이 있는 곳)가 아니에요");
+      out.tineGraph = b.tineGraph.trim();
+    }
+  }
+  if (b.connectors !== undefined) out.connectors = validateConnectors(b.connectors);
   if (b.models !== undefined) {
     if (!b.models || typeof b.models !== "object" || Array.isArray(b.models)) throw new SettingsError("models must be an object");
     const allowed = new Set(modelOptions(cfg).map((o) => o.id));
@@ -162,10 +202,17 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
   }
   if (b.user !== undefined) {
     const u = b.user as Record<string, unknown>;
-    if (!u || typeof u !== "object" || Array.isArray(u) || Object.keys(u).some((k) => k !== "name")) throw new SettingsError("user must be { name }");
-    if (u.name !== null && typeof u.name !== "string") throw new SettingsError("user.name must be text");
-    const name = typeof u.name === "string" ? u.name.replace(/\s+/g, " ").trim() : "";
-    out.user = { name: name || null };
+    if (!u || typeof u !== "object" || Array.isArray(u) || Object.keys(u).some((k) => k !== "name" && k !== "aliases")) throw new SettingsError("user must be { name, aliases }");
+    out.user = {};
+    if (u.name !== undefined) {
+      if (u.name !== null && typeof u.name !== "string") throw new SettingsError("user.name must be text");
+      const name = typeof u.name === "string" ? u.name.replace(/\s+/g, " ").trim() : "";
+      out.user.name = name || null;
+    }
+    if (u.aliases !== undefined) {
+      if (!Array.isArray(u.aliases) || u.aliases.length > 20 || !u.aliases.every((x) => typeof x === "string" && x.trim().length <= 60)) throw new SettingsError("user.aliases: 다른 이름 목록, 20개까지, 이름마다 60자까지");
+      out.user.aliases = [...new Set((u.aliases as string[]).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean))];
+    }
   }
   for (const k of ["onboarded", "readSessions"] as const) {
     if (b[k] === undefined) continue;
@@ -177,6 +224,50 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
     out.repoRoots = [...new Set((b.repoRoots as string[]).map((x) => x.trim().replace(/\/+$/, "") || "/"))];
   }
   return out;
+}
+
+const okMcpName = (x: unknown) => typeof x === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(x);
+const OK_EMAIL = /^[^\s@<>]+@[^\s@<>]+$/;
+
+// 커넥터: 기능마다 { mode: "mcp", server } (등록한 MCP 서버로 연결). calendar 는 { timeZone, email } 도 받는다(ICS 시간대·내 이메일, email null = 지움).
+// 서버 이름이 알려진 프리셋의 서버면 그 프리셋의 도구 이름을 같이 쓴다
+export function validateConnectors(raw: unknown): NonNullable<SettingsPatch["connectors"]> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Object.keys(raw).length) throw new SettingsError("connectors must be an object");
+  const out: Record<string, unknown> = {};
+  for (const [cap, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(CAPABILITIES as readonly string[]).includes(cap)) throw new SettingsError(`unknown connector: ${cap}`);
+    const c = v as Record<string, unknown>;
+    if (!c || typeof c !== "object" || Array.isArray(c) || !Object.keys(c).length) throw new SettingsError(`connectors.${cap} must be an object`);
+    if (c.mode !== undefined) {
+      if (c.mode !== "mcp" || !MODES[cap as Capability].includes("mcp") || !okMcpName(c.server) || Object.keys(c).some((k) => k !== "mode" && k !== "server")) throw new SettingsError(`connectors.${cap}: { mode: "mcp", server: <등록한 MCP 서버 이름> } 만 받아요`);
+      const preset = Object.entries(PRESETS[cap as Capability] ?? {}).find(([, p]) => p.server === c.server)?.[0];
+      out[cap] = { mode: "mcp", server: c.server, ...(preset ? { preset } : {}) };
+      continue;
+    }
+    if (cap !== "calendar" || Object.keys(c).some((k) => k !== "timeZone" && k !== "email")) throw new SettingsError(`connectors.${cap}: 알 수 없는 값`);
+    const cal: { timeZone?: string; email?: string | null } = {};
+    if (c.timeZone !== undefined) {
+      if (typeof c.timeZone !== "string" || c.timeZone.length > 64) throw new SettingsError("connectors.calendar.timeZone: 시간대 이름(예: Asia/Seoul)");
+      try { new Intl.DateTimeFormat("en", { timeZone: c.timeZone }); } catch { throw new SettingsError(`connectors.calendar.timeZone: 모르는 시간대(${c.timeZone})`); }
+      cal.timeZone = c.timeZone;
+    }
+    if (c.email !== undefined) {
+      if (c.email !== null && (typeof c.email !== "string" || !OK_EMAIL.test(c.email.trim()) || c.email.length > 200)) throw new SettingsError("connectors.calendar.email: 이메일 주소 모양이 아니에요");
+      cal.email = c.email === null ? null : (c.email as string).trim();
+    }
+    out[cap] = cal;
+  }
+  return out;
+}
+
+// 등록된 MCP 서버 이름: ~/.claude.json 이 바뀐 때만 다시 읽는다(큰 파일이라 설정을 열 때마다 읽지 않게)
+let mcpNamesCache: { key: string; names: string[] } | undefined;
+function mcpServerNames(): string[] {
+  const p = join(homedir(), ".claude.json");
+  let key: string;
+  try { const st = statSync(p); key = `${st.mtimeMs}:${st.size}`; } catch { return []; }
+  if (mcpNamesCache?.key !== key) mcpNamesCache = { key, names: registeredMcpServerNames(p) };
+  return mcpNamesCache.names;
 }
 
 // 뇌: 아는 provider 만, 키는 공백 없는 글(null = 지우기), 모델은 이름 모양만 본다(Gemini·GPT 이름도 받는다)
@@ -285,6 +376,20 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): Record<stri
   if (patch.autoMerge) next.autoMerge = patch.autoMerge; // 빈 목록도 그대로 쓴다(씨앗으로 돌아가지 않게)
   if (patch.directiveFrom) next.directiveFrom = patch.directiveFrom;
   if (patch.slackMuted) next.slackMuted = patch.slackMuted;
+  if (patch.allowMcp) next.allowMcp = patch.allowMcp;
+  if (patch.gitAuthor) next.gitAuthor = { ...obj(cur.gitAuthor), ...patch.gitAuthor };
+  if (patch.tineGraph !== undefined) { if (patch.tineGraph) next.tineGraph = patch.tineGraph; else delete next.tineGraph; }
+  if (patch.connectors) {
+    const conns = { ...obj(cur.connectors) };
+    for (const [cap, v] of Object.entries(patch.connectors)) {
+      if ("mode" in v) { conns[cap] = v; continue; } // 서버를 새로 고르면 그 칸을 통째로 바꾼다(이전 토큰·주소·도구 이름은 이 모드에서 안 쓴다)
+      const old = conns[cap];
+      const c: Record<string, unknown> = { ...(typeof old === "string" ? { mode: old } : obj(old)), ...v };
+      if (c.email === null) delete c.email;
+      conns[cap] = c;
+    }
+    next.connectors = conns;
+  }
   if (patch.sshHosts) next.sshHosts = patch.sshHosts;
   if (patch.sessionHosts) next.sessionHosts = patch.sessionHosts;
   if (patch.jobDirs) next.jobDirs = patch.jobDirs;
@@ -312,8 +417,8 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): Record<stri
   }
   if (patch.user) {
     const u = { ...obj(cur.user) };
-    if (patch.user.name) u.name = patch.user.name;
-    else delete u.name;
+    if (patch.user.name !== undefined) { if (patch.user.name) u.name = patch.user.name; else delete u.name; }
+    if (patch.user.aliases) u.aliases = patch.user.aliases;
     next.user = u;
   }
   if (patch.repoRoots) next.repoRoots = patch.repoRoots;
@@ -363,6 +468,8 @@ export class Settings {
   private path: string;
   private env: NodeJS.ProcessEnv;
   private onChange?: (keys: string[]) => void;
+  // 저장했지만 데몬이 다시 켜져야 적용되는 연결. cfg.connectors 는 그대로 둬야 main 의 reloadConnectors 가 바뀜을 알아본다 — 화면에만 저장한 값을 보인다
+  private savedConnectors?: Connectors;
   constructor(cfg: Config, opts: { path?: string; env?: NodeJS.ProcessEnv; onChange?: (keys: string[]) => void } = {}) {
     this.cfg = cfg;
     this.onChange = opts.onChange;
@@ -373,7 +480,7 @@ export class Settings {
   }
 
   view(): SettingsView {
-    const c = this.cfg;
+    const c = this.cfg, conns = this.savedConnectors ?? c.connectors;
     return {
       models: { quick: c.models.quick ?? DEFAULT_QUICK, general: c.models.general, code: c.models.code, light: c.models.light },
       modelRoles: MODEL_ROLES.map((role) => ({ role, label: MODEL_ROLE_LABEL[role] })),
@@ -392,7 +499,13 @@ export class Settings {
       },
       character: isCharacterId(c.character) ? c.character : DEFAULT_CHARACTER,
       characters: characterOptions(),
-      user: c.user?.name ? { name: c.user.name } : {},
+      user: { ...(c.user?.name ? { name: c.user.name } : {}), aliases: [...(c.user?.aliases ?? [])] },
+      gitAuthor: { ...c.gitAuthor },
+      tineGraph: c.tineGraph ?? null,
+      allowMcp: [...(c.allowMcp ?? [])],
+      mcpServers: mcpServerNames(),
+      connectors: Object.fromEntries(CAPABILITIES.map((cap) => { const x = conns[cap]; return [cap, { mode: x.mode, ...(x.mode === "mcp" ? { server: x.server } : {}) }]; })) as SettingsView["connectors"],
+      calendar: conns.calendar.mode === "api" ? { timeZone: conns.calendar.timeZone, email: conns.calendar.email ?? "" } : null,
       repoRoots: [...(c.repoRoots ?? [])],
       onboarded: c.onboarded !== false,
       readSessions: c.readSessions !== false,
@@ -412,6 +525,7 @@ export class Settings {
       if (e instanceof ConfigFileError) return { ok: false, status: 409, error: e.message };
       return { ok: false, status: 500, error: `설정 파일을 쓰지 못했어요(${e?.code ?? "오류"}). 폴더 권한·남은 공간을 확인해 주세요` };
     }
+    if (patch.connectors) this.savedConnectors = resolveConnectors(this.env, file);
     if (patch.models) Object.assign(this.cfg.models, patch.models);
     if (patch.briefing?.exclude) this.cfg.briefing = { ...(this.cfg.briefing ?? {}), exclude: patch.briefing.exclude };
     if (patch.phrases) {
@@ -443,7 +557,15 @@ export class Settings {
       this.cfg.brain = b; // brain.ts·connections 가 매번 cfg.brain 을 읽으니 다음 질문부터 바로
       if (patch.brain.model !== undefined) this.cfg.models.general = patch.brain.model || DEFAULT_GENERAL_MODEL;
     }
-    if (patch.user) this.cfg.user = { aliases: this.cfg.user?.aliases ?? [], ...(patch.user.name ? { name: patch.user.name } : {}) };
+    if (patch.user) {
+      const u = { ...this.cfg.user };
+      if (patch.user.name !== undefined) { if (patch.user.name) u.name = patch.user.name; else delete u.name; }
+      if (patch.user.aliases) u.aliases = [...patch.user.aliases];
+      this.cfg.user = u;
+    }
+    if (patch.allowMcp) this.cfg.allowMcp = [...patch.allowMcp]; // brain.ts 가 질문마다 cfg 를 읽으니 다음 질문부터
+    if (patch.gitAuthor) this.cfg.gitAuthor = { ...this.cfg.gitAuthor, ...patch.gitAuthor };
+    if (patch.tineGraph !== undefined) this.cfg.tineGraph = patch.tineGraph ? tineGraphOf(patch.tineGraph, []) : undefined;
     if (patch.repoRoots) this.cfg.repoRoots = [...patch.repoRoots];
     if (patch.onboarded !== undefined) this.cfg.onboarded = patch.onboarded; // main 이 onChange 로 첫 정리를 건다
     if (patch.readSessions !== undefined) this.cfg.readSessions = patch.readSessions;
@@ -454,6 +576,7 @@ export class Settings {
     const locked = Object.keys(patch.models ?? {}).filter((r) => !!this.env[MODEL_ENV[r as ModelRole]]);
     return {
       ok: true, settings: this.view(), applied: "live", restartNeeded: false,
+      ...(patch.connectors ? { note: "연결을 바꿨어요. 데몬이 다시 켜지면 적용돼요" } : {}),
       ...(locked.length ? { note: `${locked.map((r) => MODEL_ENV[r as ModelRole]).join(", ")} 환경변수가 있어서 데몬을 다시 켜면 그 값으로 돌아가요` } : {}),
     };
   }
