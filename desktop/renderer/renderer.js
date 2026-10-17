@@ -656,6 +656,7 @@ function drawFocus() {
   const v = focusBubble(focus);
   const was = !focusEl.hidden;
   focusEl.hidden = !v;
+  document.getElementById('ask-focus').hidden = !!v; // 타이머가 돌고 있으면 시작 단추는 숨긴다
   if (v) {
     focusEl.classList.toggle('paused', v.paused);
     focusLabel.textContent = v.label;
@@ -998,6 +999,7 @@ async function quickChip(id) {
   if (!a) return;
   dismiss(QUICK_ID); // 누르면 칩은 내리고 답만 보인다
   if (a.type === 'open') { cy.openItem(a.section, a.id); return; }
+  if (a.type === 'focus') { focusCmd('start'); return; }
   const seq = ++chipSeq;
   const acting = a.id === 'cheer' || a.id === 'dance';
   if (acting) localDance(8000, a.id); // 바로 영상(데몬도 같은 영상을 튼다 — 꺼져 있어도 보이게)
@@ -1033,6 +1035,11 @@ document.getElementById('ask-more')?.addEventListener('click', (e) => {
   chipSeq++;
   showBubble(quickBubble(brain, charA.id));
 });
+
+// 입력창 옆 빠른 단추: 누르면 입력창은 닫고 일을 한다(mousedown preventDefault 는 위 ask 핸들러가 이미 처리)
+for (const [id, run] of [['ask-focus', () => focusCmd('start')], ['ask-todos', () => cy.openPanel('todos')], ['ask-panel', () => cy.openPanel(null)]]) {
+  document.getElementById(id).addEventListener('click', () => { hideAsk(); run(); });
+}
 
 function onCharacterClick() {
   if (clickTimer) {

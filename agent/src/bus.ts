@@ -31,7 +31,7 @@ export type Bubble = {
   blocked?: string; // merge: ✓ 를 막는 이유(실패한 검사·충돌·초안) — 오버레이는 ✓ 를 끄고 이유를 보인다
 };
 export type BubbleImage = "merge" | "merge_complete" | "lots" | "daily" | "daily_all_complete" | "daily_half_complete" | "to_do_new";
-export type PanelSection = "overview" | "projects" | "todos" | "today" | "chat";
+export type PanelSection = "overview" | "projects" | "todos" | "chat";
 export type BusHandlers = {
   approve(id: string): Promise<unknown>;
   hold(id: string): Promise<unknown>;
@@ -40,6 +40,8 @@ export type BusHandlers = {
   dashboard(): Promise<unknown>;
   // 연구 카드(research.ts): GPU 는 버튼을 누를 때만 서버에 묻는다. 노트 「열기」는 그 날짜 파일 경로. 없으면 503
   researchGpu?(): Promise<unknown>;
+  // 연구 탭 「기록 지우기」: usagi-run 의 끝·실패·끊김 기록 하나를 이 맥에서 지운다(서버 파일은 읽을 때 이미 지워짐). 모르는·도는 중이면 false → 404. 없으면 503
+  jobForget?(id: string): boolean;
   researchNote?(day: string): string | null;
   // 이 Mac 의 캘린더·미리알림(eventkit.ts): 상태 · 연결(macOS 권한을 묻고 기다리는 동안 pending) · 해제. 없으면 503
   apple?: { status(): Promise<unknown>; connect(o: { calendar: boolean; reminders: boolean }): unknown; disconnect(o: { calendar: boolean; reminders: boolean }): unknown };
@@ -587,6 +589,13 @@ export class Bus {
         if (!h.directiveDecide) return json(res, 503, { error: "directives unavailable" });
         const r = h.directiveDecide(decodeURIComponent(dm[1]), dm[2] as "todo" | "dismiss");
         return r.ok ? json(res, 200, r) : json(res, 404, { error: "no directive" });
+      }
+      if (url.pathname === "/research/jobs/forget") {
+        if (!h.jobForget) return json(res, 503, { error: "research unavailable" });
+        const body = await readJson(req);
+        for (const k of Object.keys(body)) if (k !== "id") throw new BadRequest(`unknown key: ${k}`);
+        if (typeof body.id !== "string" || !/^job:[\w.:@-]{1,200}$/.test(body.id)) throw new BadRequest("id 를 확인해 주세요");
+        return h.jobForget(body.id) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no job record" });
       }
       // 긴 작업 끝: { name, seconds, code(null = 모름) } → 캐릭터 말풍선
       if (url.pathname === "/jobs/done") {

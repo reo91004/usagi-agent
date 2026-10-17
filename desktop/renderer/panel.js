@@ -2,7 +2,7 @@
 import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
-import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
+import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, priorityHint, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
 import { candidateHosts } from '../src/folders.js';
 import { needsSetup } from '../src/setup.js';
 import { REPO_SLUG } from '../src/update-check.js';
@@ -18,7 +18,7 @@ import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, se
 import { stamp, withDayDividers } from '../src/chat-time.js';
 import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
 import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, descriptionPatch, isDoing, patchToday, isToday } from '../src/todos.js';
-import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
+import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
 import { trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey, createUndo, readTrashOpen, writeTrashOpen, overTrash, CONFIRM_TEXT, UNDO_MS } from '../src/todo-trash.js';
@@ -284,7 +284,6 @@ function renderBadges() {
   badges.setup.className = !broken && needsSetup(vm.connectors) ? 'badge dot' : 'badge';
   badges.setup.classList.toggle('hot', broken > 0);
   badges.setup.textContent = broken || '';
-  badges.today.textContent = vm.stats.todayOpen || '';
   // 채팅: 답하는 중이면 점, 아니면 안 읽은 대화 수
   const unread = seenLoaded ? unreadCount(seen, threads, section === 'chat' ? selectedId : null) : 0;
   badges.chat.className = isBusy(chat) ? 'badge dot' : 'badge';
@@ -325,6 +324,7 @@ function renderAll() {
   maybeOpenSetup();
   renderSetupView(false);
   renderOverview();
+  renderResearch();
   renderProjects();
   renderTodos(); // 할 일 탭과 오늘 할 일 탭(같은 줄·같은 묶음)
   renderBadges();
@@ -360,10 +360,9 @@ function renderOverview() {
       stat(stats.activeProjects, '진행 중 작업 폴더', active.slice(0, 3).join(', ') || null),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
-    ...(researchSection() ?? []),
-    ...(directivesSection() ?? []),
+    researchSummaryCard(),
     h('h2', null, h('span', { text: '오늘 할 일 ' }),
-      h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('today') })),
+      h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('todos') })),
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
       h('button.ghost.small', { type: 'button', text: '지금 브리핑', onclick: async (ev) => {
         const b = ev.currentTarget; b.disabled = true; b.textContent = '브리핑 중…';
@@ -395,11 +394,11 @@ let gpu = { loading: false, at: '', hosts: null, err: '' };
 async function loadGpu() {
   if (gpu.loading) return;
   gpu = { ...gpu, loading: true, err: '' };
-  renderOverview();
+  renderResearch();
   let r;
   try { r = await cy.researchGpu(); } catch { r = { ok: false }; }
   gpu = r?.ok && Array.isArray(r.data?.hosts) ? { loading: false, at: str(r.data.at), hosts: shapeGpu(r.data.hosts), err: '' } : { ...gpu, loading: false, err: `가져오지 못했어요 — ${why(r)}` };
-  renderOverview();
+  renderResearch();
 }
 const str = (v) => (typeof v === 'string' ? v : '');
 // 실험 줄 [물어보기]: 새 대화에 질문을 채워 두고 보내기는 사용자가
@@ -435,30 +434,58 @@ function gpuBlock() {
     x.ok && !x.gpus.length ? h('div.muted.small', { text: 'GPU 가 보이지 않아요' }) : null));
   return h('div.gpu', null, head, gpu.err ? h('div.result.err.small', { role: 'status', text: gpu.err }) : null, ...rows);
 }
+const jobBusy = new Set();
+async function forgetJob(id) {
+  if (jobBusy.has(id)) return;
+  jobBusy.add(id);
+  renderResearch();
+  const r = await cy.researchJobForget(id).catch(() => ({ ok: false }));
+  jobBusy.delete(id);
+  if (r?.ok || r?.status === 404) vm.research.jobs = vm.research.jobs.filter((j) => j.id !== id);
+  renderResearch();
+}
+function tmuxBlock(t) {
+  return h('div.tmux-host', null,
+    h('div.gpu-hostname', null, h('span', { text: `${t.host} · tmux` }), h('span.muted', { text: ` · ${t.rel} 확인` })),
+    t.sessions.length
+      ? t.sessions.map((x) => h('div.job-row', null,
+        h(`span.chip${x.chip ? `.${x.chip}` : ''}`, { text: x.label }),
+        h('div.job-main', null,
+          h('div.job-name', { text: x.name, title: x.path }),
+          h('div.muted.small.job-sub', { text: [x.time, x.path].filter(Boolean).join(' · '), title: x.path }))))
+      : h('div.muted.small', { text: '내 tmux 세션이 없어요' }));
+}
+// 서버 실험: 서버별 tmux 세션 + usagi-run 기록 + GPU
 function researchSection() {
   const r = vm.research;
   if (!r) return null;
-  const out = [h('h2', null, h('span', { text: '연구 ' }), r.hosts.length ? h('span.muted.small', { text: `실험 서버 ${r.hosts.join(', ')}` }) : null)];
+  const out = [h('h2', null, h('span', { text: '서버 실험 ' }), r.hosts.length ? h('span.muted.small', { text: r.hosts.join(', ') }) : null)];
   if (r.hosts.length || r.jobs.length) {
     out.push(h('div.card.research-jobs', null,
+      h('div.muted.small.research-hint', { text: '끝·실패는 usagi-run 으로 돌린 작업의 종료 기록이에요. tmux 는 지금 돌고 있는지만 보여요. 여러 사람이 쓰는 서버(jobDirs 설정)는 내 폴더에서 연 세션만 보여요.' }),
+      ...r.tmux.map(tmuxBlock),
+      h('div.gpu-hostname', null, h('span', { text: 'usagi-run 기록' })),
       r.jobs.length
         ? r.jobs.map((j) => h('div.job-row', { dataset: { id: j.id } },
           h(`span.chip.${j.chip}`, { text: j.label }),
           h('div.job-main', null,
             h('div.job-name', { text: `${j.name}${j.host ? ` @${j.host}` : ''}`, title: j.detail || j.name }),
             h('div.muted.small.job-sub', { text: [j.time, j.files.length ? `바뀐 파일 ${j.files.join(', ')}` : ''].filter(Boolean).join(' · '), title: j.detail })),
-          h('button.ghost.small', { type: 'button', text: '물어보기', title: j.ask, onclick: () => askAbout(j.ask) })))
+          h('button.ghost.small', { type: 'button', text: '물어보기', title: j.ask, onclick: () => askAbout(j.ask) }),
+          j.forgettable ? h('button.ghost.small', { type: 'button', text: '기록 지우기', title: '이 기록만 우사기에서 지워요(서버 파일은 이미 정리됐어요)', disabled: jobBusy.has(j.id), onclick: () => forgetJob(j.id) }) : null))
         : h('div.muted.small', { text: '아직 usagi-run 으로 돌린 실험이 없어요. 서버에서 명령 앞에 usagi-run -- 을 붙이면 여기 보여요.' }),
       r.hosts.length ? gpuBlock() : null));
   }
   if (r.note) {
     const y = r.note.yesterday;
+    out.push(h('h2', null, h('span', { text: '오늘 연구 노트' })));
     out.push(h('div.card.research-note', null,
       h('div.row', null,
-        h('span', { text: `오늘 연구 노트 · ${r.note.day}` }), h('span.spacer'),
+        h('span', { text: r.note.day }), h('span.spacer'),
         r.note.exists
           ? h('button.ghost.small', { type: 'button', text: '열기', onclick: (ev) => openNote(r.note.day, ev.currentTarget) })
           : h('span.muted.small', { text: '오늘 한 일이 생기면 만들어져요' })),
+      h('div.muted.small', { text: `Tine 의 「우사기 연구 노트___${r.note.day}」 페이지에 쓰고, 그날 저널에서 이어져요.` }),
       y && (y.lines.length || y.next.length)
         ? h('div.note-sum', null,
           h('div.muted.small', { text: `어제(${y.day}) 요약` }),
@@ -467,6 +494,18 @@ function researchSection() {
   }
   return out;
 }
+function renderResearch() {
+  const kids = [...(researchSection() ?? []), ...(directivesSection() ?? [])];
+  $('sec-research').replaceChildren(...(kids.length ? kids : [h('div.card.empty', { text: '연결된 실험 서버(sshHosts·jobHosts)나 Slack 이 아직 없어요. 설정의 연결에서 켜면 여기 보여요.' })]));
+}
+// 개요의 연구 한 줄 요약 → 연구 탭
+function researchSummaryCard() {
+  const r = vm.research, d = vm.directives;
+  if (!r && !d) return null;
+  const running = (r?.jobs.filter((j) => j.state === 'running').length ?? 0) + (r?.tmux.reduce((n, t) => n + t.sessions.filter((x) => x.running).length, 0) ?? 0);
+  const parts = [r ? `도는 실험 ${running}` : '', d?.from.length ? `새 지시 ${d.open.length}` : '', r?.note ? '오늘 연구 노트' : ''].filter(Boolean);
+  return h('h2', null, h('span', { text: '연구 ' }), h('span.chip.click', { text: parts.join(' · '), role: 'button', onclick: () => goto('research') }));
+}
 
 // ---- Slack 지시사항(#41) — Slack 을 연결했을 때만. 지시자를 고르고, 지시마다 [할 일로]·[괜찮아요] ----
 let dirEdit = false; // 지시자 바꾸기 열림
@@ -474,11 +513,11 @@ const dirBusy = new Set();
 async function decideDirective(id, decision) {
   if (dirBusy.has(id)) return;
   dirBusy.add(id);
-  renderOverview();
+  renderResearch();
   const r = await cy.directiveDecide(id, decision).catch(() => ({ ok: false }));
   dirBusy.delete(id);
   if (r?.ok) { vm.directives.open = vm.directives.open.filter((x) => x.id !== id); loadSoon(); }
-  renderOverview();
+  renderResearch();
 }
 async function setDirectiveFrom(ids) {
   const r = await cy.directiveFrom(ids).catch(() => ({ ok: false }));
@@ -489,14 +528,14 @@ function directivesSection() {
   if (!d) return null;
   const picking = !d.from.length || dirEdit;
   const head = h('h2', null, h('span', { text: '지시사항 ' }),
-    d.from.length ? h('span.muted.small', { text: `${d.from.map((p) => p.name).join(', ')} · DM·멘션 ` }) : null,
-    d.from.length ? h('button.ghost.small', { type: 'button', text: dirEdit ? '닫기' : '바꾸기', onclick: () => { dirEdit = !dirEdit; renderOverview(); } }) : null);
+    d.from.length ? h('span.muted.small', { text: `${d.from.map((p) => p.name).join(', ')} · DM·멘션·채널 ` }) : null,
+    d.from.length ? h('button.ghost.small', { type: 'button', text: dirEdit ? '닫기' : '바꾸기', onclick: () => { dirEdit = !dirEdit; renderResearch(); } }) : null);
   const picker = picking ? h('div.card.dir-pick', null,
-    h('div.small', { text: d.from.length ? '지시를 줄 사람(누르면 빼거나 넣어요)' : '지시를 줄 사람을 골라 주세요. 그 사람이 나에게 보낸 DM과 나를 멘션한 글을 따로 모아요.' }),
+    h('div.small', { text: d.from.length ? '지시를 줄 사람(누르면 빼거나 넣어요)' : '지시를 줄 사람을 골라 주세요. 그 사람이 나에게 보낸 DM, 나를 멘션한 글, 내가 들어간 채널에 쓴 글을 따로 모아요.' }),
     h('div.row.dir-chips', null,
       ...d.from.map((p) => h('button.chip.accent.click', { type: 'button', text: `✓ ${p.name}`, onclick: () => setDirectiveFrom(d.from.filter((x) => x.id !== p.id).map((x) => x.id)) })),
-      ...d.candidates.map((p) => h('button.chip.click', { type: 'button', text: `+ ${p.name}${p.count ? ` · DM ${p.count}` : ''}`, onclick: () => setDirectiveFrom([...d.from.map((x) => x.id), p.id]) }))),
-    !d.candidates.length && !d.from.length ? h('div.muted.small', { text: '최근 30일 DM 이 아직 없어요. Slack 을 읽기 시작하면 여기 사람이 나와요.' }) : null) : null;
+      ...d.candidates.map((p) => h('button.chip.click', { type: 'button', text: `+ ${p.name} · DM ${p.count} · 채널 ${p.channel}`, onclick: () => setDirectiveFrom([...d.from.map((x) => x.id), p.id]) }))),
+    !d.candidates.length && !d.from.length ? h('div.muted.small', { text: '최근 30일 DM·채널 글이 아직 없어요. Slack 을 읽기 시작하면 여기 사람이 나와요.' }) : null) : null;
   const list = d.from.length ? (d.open.length
     ? h('div.card.dir-list', null, d.open.map((x) => h('div.dir-row', { dataset: { id: x.id } },
       h('span.chip.accent', { text: x.where }),
@@ -1117,8 +1156,6 @@ let todoMsg = null; // { ok, text }
 let todosStale = false;
 let addPriority = 2;
 let addDraft = '';
-let todayPriority = 2; // 오늘 할 일 탭의 추가 칸
-let todayDraft = '';
 
 const why = (r) => (typeof r?.data?.error === 'string' ? r.data.error : r?.status ? `HTTP ${r.status}` : `${who()} 연결 확인`);
 
@@ -1154,23 +1191,18 @@ function moveTodo(id, priority, beforeId) {
     () => setRawTodos(reorderLocal(rawTodos(), id, priority, beforeId)));
 }
 
-// scope 'today': 오늘 할 일 탭에서 추가. 같은 할 일로 만들고 오늘로 고른다
-function addTodo(scope = 'todos') {
-  const today = scope === 'today';
-  const date = vm.today?.date || '';
-  const body = newTodoBody(today ? todayDraft : addDraft, today ? todayPriority : addPriority);
+function addTodo() {
+  const body = newTodoBody(addDraft, addPriority);
   if (!body) return;
-  if (today) todayDraft = ''; else addDraft = '';
-  const input = $(today ? 'today-add-input' : 'todo-add-input');
+  addDraft = '';
+  const input = $('todo-add-input');
   if (input) input.value = '';
-  const shown = today && date ? { ...body, today: date } : body; // 응답 전에도 오늘 묶음에 보이게
-  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body: shown }, () => cy.todoAdd(today ? { ...body, today: true } : body), '추가 실패', (r) => {
+  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body }, () => cy.todoAdd(body), '추가 실패', (r) => {
     if (typeof r.data?.id !== 'string') return;
-    setRawTodos([{ id: r.data.id, source: 'user', userEdited: false, ...shown }, ...rawTodos()]);
-    if (today) raw = { ...raw, today: patchToday(raw.today, r.data.id, { title: body.title, priority: body.priority, source: 'user', done: false }) };
+    setRawTodos([{ id: r.data.id, source: 'user', userEdited: false, ...body }, ...rawTodos()]);
   }).then((r) => {
     if (r?.ok) return;
-    if (today) todayDraft = body.title; else addDraft = body.title;
+    addDraft = body.title;
     renderTodos();
   });
 }
@@ -1338,14 +1370,14 @@ function doingButton(t) {
   });
 }
 
-// '오늘' 토글: 켜져 있으면 오늘 할 일(오늘 할 일 탭에도 같은 줄), 누르면 고르기·빼기
+// '오늘' 토글: 켜져 있으면 맨 위 「오늘」 묶음에 올라가 있다, 누르면 고르기·빼기
 function todayButton(t) {
   const date = vm.today?.date;
   if (!date) return null;
   const on = isToday(t, date);
   return h(`button.ghost.row-today${on ? '.on' : ''}`, {
     type: 'button', text: '오늘', disabled: t.pending, 'aria-pressed': String(on),
-    title: on ? '오늘 할 일에서 빼기(할 일은 남아요)' : '오늘 할 일로 고르기', 'aria-label': `${on ? '오늘 할 일에서 빼기' : '오늘 할 일로'}: ${t.title}`,
+    title: on ? '오늘에서 빼기(할 일은 남아요)' : '오늘 할 일로 고르기', 'aria-label': `${on ? '오늘 할 일에서 빼기' : '오늘 할 일로'}: ${t.title}`,
     onclick: () => toggleToday(t),
   });
 }
@@ -1427,22 +1459,18 @@ document.addEventListener('mousedown', (e) => {
 // 추가 입력칸에서 한글 조합 중이거나 끄는 중이면 다시 그리지 않는다(조합·끌기 보호). 끝나면 그때 그림.
 // 추가 입력칸은 값을 addDraft 에 들고 있으니 다시 그린 뒤 포커스만 되돌린다.
 const todosSec = $('sec-todos');
-const todaySec = $('sec-today');
-// 할 일 탭과 오늘 할 일 탭은 같은 줄·같은 묶음·같은 조작. 지금 보이는 쪽이 끌기·포커스·고치기의 기준
-const isListSection = () => section === 'todos' || section === 'today';
-const listSec = () => (section === 'today' ? todaySec : todosSec);
-const listGroups = () => (section === 'today' ? vm.todayGroups : vm.todoGroups);
-const listTodos = () => (section === 'today' ? visibleTodos().filter((t) => isToday(t, vm.today?.date)) : visibleTodos());
-const ADD_INPUTS = ['todo-add-input', 'today-add-input'];
+const isListSection = () => section === 'todos';
+const listSec = () => todosSec;
+const listGroups = () => vm.todoGroups;
+const listTodos = () => visibleTodos();
+const ADD_INPUTS = ['todo-add-input'];
 let composing = false;
-for (const sec of [todosSec, todaySec]) {
-  sec.addEventListener('compositionstart', () => { composing = true; });
-  sec.addEventListener('compositionend', () => { composing = false; if (todosStale) setTimeout(renderTodos, 0); });
-  sec.addEventListener('focusout', () => setTimeout(() => { if (todosStale && !todoInputFocused()) renderTodos(); }, 0));
-}
+todosSec.addEventListener('compositionstart', () => { composing = true; });
+todosSec.addEventListener('compositionend', () => { composing = false; if (todosStale) setTimeout(renderTodos, 0); });
+todosSec.addEventListener('focusout', () => setTimeout(() => { if (todosStale && !todoInputFocused()) renderTodos(); }, 0));
 function todoInputFocused() {
   const a = document.activeElement;
-  if (!a || !(todosSec.contains(a) || todaySec.contains(a)) || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')) return false;
+  if (!a || !todosSec.contains(a) || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')) return false;
   return composing || !ADD_INPUTS.includes(a.id);
 }
 
@@ -1455,7 +1483,6 @@ function renderTodos() {
   refocusId = null;
   if (confirmState?.kind === 'trash' && !findTodo(confirmState.id)) confirmState = null; // 지워졌거나 끝난 줄
   todosSec.replaceChildren(...todoListKids());
-  todaySec.replaceChildren(...todayListKids());
   const yes = (focusConfirm || sec.contains(document.activeElement) || document.activeElement === document.body) && confirmState ? sec.querySelector('.inline-confirm .yes') : null;
   focusConfirm = false;
   if (yes) yes.focus();
@@ -1468,7 +1495,9 @@ function todoListKids() {
   const groups = dragGroups ? withEmptyGroups(vm.todoGroups) : vm.todoGroups;
   const kids = [addForm(), rulesBar()];
   if (todoMsg) kids.push(h(`div.result.${todoMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: todoMsg.text }));
-  if (!groups.length) kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : '할 일 없음' }));
+  if (!raw && error) kids.push(h('div.empty', { text: '불러오지 못함' }));
+  // 맨 위 「오늘」은 비어도 보인다(고르는 법 안내)
+  if (!groups.some((g) => g.priority === 0)) kids.push(todoGroup({ priority: 0, label: priorityLabel(0), hint: priorityHint(0), items: [] }));
   kids.push(...groups.map(todoGroup));
   const done = mergeRecentDone(recentDone, vm.recentDone, [...reverting]);
   if (done.length) {
@@ -1482,50 +1511,48 @@ function todoListKids() {
   return kids;
 }
 
-// 오늘 할 일: 날짜·남은 수 머리 + 할 일 탭과 같은 추가 칸·우선순위 묶음 + 오늘 끝낸 것
-function todayListKids() {
-  const t = vm.today ?? { date: '', items: [] };
-  const groups = dragGroups && section === 'today' ? withEmptyGroups(vm.todayGroups) : vm.todayGroups;
-  const open = vm.stats.todayOpen, total = vm.stats.todayTotal;
-  const kids = [
-    h('div.today-head', null,
-      h('h2', { text: t.date ? `${t.date} 오늘 할 일` : '오늘 할 일' }),
-      h('span.muted', { text: total ? `남은 ${open} · 전체 ${total}` : '아직 없어요. 일정을 보고 적어 보세요.' }),
-      focusView.bar('today')),
-    addForm('today'),
-  ];
-  if (todoMsg) kids.push(h(`div.result.${todoMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: todoMsg.text }));
-  if (total && !groups.length) kids.push(h('div.empty', { text: '오늘 할 일을 다 끝냈어요' }));
-  kids.push(...groups.map(todoGroup));
-  if (vm.todayDone.length) {
-    kids.push(h('div.group.done', null,
-      h('h2', null, h('span', { text: '오늘 끝냄' }), h('span.chip', { text: String(vm.todayDone.length) })),
-      h('div.card.todos', null, vm.todayDone.map(doneRow))));
-  }
-  if (!total) kids.push(h('div.muted.small', { text: '할 일 탭에서 줄의 「오늘」을 눌러 골라도 돼요.' }));
-  kids.push(focusView.foot('today'));
-  return kids;
-}
-
 function withEmptyGroups(groups) {
   const out = [...groups];
   for (const p of [1, 2, 3, BACKLOG]) if (!out.some((g) => g.priority === p)) out.push({ priority: p, label: priorityLabel(p), items: [] });
   return out.sort((a, b) => a.priority - b.priority);
 }
 
-// 우선순위 묶음. 백로그(P4)는 기본 접힘(기억) — 접혀 있어도 끌어 놓을 칸은 남는다
+// 묶음 이름 + 기준 한 줄
+const groupHead = (g, ...more) => [h('span', { text: g.label }), h('span.chip', { text: String(g.items.length) }), g.hint ? h('span.group-hint', { text: g.hint }) : null, ...more];
+
+// 우선순위 묶음. 맨 위 「오늘」(0)은 오늘로 고른 일 + 접힌 「오늘 끝냄」. 백로그(P4)는 기본 접힘(기억) — 접혀 있어도 끌어 놓을 칸은 남는다
 function todoGroup(g) {
+  if (g.priority === 0) return todayGroup(g);
   const collapsed = isCollapsed(g.priority, backlogOpen);
   const head = g.priority === BACKLOG
     ? h('h2.backlog-head', {
       role: 'button', tabindex: '0', 'aria-expanded': String(!collapsed), title: collapsed ? '펼치기' : '접기',
       onclick: toggleBacklog, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBacklog(); } },
-    }, h('span.caret', { text: collapsed ? '▸' : '▾' }), h('span', { text: g.label }), h('span.chip', { text: String(g.items.length) }))
-    : h('h2', null, h('span', { text: g.label }), h('span.chip', { text: String(g.items.length) }));
+    }, h('span.caret', { text: collapsed ? '▸' : '▾' }), ...groupHead(g))
+    : h('h2', null, ...groupHead(g));
   const body = collapsed
     ? h('div.card.todos.drop-empty.collapsed', null, g.items.length ? null : h('div.muted.small', { text: '끌어 놓기' }))
     : h(`div.card.todos${g.items.length ? '' : '.drop-empty'}`, null, g.items.length ? g.items.map(todoRow) : h('div.muted.small', { text: '끌어 놓기' }));
   return h(`div.group.p${g.priority}`, { dataset: [1, 2, 3, BACKLOG].includes(g.priority) ? { priority: String(g.priority) } : null }, head, body);
+}
+
+let todayDoneOpen = false;
+function todayGroup(g) {
+  const done = vm.todayDone;
+  const kids = [h('div.group.today', null,
+    h('h2', null, ...groupHead(g)),
+    h(`div.card.todos${g.items.length ? '' : '.drop-empty'}`, null,
+      g.items.length ? g.items.map(todoRow) : h('div.muted.small', { text: '아직 고른 일이 없어요. 아래 줄에 마우스를 올리고 「오늘」을 눌러 골라 보세요.' })))];
+  if (done.length) {
+    const toggle = () => { todayDoneOpen = !todayDoneOpen; renderTodos(); };
+    kids.push(h('div.group.done', null,
+      h('h2.backlog-head', {
+        role: 'button', tabindex: '0', 'aria-expanded': String(todayDoneOpen), title: todayDoneOpen ? '접기' : '펼치기',
+        onclick: toggle, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } },
+      }, h('span.caret', { text: todayDoneOpen ? '▾' : '▸' }), h('span', { text: '오늘 끝냄' }), h('span.chip', { text: String(done.length) })),
+      todayDoneOpen ? h('div.card.todos', null, done.map(doneRow)) : null));
+  }
+  return h('div.today-block', null, ...kids);
 }
 
 let backlogOpen = readBacklogOpen(globalThis.localStorage);
@@ -1547,7 +1574,7 @@ function rulesBar() {
     title: '할 일 규칙',
     onclick: () => { rulesOpen = !rulesOpen; renderTodos(); },
   });
-  const bar = h('div.todo-tools', null, chip, vm.stats.backlogTodos ? h('span.muted.small', { text: `언젠가 ${vm.stats.backlogTodos}개` }) : null, focusView.bar('todos'));
+  const bar = h('div.todo-tools', null, chip, vm.stats.backlogTodos ? h('span.muted.small', { text: `언젠가 ${vm.stats.backlogTodos}개` }) : null);
   if (!rulesOpen) return bar;
   const list = rules.length
     ? rules.map((r) => h(`div.rule-row${r.enabled ? '' : '.off'}`, { dataset: { id: r.id } },
@@ -1571,20 +1598,19 @@ async function ruleCall(r, pending, call, failText) {
 const toggleRule = (r) => ruleCall(r, { enabled: !r.enabled }, () => cy.todoRuleEdit(r.id, { enabled: !r.enabled }), '규칙 바꾸기 실패');
 const deleteRule = (r) => ruleCall(r, 'delete', () => cy.todoRuleDelete(r.id), '규칙 지우기 실패');
 
-function addForm(scope = 'todos') {
-  const today = scope === 'today';
-  const input = h('input', { id: today ? 'today-add-input' : 'todo-add-input', type: 'text', placeholder: today ? '오늘 할 일 추가 (Enter)' : '할 일 추가 — Enter', 'aria-label': today ? '새 오늘 할 일' : '새 할 일' });
-  input.value = today ? todayDraft : addDraft;
-  input.addEventListener('input', () => { if (today) todayDraft = input.value; else addDraft = input.value; });
+function addForm() {
+  const input = h('input', { id: 'todo-add-input', type: 'text', placeholder: '할 일 추가 — Enter', 'aria-label': '새 할 일' });
+  input.value = addDraft;
+  input.addEventListener('input', () => { addDraft = input.value; });
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
-    addTodo(scope);
+    addTodo();
   });
   return h('div.todo-add', null,
     input,
-    prioritySelect(today ? todayPriority : addPriority, (p) => { if (today) todayPriority = p; else addPriority = p; }),
-    h('button.primary', { type: 'button', text: '추가', onclick: () => addTodo(scope) }));
+    prioritySelect(addPriority, (p) => { addPriority = p; }),
+    h('button.primary', { type: 'button', text: '추가', onclick: () => addTodo() }));
 }
 
 function prioritySelect(value, onChange) {
@@ -1628,7 +1654,7 @@ function todoRow(t) {
   const flashing = flash?.id === t.id && Date.now() < flash.until;
   const row = h(`div.todo.row${t.pending ? '.pending' : ''}${open ? '.open' : ''}${confirming ? '.confirming' : ''}${flashing ? '.flash' : ''}`, {
     dataset: { id: t.id }, tabindex: '0', role: 'button', 'aria-expanded': String(open),
-    'aria-label': `${t.title} — Enter 설명, Shift+Enter 제목·설명 고치기, Alt+↑↓ 순서, Alt+1~4 우선순위(오늘 꼭·이번 주·천천히·언젠가), Delete 휴지통`,
+    'aria-label': `${t.title} — Enter 설명, Shift+Enter 제목·설명 고치기, Alt+↑↓ 순서, Alt+1~4 우선순위(오늘 꼭·이번 주·나중에·언젠가), Delete 휴지통`,
     title: '눌러서 설명 · 두 번 눌러 제목·설명 고치기 · 꾹 눌러 끌어서 순서·우선순위',
     onclick: (e) => {
       if (suppressClick) { suppressClick = false; return; }
@@ -1641,11 +1667,18 @@ function todoRow(t) {
   h('input.check', { type: 'checkbox', 'aria-label': `완료: ${t.title}`, title: '완료', disabled: t.pending, onchange: () => completeTodo(t) }),
   // (진행중): 사용자가 ▶ 로 켠 것, 아니면 작업 세션을 보니 하는 중(todo-progress.ts 가 진척을 남김) → 제목 앞
   h('span.t', null, isDoing(t) ? h('span.doing', { text: '(진행중) ', title: t.progress ? `진행: ${t.progress}` : '직접 진행중으로 표시' }) : null, t.title),
-  t.source ? h('span.chip', { text: SOURCE_LABELS[t.source] ?? t.source }) : null,
+  t.source ? h(`span.chip.src-${t.source}`, { text: SOURCE_LABELS[t.source] ?? t.source }) : null,
+  dueBadge(t),
   confirming ? null : todayButton(t),
   confirming ? null : doingButton(t),
   confirming ? confirmBox('trash', () => trashTodo(t)) : trashButton(t));
   return open ? h('div.todo-wrap', null, row, todoDetailView(t)) : row;
+}
+
+// 마감 칩(「10/21 마감」·「오늘 마감」·「지남」). 마감이 없으면 null
+function dueBadge(t) {
+  const d = t.due && dueChip(t.due);
+  return d ? h(`span.chip.due.due-${d.kind}`, { text: d.text, title: '미리알림 마감' }) : null;
 }
 
 function onRowKey(t, e) {

@@ -1,7 +1,8 @@
-// Slack 지시사항(#41): 지시를 줄 사람(config directiveFrom, Slack 사용자 id)이 나에게 보낸 DM 과 나를 멘션한 글을 따로 모은다.
-//   (2026-10-17 사용자 결정: 범위는 DM·멘션만, 할 일은 자동으로 넣지 않고 제안 카드에서 고른다)
+// Slack 지시사항(#41·#119): 지시를 줄 사람(config directiveFrom, Slack 사용자 id)이 나에게 보낸 DM, 나를 멘션한 글,
+//   내가 들어가 있는 채널에 쓴 글을 따로 모은다. 할 일은 자동으로 넣지 않고 제안 카드에서 고른다.
+//   (처음엔 DM·멘션만이었으나 2026-10-17 사용자가 채널 글도 넣기로 바꿨다. 봇·내 글·맞장구는 어느 쪽이든 뺀다)
 //   재료는 Slack 수집(api 모드)이 쌓은 message 노드 — 서버·모델 호출 없음. 그래서 어떤 뇌든 같다.
-//   새 지시는 core 의 Slack → 할 일 자동 흐름에서 빼고(중복 방지), 패널 카드의 [할 일로]·[괜찮아요]로 사용자가 정한다.
+//   새 지시는 core 의 Slack → 할 일 자동 흐름에서 빼고(중복 방지 — DM·멘션은 core 가 지시자 글을 걸러내고, 채널 글은 그 흐름에 원래 들어오지 않는다), 패널 카드의 [할 일로]·[괜찮아요]로 사용자가 정한다.
 //   정한 것은 directive_state 표(메시지 id → todo|dismissed)에 남긴다.
 import type { DatabaseSync } from "node:sqlite";
 import { permalinkOf } from "./ingest/slack.ts";
@@ -33,7 +34,7 @@ export function slackPlain(t: string, nameOf: (id: string) => string): string {
 // 「넵」「ㅇㅋ」·이모지만 같은 짧은 맞장구는 지시가 아니다
 const isAck = (t: string) => oneLine(t.replace(/:[a-z0-9_+-]+:/g, "")).length < 4;
 
-// 그 사람들이 sinceIso 뒤에 보낸 DM·멘션, 최신 먼저. state 로 거르기(기본: 다)
+// 그 사람들이 sinceIso 뒤에 보낸 DM·멘션·채널 글, 최신 먼저. state 로 거르기(기본: 다)
 export function directivesSince(store: Store, from: readonly string[], sinceIso: string, opts: { limit?: number; state?: DirectiveState } = {}): Directive[] {
   const who = from.filter(okSlackUserId);
   if (!who.length) return [];
@@ -43,8 +44,7 @@ export function directivesSince(store: Store, from: readonly string[], sinceIso:
     rows = store.db.prepare(`SELECT n.id, n.updated, n.props, d.state, d.todo_id FROM nodes n LEFT JOIN directive_state d ON d.id = n.id
       WHERE n.kind = 'message' AND n.updated >= ?
         AND json_extract(n.props, '$.author') IN (${who.map(() => "?").join(", ")})
-        AND (json_extract(n.props, '$.isDM') = 1 OR json_extract(n.props, '$.mentionsMe') = 1)
-        AND coalesce(json_extract(n.props, '$.fromMe'), 0) = 0
+        AND coalesce(json_extract(n.props, '$.fromMe'), 0) = 0 AND coalesce(json_extract(n.props, '$.bot'), 0) = 0
       ORDER BY n.updated DESC LIMIT 200`).all(sinceIso, ...who) as any[];
   } catch { return []; } // Slack 수집 전
   const teamUrl = (() => {
@@ -87,23 +87,25 @@ export function directiveTodo(d: Directive): { title: string; priority: number; 
   };
 }
 
-// 지시자 고르기: 최근 30일 DM 을 많이 보낸 사람(봇·나 빼고)
-export function directiveCandidates(store: Store, sinceIso: string, limit = 6): { id: string; name: string; count: number }[] {
+// 지시자 고르기: 최근 30일 DM·채널 글을 많이 보낸 사람(봇·나 빼고). count = DM 수, channel = 채널 글 수
+export type DirectiveCandidate = { id: string; name: string; count: number; channel: number };
+export function directiveCandidates(store: Store, sinceIso: string, limit = 6): DirectiveCandidate[] {
   try {
-    return (store.db.prepare(`SELECT json_extract(props, '$.author') AS who, max(json_extract(props, '$.authorName')) AS name, count(*) AS n FROM nodes
-      WHERE kind = 'message' AND updated >= ? AND json_extract(props, '$.isDM') = 1
+    return (store.db.prepare(`SELECT json_extract(props, '$.author') AS who, max(json_extract(props, '$.authorName')) AS name,
+        sum(coalesce(json_extract(props, '$.isDM'), 0) = 1) AS dm, sum(coalesce(json_extract(props, '$.isDM'), 0) != 1) AS ch FROM nodes
+      WHERE kind = 'message' AND updated >= ?
         AND coalesce(json_extract(props, '$.fromMe'), 0) = 0 AND coalesce(json_extract(props, '$.bot'), 0) = 0
-      GROUP BY who ORDER BY n DESC, who LIMIT ?`).all(sinceIso, limit) as any[])
-      .filter((r) => okSlackUserId(r.who)).map((r) => ({ id: r.who, name: String(r.name ?? r.who), count: Number(r.n) }));
+      GROUP BY who ORDER BY dm + ch DESC, who LIMIT ?`).all(sinceIso, limit) as any[])
+      .filter((r) => okSlackUserId(r.who)).map((r) => ({ id: r.who, name: String(r.name ?? r.who), count: Number(r.dm), channel: Number(r.ch) }));
   } catch { return []; }
 }
 
 export function formatDirectives(items: Directive[]): string {
   if (!items.length) return "(지시 없음)";
-  return items.map((d) => `- [${d.at.slice(5, 16).replace("T", " ")}] ${d.authorName}${d.isDM ? " DM" : ` @${d.channelLabel}`}${d.state === "todo" ? " (할 일로 넣음)" : d.state === "dismissed" ? " (넘김)" : ""}: ${oneLine(d.text).slice(0, 200)}${d.permalink ? ` <${d.permalink}>` : ""}`).join("\n");
+  return items.map((d) => `- [${d.at.slice(5, 16).replace("T", " ")}] ${d.authorName}${d.isDM ? " DM" : ` ${d.channelLabel}`}${d.state === "todo" ? " (할 일로 넣음)" : d.state === "dismissed" ? " (넘김)" : ""}: ${oneLine(d.text).slice(0, 200)}${d.permalink ? ` <${d.permalink}>` : ""}`).join("\n");
 }
 
-export type DirectivesView = { from: { id: string; name: string }[]; candidates: { id: string; name: string; count: number }[]; open: Directive[] };
+export type DirectivesView = { from: { id: string; name: string }[]; candidates: DirectiveCandidate[]; open: Directive[] };
 // 패널 카드: 지시자·(아직 없으면) 고를 사람·아직 정하지 않은 지시(14일)
 export function directivesView(store: Store, from: readonly string[], now = new Date()): DirectivesView {
   const since = (d: number) => new Date(now.getTime() - d * 86400e3).toISOString();

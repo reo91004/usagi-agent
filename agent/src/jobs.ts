@@ -2,6 +2,7 @@
 //   이 맥: usagi-run 이 POST /jobs/done 으로 바로 보낸다
 //   원격(ssh·tmux): 서버의 ~/.usagi-agent/jobs/*.json(공용 계정이면 config jobDirs 의 개인 폴더)에 남기고, 데몬이 config jobHosts·sshHosts 를 2분마다 ssh 로 가져와 지운다.
 //   도는 동안은 <id>.running 표시가 있다(가져가기만 하고 지우지 않음). 표시는 있는데 usagi-run 프로세스가 없으면 끊긴 작업
+//   같은 ssh 호출에 tmux 세션 목록도 실려 온다(T 줄) — 사용자가 tmux 로 직접 돌리는 실험은 usagi-run 기록이 없어서 지금 돌고 있는지만 본다
 //   서버 → 맥으로 포트를 열지 않는다(데몬 포트를 넘기면 공용 서버의 다른 사용자도 할 일·대화에 닿는다)
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -10,6 +11,9 @@ import { focusDuration } from "./focus.ts";
 import type { Bubble } from "./bus.ts";
 
 export type JobDone = { name: string; seconds: number; code: number | null; host?: string; id?: string; cwd?: string; cmd?: string; start?: number; files?: string[] };
+export type TmuxSession = { name: string; created: number; activity: number; running: string | null; path: string };
+// 서버별 마지막으로 읽은 tmux 세션(메모리만 — 작업 확인 때마다 다시 채워진다). 패널 연구 탭과 ctx 도구 jobs_recent 가 읽는다
+export const tmuxSeen: Record<string, { at: string; sessions: TmuxSession[] }> = {};
 export type RunningJob = { id: string; name: string; host: string; start: number; alive: boolean; cwd?: string; cmd?: string };
 
 const NAME_MAX = 120;
@@ -72,9 +76,11 @@ export const REMOTE_DIR = "~/.usagi-agent/jobs";
 // 서버의 결과 폴더(config jobDirs — 공용 계정이면 개인 폴더). 원격 셸에 그대로 들어가니 ~/ 나 / 로 시작하는 평범한 경로만
 export const okJobDir = (d: unknown): d is string => typeof d === "string" && /^(~\/|\/)[A-Za-z0-9_.\/-]{1,200}$/.test(d) && !d.split("/").includes("..");
 const FILE_RE = /^[A-Za-z0-9_.-]{1,80}\.(json|running)$/;
+// 먼저 H<TAB>$HOME 과 tmux 창마다 T<TAB>세션<TAB>만든 시각<TAB>마지막 활동<TAB>창 프로그램<TAB>창 폴더(tmux 가 없거나 서버가 안 떠 있으면 없음).
 // 끝난 것: D<TAB>파일<TAB>내용(한 줄). 도는 것: R<TAB>파일<TAB>살아 있나(1·0)<TAB>내용. 지우기는 따로 — 읽다가 끊기면 다음 차례에 다시 읽는다
 // 살아 있나는 usagi-run 프로세스(표시 속 pid)로 본다. /proc 를 먼저 보는 건 다른 계정 프로세스면 kill -0 이 거절돼서
-const listCmd = (dir: string) => `cd ${dir} 2>/dev/null || exit 0
+const listCmd = (dir: string) => `printf 'H\\t%s\\n' "$HOME"; t=$(printf '\\t'); tmux list-panes -a -F "T\${t}#{session_name}\${t}#{session_created}\${t}#{session_activity}\${t}#{pane_current_command}\${t}#{pane_current_path}" 2>/dev/null
+cd ${dir} 2>/dev/null || exit 0
 for f in *.json; do [ -f "$f" ] || continue; printf 'D\\t%s\\t' "$f"; tr -d '\\n' < "$f"; echo; done
 for f in *.running; do [ -f "$f" ] || continue; p=$(sed -n 's/.*"pid":\\([0-9][0-9]*\\).*/\\1/p' "$f"); a=0; [ -n "$p" ] && { [ -d "/proc/$p" ] || kill -0 "$p" 2>/dev/null; } && a=1; printf 'R\\t%s\\t%s\\t' "$f" "$a"; tr -d '\\n' < "$f"; echo; done`;
 
@@ -87,15 +93,43 @@ export const runSsh: RunSsh = (args, timeoutMs) => new Promise((resolve, reject)
   });
 });
 
+// 셸·tmux 만 떠 있는 창은 쉬는 중. 그 밖의 프로그램(python·claude·vim …)이 있으면 도는 중
+const IDLE_CMD = /^-?(bash|zsh|sh|fish|dash|ksh|tcsh|csh|login|tmux)$/;
+// T 줄들 → 세션별 한 건(창이 여러 개면 도는 프로그램이 있는 창 우선). 이상한 줄은 건너뜀
+export function parseTmux(lines: string[][]): TmuxSession[] {
+  const by = new Map<string, TmuxSession>();
+  for (const [name, created, activity, cmd = "", ...path] of lines) {
+    if (!name || !/^\d+$/.test(created) || !/^\d+$/.test(activity)) continue;
+    const running = cmd && !IDLE_CMD.test(cmd) ? cmd : null;
+    const prev = by.get(name);
+    if (!prev) by.set(name, { name, created: +created, activity: +activity, running, path: path.join("\t") });
+    else if (running && !prev.running) { prev.running = running; prev.path = path.join("\t"); }
+  }
+  return [...by.values()].sort((a, b) => b.activity - a.activity);
+}
+
+// 공용 계정(jobDirs): 내 폴더 = 결과 폴더를 품은 폴더(…/reo/.usagi-agent/jobs → …/reo). 그 아래에서 연 세션만 남긴다. 개인 계정(기본 폴더)이면 거르지 않는다
+export function mineOnly(sessions: TmuxSession[], dir: string, home: string): TmuxSession[] {
+  // 공용 계정 모양(<내 폴더>/.usagi-agent/jobs)일 때만 거른다. 개인 계정에서 jobDirs 를 따로 정한 경우는 다 내 것
+  if (dir === REMOTE_DIR || !/\/\.usagi-agent\/jobs\/?$/.test(dir)) return sessions;
+  if (!home && dir.startsWith("~/")) return []; // 공용인데 내 폴더를 못 알아냄 → 남의 세션을 보이지 않는다
+  const mine = (dir.startsWith("~/") ? home + dir.slice(1) : dir).replace(/\/\.usagi-agent\/jobs\/?$/, "");
+  return sessions.filter((s) => s.path === mine || s.path.startsWith(`${mine}/`));
+}
+
 // 한 서버에서 끝난 작업과 도는 작업을 가져온다. 읽은 끝난 파일·잘못된 파일·끊긴 작업 표시만 지운다
-export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_DIR): Promise<{ done: JobDone[]; running: RunningJob[] }> {
+export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_DIR): Promise<{ done: JobDone[]; running: RunningJob[]; tmux: TmuxSession[] }> {
   if (!okJobHost(host)) throw new Error(`jobHosts 이름이 이상해요: ${host}`);
   if (!okJobDir(dir)) throw new Error(`jobDirs 경로가 이상해요: ${dir}`);
   const out = await run(["--", host, listCmd(dir)], 20e3);
   const done: JobDone[] = [], running: RunningJob[] = [];
   const drop: string[] = [];
+  const panes: string[][] = [];
+  let home = "";
   for (const line of out.split("\n")) {
     const [tag, file, ...rest] = line.split("\t");
+    if (tag === "H") home = file ?? "";
+    if (tag === "T") panes.push([file, ...rest]);
     if ((tag !== "D" && tag !== "R") || !file || !FILE_RE.test(file)) continue;
     const alive = tag === "R" && rest[0] === "1";
     let raw: unknown;
@@ -111,5 +145,5 @@ export async function pullJobs(host: string, run: RunSsh = runSsh, dir = REMOTE_
     }
   }
   if (drop.length) await run(["--", host, `cd ${dir} && rm -f -- ${drop.map((f) => `'${f}'`).join(" ")}`], 20e3);
-  return { done, running };
+  return { done, running, tmux: mineOnly(parseTmux(panes), dir, home) };
 }

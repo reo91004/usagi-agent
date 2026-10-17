@@ -1,14 +1,14 @@
 // 대시보드 패널 뷰모델 — 순수 로직. GET /dashboard 응답을 그리기 좋게 다듬는다.
 import { isSafeLink } from './bubbles.js';
 import { shapeRules } from './todo-rules.js';
-import { PRIORITIES } from './todos.js';
+import { PRIORITIES, TODAY_GROUP } from './todos.js';
 
-export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'today', 'chat', 'models'];
-export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '작업 폴더', todos: '할 일', today: '오늘 할 일', chat: '채팅', models: '모델' };
+export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'chat', 'research', 'models'];
+export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '작업 폴더', todos: '할 일', chat: '채팅', research: '연구', models: '모델' };
 
-// 모르는 섹션은 null. 예전 말풍선 open.section=scrum 은 오늘 표로
+// 모르는 섹션은 null. 「오늘 할 일」은 할 일에 합쳤다(예전 저장 상태·말풍선 open.section=scrum 도 할 일로)
 export function normalizeSection(s) {
-  if (s === 'scrum') return 'today';
+  if (s === 'scrum' || s === 'today') return 'todos';
   return SECTIONS.includes(s) ? s : null;
 }
 
@@ -43,23 +43,29 @@ export function clockTime(iso) {
   return `${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
 }
 
+export function priorityHint(p) {
+  return (p === 0 ? TODAY_GROUP : PRIORITIES.find((x) => x.value === p))?.hint ?? '';
+}
+
 // 우선순위 이름: todos.js PRIORITIES(오늘 꼭·이번 주·천천히·언젠가)
 export function priorityLabel(p) {
-  return PRIORITIES.find((x) => x.value === p)?.label ?? '기타';
+  return (p === 0 ? TODAY_GROUP : PRIORITIES.find((x) => x.value === p))?.label ?? '기타';
 }
 
 const str = (v) => (typeof v === 'string' ? v : '');
 const num = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
 const arr = (v) => (Array.isArray(v) ? v : []);
 
-// 할 일을 우선순위별로 묶는다 (1 → 2 → 3 → 4 백로그 → 기타). 그룹 안 순서는 원래 순서.
-export function groupTodos(todos) {
+// 할 일을 묶는다: 오늘로 고른 일(todayDate, 묶음 0) → 우선순위 1 → 2 → 3 → 4 백로그 → 기타. 오늘 묶음에 든 일은 아래에 다시 안 나온다.
+// 그룹 안 순서는 원래 순서. 오늘 묶음 줄도 priority 는 본래 값 그대로.
+export function groupTodos(todos, todayDate = '') {
   const groups = new Map();
   for (const t of arr(todos)) {
     if (!t || typeof t !== 'object' || !str(t.id) || !str(t.title)) continue;
     const p = [1, 2, 3, 4].includes(t.priority) ? t.priority : 9;
-    if (!groups.has(p)) groups.set(p, []);
-    groups.get(p).push({
+    const key = todayDate && t.today === todayDate ? 0 : p;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({
       id: t.id,
       title: t.title,
       source: str(t.source),
@@ -69,6 +75,7 @@ export function groupTodos(todos) {
       userEdited: t.userEdited === true,
       pending: t.pending === true, // 낙관적 반영 중(서버 응답 대기)
       priority: p,
+      ...(str(t.due) ? { due: t.due } : {}), // 마감(ISO)
       ...(t.appliedRule && str(t.appliedRule.text) ? { appliedRule: { id: str(t.appliedRule.id), text: t.appliedRule.text } } : {}), // 적용된 할 일 규칙
       ...(str(t.progress) ? { progress: t.progress, progressAt: str(t.progressAt) } : {}), // 어디까지 됐는지(데몬 진행 확인)
       ...(typeof t.doing === 'boolean' ? { doing: t.doing } : {}), // 사용자가 누른 (진행중) 토글
@@ -77,7 +84,7 @@ export function groupTodos(todos) {
   }
   return [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([priority, items]) => ({ priority, label: priorityLabel(priority), items }));
+    .map(([priority, items]) => ({ priority, label: priorityLabel(priority), hint: priorityHint(priority), items }));
 }
 
 // 서버가 준 최근 완료(자동 완료 포함). 자동이면 이유·근거 링크
@@ -196,17 +203,27 @@ export function shapeResearch(r, now = Date.now()) {
         : `${relativeTime(j.at, now)} · ${durationText(j.seconds)}${j.state === 'failed' && Number.isInteger(j.code) ? ` · 종료 코드 ${j.code}` : ''}`;
     const where = j.host ? ` @${j.host}` : '';
     return {
-      id: j.id, name: j.name, host: str(j.host), state: j.state, label: st.label, chip: st.chip, time,
+      id: j.id, name: j.name, host: str(j.host), state: j.state, forgettable: j.state !== 'running', label: st.label, chip: st.chip, time,
       detail: [str(j.cwd), str(j.cmd)].filter(Boolean).join(' · '),
       files: arr(j.files).filter((f) => str(f)).slice(0, 3),
       ask: j.state === 'running' ? `'${j.name}'${where} 실험 지금 어디까지 왔어? 로그 끝부분 봐 줘.` : `'${j.name}'${where} 실험 결과 정리해 줘.`,
     };
   });
+  // 서버별 tmux 세션(작업 확인 ssh 에 실려 옴): 창에서 셸 말고 프로그램이 돌면 「도는 중」, 아니면 「쉬는 중」
+  const tm = r.tmux && typeof r.tmux === 'object' ? r.tmux : {};
+  const tmux = arr(r.hosts).filter((h) => str(h) && tm[h]).map((host) => ({
+    host, rel: relativeTime(tm[host].at, now),
+    sessions: arr(tm[host].sessions).filter((x) => x && str(x.name)).map((x) => ({
+      name: x.name, running: str(x.running), label: str(x.running) ? `도는 중 (${x.running})` : '쉬는 중', chip: str(x.running) ? 'warn' : '',
+      path: str(x.path), time: `${num(x.created) ? `${relativeTime(new Date(num(x.created) * 1000).toISOString(), now)} 만듦` : ''}${num(x.activity) ? ` · 마지막 활동 ${relativeTime(new Date(num(x.activity) * 1000).toISOString(), now)}` : ''}`.replace(/^ · /, ''),
+    })),
+  }));
   const n = r.note && typeof r.note === 'object' && str(r.note.day) ? r.note : null;
   const y = n?.yesterday && typeof n.yesterday === 'object' ? n.yesterday : null;
   return {
     hosts: arr(r.hosts).filter((h) => str(h)),
     jobs,
+    tmux,
     note: n ? { day: n.day, exists: n.exists === true, yesterday: y ? { day: str(y.day), lines: arr(y.lines).filter((l) => str(l)), next: arr(y.next).filter((l) => str(l)) } : null } : null,
   };
 }
@@ -243,9 +260,9 @@ export function shapeDirectives(d, now = Date.now()) {
   const person = (p) => p && str(p.id) && /^[UW][A-Z0-9]{2,20}$/.test(p.id);
   return {
     from: arr(d.from).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id })),
-    candidates: arr(d.candidates).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id, count: num(p.count) })),
+    candidates: arr(d.candidates).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id, count: num(p.count), channel: num(p.channel) })),
     open: arr(d.open).filter((x) => x && /^message:/.test(str(x.id)) && str(x.text)).map((x) => ({
-      id: x.id, who: str(x.authorName) || str(x.author), where: x.isDM ? 'DM' : `#${str(x.channelLabel)}`,
+      id: x.id, who: str(x.authorName) || str(x.author), where: x.isDM ? 'DM' : `#${str(x.channelLabel).replace(/^#/, '')}`,
       text: x.text.replace(/\s+/g, ' ').trim(), rel: relativeTime(x.at, now),
       link: str(x.permalink) && isSafeLink(x.permalink) ? x.permalink : null,
     })),
@@ -257,22 +274,22 @@ export function shapeDashboard(raw, now = Date.now()) {
   const all = arr(r.projects).filter((p) => p && typeof p === 'object').map((p) => shapeProject(p, now));
   const projects = all.filter((p) => !p.hidden); // 숨긴 건 집계·목록에서 빼고 따로
   const hiddenProjects = all.filter((p) => p.hidden);
-  const todoGroups = groupTodos(r.todos);
-  // 백로그(P4 — 기한 없고 안 중요)는 열린 할 일 수·배지에서 뺀다
-  const backlogTodos = todoGroups.find((g) => g.priority === 4)?.items.length ?? 0;
-  const openTodos = todoGroups.reduce((n, g) => n + g.items.length, 0) - backlogTodos;
-  const p1Todos = todoGroups.find((g) => g.priority === 1)?.items.length ?? 0;
+  const b = r.briefing && typeof r.briefing === 'object' ? r.briefing : null;
+  const today = r.today && typeof r.today === 'object' ? r.today : null;
+  const todayDate = str(today?.date);
+  const todoGroups = groupTodos(r.todos, todayDate);
+  const groupLen = (p) => todoGroups.find((g) => g.priority === p)?.items.length ?? 0;
+  // 열린 할 일 수·배지 = 오늘로 고른 일 + 오늘 꼭 + 이번 주(나중에·언젠가·기타는 뺀다). 오늘 묶음에 든 일은 아래 묶음에 없으니 겹치지 않는다
+  const openTodos = groupLen(0) + groupLen(1) + groupLen(2);
+  const backlogTodos = groupLen(4);
+  const p1Todos = todoGroups.flatMap((g) => (g.priority <= 1 ? g.items : [])).filter((t) => t.priority === 1).length;
   const proposals = arr(r.proposals)
     .filter((p) => p && str(p.id))
     .map((p) => ({ id: p.id, title: str(p.title), repo: str(p.repo), status: str(p.status) || 'pending', result: str(p.result) }));
 
-  const b = r.briefing && typeof r.briefing === 'object' ? r.briefing : null;
-  const today = r.today && typeof r.today === 'object' ? r.today : null;
   const connectors = shapeConnectors(r.connectors);
-  // 오늘 할 일 = 할 일 중 오늘로 고른 것. 열린 건 할 일 탭과 같은 우선순위 묶음(낙관적 반영 포함), 끝낸 건 '오늘 끝냄'
-  const todayDate = str(today?.date);
-  const todayGroups = todayDate ? groupTodos(arr(r.todos).filter((t) => t && t.today === todayDate)) : [];
-  const todayOpen = todayGroups.flatMap((g) => g.items);
+  // 오늘 할 일 = 할 일 중 오늘로 고른 것(맨 위 「오늘」 묶음, 낙관적 반영 포함), 끝낸 건 '오늘 끝냄'
+  const todayOpen = todoGroups.find((g) => g.priority === 0)?.items ?? [];
   const openIds = new Set(todayOpen.map((t) => t.id));
   const todayDone = arr(today?.items)
     .filter((it) => it && typeof it === 'object' && str(it.id) && str(it.title) && it.done === true && !openIds.has(it.id))
@@ -304,7 +321,6 @@ export function shapeDashboard(raw, now = Date.now()) {
     connectors,
     notReady: connectors.filter((c) => !c.ready).map((c) => c.cap),
     today: { date: todayDate, items: todayItems, asked: today?.asked === true },
-    todayGroups,
     todayDone,
     research: shapeResearch(r.research, now),
     directives: shapeDirectives(r.directives, now),
