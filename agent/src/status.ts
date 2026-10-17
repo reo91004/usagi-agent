@@ -2,13 +2,14 @@
 //   뇌가 준비됐으면 말 걸기(더블클릭·패널 채팅·세션 창 입력)·브리핑 요약, 아니면 연결 안내 + 정해진 말(local-mode)
 //   Claude Code 가 있어야만 되는 것(코드 고치기·워크트리·백그라운드 에이전트·세션 이어 하기)은 coder.claude 로
 //   뒤에서 혼자 도는 정리(끝난 할 일 판정·진행 확인·지식그래프·프로필 학습)는 features.background — Claude Code 나 Codex 뇌
-//   MCP 커넥터(메일·이슈·Slack·캘린더 MCP)는 Claude Code 뇌일 때만 읽는다 — features.mcp, connectors[].needs
+//   MCP 커넥터(메일·이슈·Slack·캘린더 MCP)는 Claude Code 뇌, Codex·agy 뇌면 채팅에서만(넘길 수 있는 서버만 — cli-mcp.ts) — features.mcp, connectors[].needs
 // 비밀값(키·토큰·ICS 주소)은 넣지 않는다. 있나 없나만.
 import type { Config } from "./config.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, commandOnPath, creditFailText, type KeyProvider } from "./providers.ts";
 import { CAPABILITIES, CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
 import { BRAIN_LABEL } from "./connections.ts";
 import { NEEDS_CODER, featureBrain, type FeatureBrain } from "./feature-brain.ts";
+import { cliMcpServers } from "./cli-mcp.ts";
 import { WAIT_SETUP } from "./onboarding.ts";
 
 export type BrainStatus = {
@@ -41,6 +42,7 @@ export type StatusDeps = {
   env?: NodeJS.ProcessEnv;
   claude?: () => boolean | undefined;     // Claude 로그인(Connections.claudeLoggedIn). 모르면 undefined
   hasServer?: (name: string) => boolean;  // 커넥터 MCP 서버 등록 여부(기본 ~/.claude.json)
+  cliServers?: () => string[];            // Codex·agy 에 넘길 수 있는 MCP 서버 이름(기본 cli-mcp.ts cliMcpServers)
 };
 
 const KEY_LABEL: Record<string, string> = { gemini: "Gemini", openai: "OpenAI", anthropic: "Claude" };
@@ -75,7 +77,9 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     : by === "codex" ? { by, ready: true, detail: "Codex 로 돌아요" }
     : by === "agy" ? { by, ready: true, detail: "Antigravity(agy)로 돌아요" }
     : { by: null, ready: false, detail: cfg.onboarded === false ? WAIT_SETUP : provider === "codex" ? "Codex 를 찾을 수 없어요" : provider === "agy" ? "Antigravity(agy)를 찾을 수 없어요" : NEEDS_CODER };
-  const mcp = provider === "claude-code";
+  const cliBrain = provider === "codex" || provider === "agy";
+  const mcp = provider === "claude-code" || cliBrain;
+  const usable = cliBrain ? new Set(deps.cliServers?.() ?? cliMcpServers(conns).map((s) => s.name)) : undefined;
   return {
     brain: { provider, label, ready, local, detail },
     chat: local ? false : ready,
@@ -84,7 +88,8 @@ export function statusOf(cfg: Pick<Config, "brain" | "connectors" | "user" | "on
     connectors: CAPABILITIES.map((cap) => {
       const x = st.find((s) => s.cap === cap)!;
       const needs = x.mode === "mcp" && !mcp;
-      return { cap, label: x.label, mode: x.mode, ready: x.mode !== "off" && x.ready && !needs, ...(needs ? { needs: "claude-code" as const } : {}) };
+      const cliOk = !usable || x.mode !== "mcp" || usable.has(x.server ?? "");
+      return { cap, label: x.label, mode: x.mode, ready: x.mode !== "off" && x.ready && !needs && cliOk, ...(needs ? { needs: "claude-code" as const } : {}) };
     }),
     user: cfg.user?.name ? { name: cfg.user.name } : {},
     onboarded: cfg.onboarded !== false,

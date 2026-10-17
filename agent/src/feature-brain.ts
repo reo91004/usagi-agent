@@ -3,7 +3,8 @@
 //   codex       → codex exec 한 번(도구·사용자 MCP 없이 JSON 만 — providers.ts codexExec) + 모양 검사
 //   agy         → agy -p 한 번(도구 없이 JSON 만 — providers.ts agyExec) + 모양 검사
 //   그 밖(gemini·openai·anthropic·local) 또는 codex·agy 명령이 없으면 → 조용히 건너뛴다(기능마다 로그 한 줄, 한 번만)
-// 메일·이슈 MCP 읽기·워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로. 코드 고치기는 codex 도 된다(fixer.ts driveCodex)
+// 워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로. 코드 고치기는 codex 도 된다(fixer.ts driveCodex).
+// 메일·이슈 MCP 연결은 Codex·agy 뇌면 채팅에서만 읽는다(cli-mcp.ts) — 뒤에서 하는 정리·브리핑·캘린더 동기화는 Claude Code 뇌일 때만
 import type { Config } from "./config.ts";
 import { agyExec, agyModel, codexExec, commandOnPath, type ExecFileLike } from "./providers.ts";
 
@@ -12,7 +13,11 @@ export type CodexDeps = { execFile?: ExecFileLike; commandExists?: (name: string
 export type CodexStat = { costUsd: number; inTokens: number; outTokens: number; ms: number };
 
 export const NEEDS_CODER = "이 기능은 Claude Code·Codex·Antigravity 가 있어야 돌아요";
-export const NEEDS_CLAUDE_MCP = "MCP 연결(메일·이슈·캘린더·Slack)은 Claude Code 뇌일 때만 읽어요";
+export const NEEDS_CLAUDE_MCP = "MCP 연결(메일·이슈·캘린더·Slack)은 Claude Code·Codex·Antigravity 뇌일 때만 읽어요";
+export const MCP_CHAT_ONLY = "Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요(브리핑·캘린더 동기화는 Claude Code 뇌일 때)";
+export const MCP_CLI_UNUSABLE = "Codex·Antigravity 로 읽으려면 connectors 의 tools 에 읽기 도구 이름이 있고, Claude Code 에 stdio·http 서버로 등록돼 있어야 해요";
+// 뇌가 Claude Code 가 아닐 때 MCP 연결 줄에 붙일 말
+export const mcpBrainNote = (provider?: string) => (provider === "codex" || provider === "agy" ? MCP_CHAT_ONLY : NEEDS_CLAUDE_MCP);
 
 // 이 기능들을 돌릴 뇌. 없으면 null. 설치 마법사를 마치기 전(onboarded false)에도 null: 아무 모델 작업도 하지 않는다(onboarding.ts)
 export function featureBrain(cfg: Pick<Config, "brain" | "onboarded">, exists: (name: string) => boolean = (n) => commandOnPath(n)): FeatureBrain | null {
@@ -38,10 +43,19 @@ export function skipQuietly(feature: string, cfg: Pick<Config, "brain">, log: (s
 }
 export function resetSkipNotes() { noted.clear(); }
 
-// 패널·상태용 커넥터 목록: 뇌가 Claude Code 가 아니면 MCP 연결은 준비 안 됨 + 이유(등록돼 있어도 읽지 않으니까)
-export function withMcpBrain<T extends { mode: string; ready: boolean; detail?: string }>(cfg: Pick<Config, "brain">, list: T[]): T[] {
-  if ((cfg.brain?.provider ?? "claude-code") === "claude-code") return list;
-  return list.map((c) => (c.mode === "mcp" ? { ...c, ready: false, detail: NEEDS_CLAUDE_MCP } : c));
+// 패널·상태용 커넥터 목록: Codex·agy 뇌면 넘길 수 있는 서버(usable — cli-mcp.ts cliMcpServers 의 이름, 그 뇌일 때만 부른다)만 준비됨 + 「채팅에서만」,
+// 그 밖의 뇌면 MCP 연결은 준비 안 됨 + 이유(등록돼 있어도 읽지 않으니까)
+export function withMcpBrain<T extends { mode: string; ready: boolean; detail?: string; server?: string }>(cfg: Pick<Config, "brain">, list: T[], usable: () => readonly string[] = () => []): T[] {
+  const p = cfg.brain?.provider ?? "claude-code";
+  if (p === "claude-code") return list;
+  const cli = p === "codex" || p === "agy";
+  const ok = cli ? usable() : [];
+  return list.map((c) => {
+    if (c.mode !== "mcp") return c;
+    if (!cli) return { ...c, ready: false, detail: NEEDS_CLAUDE_MCP };
+    if (!c.ready) return c; // 등록 안 됨 같은 원래 이유
+    return ok.includes(c.server ?? "") ? { ...c, detail: `${c.detail} · ${MCP_CHAT_ONLY}` } : { ...c, ready: false, detail: MCP_CLI_UNUSABLE };
+  });
 }
 
 // JSON 스키마의 겉모양만 본다: 맨 위 객체·필수 키·맨 위 속성의 타입(배열은 배열, 글은 글).

@@ -16,7 +16,8 @@ import { argv as ghArgv, runGh } from "./gh.ts";
 import { CAPABILITIES, CONNECTORS, connectorStatus, type Capability } from "./connectors.ts";
 import { hasUserMcpServer } from "./mcp.ts";
 import { authFailText, brainAuthFailed, brainCreditNeeded, brainKeyReady, creditFailText, type KeyProvider } from "./providers.ts";
-import { NEEDS_CLAUDE_MCP } from "./feature-brain.ts";
+import { MCP_CLI_UNUSABLE, mcpBrainNote } from "./feature-brain.ts";
+import { cliMcpServers } from "./cli-mcp.ts";
 import { sessionsAllowed } from "./onboarding.ts";
 import { BRIEFING_SOURCES, type BriefingSource } from "./settings.ts";
 import type { Run, RunKind } from "./runs.ts";
@@ -78,6 +79,7 @@ export type ConnectionsDeps = {
   sdkProbe?: () => Promise<Omit<SdkProbe, "at" | "latencyMs">>;
   gh?: () => Promise<{ ok: boolean; err?: string }>;
   hasServer?: (name: string) => boolean; // Claude Code 에 그 MCP 서버가 등록돼 있나(기본 ~/.claude.json)
+  cliServers?: () => string[]; // Codex·agy 에 넘길 수 있는 MCP 서버 이름(기본 cli-mcp.ts cliMcpServers)
   env?: NodeJS.ProcessEnv;
   lastRun?: (kind: RunKind) => Run | undefined;
   kg?: () => { phase: string; reason?: string; step?: string } | undefined;
@@ -115,6 +117,7 @@ export class Connections {
       sdkProbe: deps.sdkProbe ?? (() => realSdkProbe()),
       gh: deps.gh ?? (async () => { const r = await runGh(ghArgv.authStatus(), { bin: cfg.github?.bin, timeoutMs: 10_000 }); return { ok: r.ok, ...(r.err ? { err: r.err } : {}) }; }),
       hasServer: deps.hasServer ?? hasUserMcpServer,
+      cliServers: deps.cliServers ?? (() => cliMcpServers(cfg.connectors ?? CONNECTORS).map((s) => s.name)),
       env: deps.env ?? process.env,
       lastRun: deps.lastRun,
       kg: deps.kg,
@@ -186,7 +189,7 @@ export class Connections {
     if (keyIssue) rows.push({ id: "brain", label: "뇌(브리핑·채팅 모델)", group: "core", check: "local", checkedAt: at, state: "warn", detail: keyIssue });
     else rows.push({
       id: "brain", label: "뇌(브리핑·채팅 모델)", group: "core", check: "local", checkedAt: at, state: brainOk ? "ok" : "error",
-      detail: brainOk ? `${BRAIN_LABEL[provider] ?? provider}${provider === "local" ? " — 할 일 정리만, 도구 없음" : provider === "codex" || provider === "agy" ? " — 브리핑·채팅·뒤에서 하는 정리(MCP·코드 고치기는 Claude Code)" : ""}`
+      detail: brainOk ? `${BRAIN_LABEL[provider] ?? provider}${provider === "local" ? " — 할 일 정리만, 도구 없음" : provider === "codex" || provider === "agy" ? " — 브리핑·채팅·뒤에서 하는 정리(MCP 연결은 채팅에서만)" : ""}`
         : provider === "codex" ? "codex 명령을 찾을 수 없어요" : provider === "agy" ? "agy 명령을 찾을 수 없어요" : provider === "genspark" ? "Genspark 키가 없어요(gsk login 을 하거나 키를 붙여 넣어 주세요)" : `${BRAIN_LABEL[provider] ?? provider} API 키가 없어요`,
     });
 
@@ -238,10 +241,11 @@ export class Connections {
         row.state = worst(states);
         row.detail = bits.join(" · ");
       }
-      // MCP 연결은 Claude Code 뇌로만 읽는다 — 다른 뇌면 등록돼 있어도 브리핑에 안 들어간다
+      // 브리핑의 MCP 읽기는 Claude Code 뇌로만 — Codex·agy 면 채팅에서만(넘길 수 있는 서버만), 그 밖의 뇌면 안 읽는다
       if (x.mode === "mcp" && provider !== "claude-code") {
         row.state = row.state === "error" ? "error" : "warn";
-        row.detail = `${NEEDS_CLAUDE_MCP} · ${row.detail}`;
+        const cli = provider === "codex" || provider === "agy";
+        row.detail = `${cli && st.ready && !this.d.cliServers().includes(x.server) ? MCP_CLI_UNUSABLE : mcpBrainNote(provider)} · ${row.detail}`;
       }
       rows.push(row);
     }

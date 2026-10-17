@@ -11,7 +11,8 @@ import { accessSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { findOnPath, spawnSpec } from "./plat.ts";
-import { CLI_TOOL_GUIDE, MCP_NAME, ensureAgyMcp } from "./mcp-http.ts";
+import { MCP_NAME, cliToolGuide, ensureAgyMcp } from "./mcp-http.ts";
+import { AGY_PREFIX, codexMcpArgs, connectorGuide, type CliMcpServer } from "./cli-mcp.ts";
 import type { ContentBlock } from "./attachments.ts";
 import { DEFAULT_GENERAL_MODEL, HOME_DIR, type BrainProvider, type Config } from "./config.ts";
 
@@ -21,7 +22,7 @@ export type FetchLike = (input: string, init?: { method?: string; headers?: Reco
 export type ExecFileLike = (
   file: string,
   args: readonly string[],
-  opts?: { input?: string; timeout?: number; cwd?: string },
+  opts?: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout: string; stderr?: string }>;
 
 // 첨부 블록(attachments.ts — 글·그림·PDF)을 공급자마다의 입력 모양으로. 예전엔 Claude Code 경로만 받고 API 키 연결은 버렸다
@@ -715,11 +716,11 @@ export function killTree(pid: number | undefined) {
   try { spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => {}); } catch {}
 }
 
-export function defaultExecFile(file: string, args: readonly string[], opts: { input?: string; timeout?: number; cwd?: string } = {}): Promise<{ stdout: string; stderr: string }> {
+export function defaultExecFile(file: string, args: readonly string[], opts: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // Windows: npm 이 깐 codex 는 codex.cmd → cmd.exe /d /s /c 로(인자는 고정 플래그뿐, 프롬프트는 stdin)
     const sp = spawnSpec(file, args);
-    const child = spawn(sp.file, sp.args, { cwd: opts.cwd, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(sp.file, sp.args, { cwd: opts.cwd, env: opts.env, windowsHide: true, windowsVerbatimArguments: sp.verbatim, stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     const timer = setTimeout(() => { killTree(child.pid); child.kill(); reject(new Error(`${file} 실행 시간이 초과됐어요.`)); }, opts.timeout ?? 120_000);
@@ -737,7 +738,7 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
 }
 
 // codex exec 인자. 사용자 Codex 설정(~/.codex/config.toml — MCP 서버·플러그인)은 읽지 않는다(--ignore-user-config, 로그인은 그대로).
-// 그 MCP 엔 쓰기 도구(메일 보내기 등)가 섞여 있고 codex exec 는 승인 없이 부르므로, JSON 만 받는 이 경로엔 아예 붙이지 않는다.
+// 그 MCP 엔 쓰기 도구(메일 보내기 등)가 섞여 있어 붙이지 않는다. 채팅엔 커넥터의 읽기 도구만 따로 -c 로 붙인다(cli-mcp.ts).
 // 셸은 읽기 전용 샌드박스, 세션 파일은 남기지 않는다(--ephemeral).
 export const CODEX_ARGS = ["exec", "--skip-git-repo-check", "--json", "--sandbox", "read-only", "--ephemeral", "--ignore-user-config", "-"] as const;
 export const CODEX_TIMEOUT_MS = 120_000;
@@ -762,15 +763,16 @@ let cliMcp: string | undefined;
 export const setCliMcpUrl = (url: string | undefined) => { cliMcp = url; };
 
 // CLI 뇌(codex·agy)에 넘기는 글: 글 첨부는 그대로, 그림·PDF 는 못 본다고 적는다(본 척하지 않게)
-// tools: 맥락 도구를 붙인 실행(채팅)이면 도구 안내, 아니면 도구를 부르지 말라고
-function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: string }, who: string, schemaBelow: boolean, tools = false): string[] {
+// guide: 도구를 붙인 실행(채팅)이면 도구 안내(cliToolGuide), 없으면 도구를 부르지 말라고
+function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: string }, who: string, schemaBelow: boolean, guide?: string): string[] {
   const att = (opts.blocks ?? []).map((b) => (b.type === "text" ? b.text : `[첨부 ${b.type === "document" ? b.title ?? "PDF" : "그림"} — 이 AI 연결(${who})로는 그림·PDF 내용을 받지 못했다. 내용을 봤다고 하지 말고 그렇다고 말하라]`));
   const end = `${schemaBelow ? "아래 " : ""}JSON 스키마에 맞는 객체 하나만 답하라.`;
-  return [opts.system ?? "", prompt, ...att, tools ? `${CLI_TOOL_GUIDE}\n${end}` : `도구를 부르지 말고 코드도 고치지 마라. ${end}`];
+  return [opts.system ?? "", prompt, ...att, guide ? `${guide}\n${end}` : `도구를 부르지 말고 코드도 고치지 마라. ${end}`];
 }
 
 // mcp: 맥락 도구를 붙인다(채팅처럼 사용자에게 바로 답하는 실행만 — 뒤에서 하는 정리는 도구 없이 빨리)
-export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean };
+// servers: mcp 일 때 함께 붙일 사용자 MCP 연결(cli-mcp.ts cliMcpServers — 읽기 도구만)
+export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean; servers?: CliMcpServer[] };
 
 // codex exec 한 번 → 마지막 답의 JSON + 토큰 수. 실패는 짧은 한국어(출력 본문은 넣지 않는다)
 export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
@@ -778,12 +780,14 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   if (!exists("codex")) throw new Error(MISSING_CODEX);
   const exec = opts.execFile ?? defaultExecFile;
   const mcp = opts.mcp ? cliMcp : undefined;
-  const input = [...cliParts(prompt, opts, "Codex", true, !!mcp), JSON.stringify(schema)].filter(Boolean).join("\n\n");
-  // 사용자 Codex 설정은 여전히 안 읽고(--ignore-user-config) 우사기 도구 서버 하나만 -c 로 붙인다
-  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, "-"] : CODEX_ARGS;
+  // 사용자 Codex 설정은 여전히 안 읽고(--ignore-user-config) 우사기 도구 서버와 커넥터의 사용자 MCP(읽기 도구만)를 -c 로 붙인다
+  const user = mcp ? codexMcpArgs(opts.servers ?? []) : undefined;
+  const input = [...cliParts(prompt, opts, "Codex", true, mcp ? cliToolGuide(connectorGuide(user!.used)) : undefined), JSON.stringify(schema)].filter(Boolean).join("\n\n");
+  const args = mcp ? [...CODEX_ARGS.slice(0, -1), "-c", `mcp_servers.${MCP_NAME}.url="${mcp}"`, ...user!.args, "-"] : CODEX_ARGS;
+  const env = user && Object.keys(user.env).length ? { ...process.env, ...user.env } : undefined; // 비밀값은 argv 가 아니라 환경변수로
   let stdout = "";
   try {
-    const result = await exec("codex", args, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir() });
+    const result = await exec("codex", args, { input, timeout: opts.timeoutMs ?? CODEX_TIMEOUT_MS, cwd: tmpdir(), ...(env ? { env } : {}) });
     stdout = result.stdout;
   } catch (e) {
     throw new Error(/초과/.test(String((e as Error)?.message ?? "")) ? "codex 실행 시간이 초과됐어요." : "codex 실행이 실패했어요.");
@@ -838,9 +842,9 @@ export type AgyOpts = CodexOpts & { model?: string };
 let agyMcpWarned = false;
 let agyMcpHome: string | undefined; // 테스트가 가짜 홈으로 바꾼다
 export const setAgyMcpHome = (h: string | undefined) => { agyMcpHome = h; };
-function agyMcpReady(url: string): boolean {
+function agyMcpReady(url: string, servers: CliMcpServer[]): boolean {
   try {
-    const changed = ensureAgyMcp(url, agyMcpHome);
+    const changed = ensureAgyMcp(url, agyMcpHome, servers);
     if (changed.length) console.log(`[agy] 우사기 도구(MCP)를 agy 설정에 넣었어요: ${changed.join(", ")}`);
     return true;
   } catch (e: any) {
@@ -854,8 +858,8 @@ function agyMcpReady(url: string): boolean {
 export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
   const exists = opts.commandExists ?? ((name: string) => commandOnPath(name));
   if (!exists("agy")) throw new Error(MISSING_AGY);
-  const mcp = opts.mcp && cliMcp && agyMcpReady(cliMcp);
-  const input = cliParts(prompt, opts, "Antigravity", false, !!mcp).filter(Boolean).join("\n\n");
+  const mcp = opts.mcp && cliMcp && agyMcpReady(cliMcp, opts.servers ?? []);
+  const input = cliParts(prompt, opts, "Antigravity", false, mcp ? cliToolGuide(connectorGuide(opts.servers ?? [], AGY_PREFIX)) : undefined).filter(Boolean).join("\n\n");
   if (Buffer.byteLength(input) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요. 대화나 맥락을 줄여서 다시 시도해 주세요.");
   const dir = join(HOME_DIR, "brain");
   if (!opts.execFile) mkdirSync(dir, { recursive: true });
@@ -871,7 +875,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
 export async function remoteJson(
   provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean } & ProviderDeps = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[] } & ProviderDeps = {},
 ): Promise<unknown> {
   if (provider === "gemini") return geminiJson(cfg, prompt, schema, opts);
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);

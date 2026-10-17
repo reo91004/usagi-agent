@@ -15,7 +15,7 @@ Slack은 두 가지 용도로 씁니다.
 | `mcp` | Claude Code에 등록한 Slack MCP 서버. 로컬에 모으지 않고 브리핑·채팅 모델이 그때그때 도구로 읽습니다 | 앱을 만들 수 없을 때 |
 | `off` | 읽지 않습니다 | |
 
-`mcp` 모드는 Claude Code 뇌일 때만 읽힙니다(다른 뇌는 도구를 쓰지 못합니다). `api` 모드는 어떤 뇌든 됩니다.
+`mcp` 모드는 Claude Code 뇌면 브리핑·채팅에서, Codex·Antigravity 뇌면 채팅에서만 읽힙니다([brain.md](brain.md#codexantigravity-뇌에서-mcp-연결-읽기)). 다른 뇌는 도구를 쓰지 못합니다. `api` 모드는 어떤 뇌든 됩니다.
 
 설치 마법사(패널 「설치」 → 「더 연결하기」 → Slack)에는 두 가지 길이 있습니다. 앱 사용자 토큰을 넣는 쪽은 아래 (a)와 같고, Slack 공식 MCP로 로그인하는 쪽은 `connectors.slack`을 `{ "mode": "mcp", "server": "slack" }`로 넣어 줍니다. 어느 쪽이든 끝나면 데몬을 한 번 다시 켜 주세요(`launchctl kickstart -k gui/$(id -u)/com.cy-agent.daemon`).
 
