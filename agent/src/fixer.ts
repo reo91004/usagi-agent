@@ -587,7 +587,7 @@ async function driveAgy(s: Session, cfg: Config, wt: string, deps: FixDeps, step
       let text = msgs.map((m) => String(m.message.content)).join("\n\n");
       if (!conv) text = [loadInstructions(wt), codeGuidelines(), text].filter(Boolean).join("\n\n");
       if (Buffer.byteLength(text) > AGY_PROMPT_MAX_BYTES) throw new Error("agy 에 보낼 글이 너무 길어요");
-      const model = agyModel(cfg);
+      const model = agyModel(cfg); // 코드 고치기는 고른 모델이 없으면 agy 자체 기본(Flash 기본값은 대화·정리 몫)
       const args = ["-p", text, "--output-format", "stream-json", "--sandbox", "--dangerously-skip-permissions", "--mode", "accept-edits", "--json-schema", JSON.stringify(FIX_SCHEMA), ...(conv ? ["--conversation", conv] : []), ...(model ? ["--model", model] : [])];
       turn++;
       let failed: string | undefined, said = new Map<number, string>();

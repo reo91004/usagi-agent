@@ -163,7 +163,7 @@ export function listAgyModels({ exec = execFile, bin = findBin('agy'), timeout =
     execBin(exec, bin, ['models'], { timeout, maxBuffer: 64 * 1024 }, (err, stdout) => {
       const models = agyModelsOf(err, stdout);
       if (!models.length) resolve({ ok: false, error: '모델 목록을 받지 못했습니다. 터미널에서 agy 로 로그인해 주세요.' });
-      else resolve({ ok: true, models: [{ id: 'default', label: '기본값 (agy 설정 따름)' }, ...models] });
+      else resolve({ ok: true, models: [{ id: 'default', label: '기본값 (Gemini 3.8 Flash)' }, ...models] });
     })?.stdin?.end();
   });
 }

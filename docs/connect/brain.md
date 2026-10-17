@@ -41,7 +41,7 @@ Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 �
 2. 로그인됐는지는 `agy models`로 확인합니다. 종료 코드 0과 함께 `<id>  <이름>` 목록이 나오면 됩니다. 목록이 비거나 실패하면 로그인 전으로 봅니다.
 3. 설치 마법사의 「뇌 고르기」에서 Antigravity를 고르거나 `brain.provider`를 `agy`로 정합니다.
 
-모델은 패널 [모델] 탭에 `agy models` 목록이 나오고, 고르지 않으면 agy 기본 모델을 씁니다. 파일로 정하려면 `models.general`에 목록의 id(예: `gemini-4-argon-medium`)를 넣습니다. 시사는 agy를 데몬의 `~/.cy-agent/brain` 폴더에서 돌리고, 레포 안에서는 돌리지 않습니다. 프롬프트는 명령줄 인자로 넘기므로 너무 긴 맥락(약 400KB 초과)은 오류로 알려 줍니다.
+모델은 패널 [모델] 탭에 `agy models` 목록이 나오고, 고르지 않으면 Gemini 3.8 Flash 를 씁니다(캐릭터 말 걸기는 `gemini-3.8-flash-low`, 채팅·브리핑·뒤에서 하는 정리는 `gemini-3.8-flash-medium`). agy 자체 기본(Gemini 4 Argon Medium)보다 빠르고 사용량이 적습니다. 그 이름이 agy 목록에서 없어지면 agy 기본 모델로 한 번 더 부릅니다. 코드 고치기는 고른 모델이 없으면 agy 기본 모델입니다. 파일로 정하려면 `models.general`에 목록의 id(예: `gemini-4-argon-medium`)를 넣습니다. 시사는 agy를 데몬의 `~/.cy-agent/brain` 폴더에서 돌리고, 레포 안에서는 돌리지 않습니다. 프롬프트는 명령줄 인자로 넘기므로 너무 긴 맥락(약 400KB 초과)은 오류로 알려 줍니다.
 
 ## Genspark
 
