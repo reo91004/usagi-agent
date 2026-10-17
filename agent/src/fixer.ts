@@ -638,6 +638,50 @@ async function driveAgy(s: Session, cfg: Config, wt: string, deps: FixDeps, step
   return out;
 }
 
+// ── 백그라운드 에이전트를 Codex·agy 로 돌리기(bg-agents.ts, 뇌가 codex·agy 일 때) ─────────────────────────────
+// 이미 판 격리 워크트리(job.cwd)에서 수정 run 과 같은 드라이버(driveCodex·driveAgy — 같은 샌드박스·훅)로 한 번 돌린다.
+// 기록은 Claude 쪽 askBackground 와 같은 모양: run(kind chat, 원래 화면 = 그 대화)의 맨 위 Agent 줄(background) 아래에 모든 줄을 parent 로 → 같은 대화 속 카드.
+// 서브에이전트(Agent 도구)·이어 하기 갈래는 없다: Codex 에는 서브에이전트 도구가 없고 agy 는 훅이 invoke_subagent 를 거절한다. 커밋은 이 코드가 아니라 격리 워크트리를 닫는 쪽(agent-worktrees.ts)이 한다
+export type CliAgentJob = { threadId: string; description: string; prompt: string; cwd: string; toolUseId: string; abort: AbortController };
+export async function runCliAgent(cfg: Config, job: CliAgentJob, onRun: (runId: string) => void, deps: FixDeps = {}): Promise<string> {
+  const reg = deps.runs ?? runs;
+  const s = openSession(reg, { kind: "chat", title: `에이전트: ${job.description}`.slice(0, 80), model: usesAgy(cfg) ? "agy" : "codex", cwd: job.cwd, ref: job.threadId, origin: { type: "thread", threadId: job.threadId } }, () => {});
+  const { run } = s;
+  onRun(run.id);
+  run.log({ type: "tool_use", name: "Agent", input: job.description, toolUseId: job.toolUseId, background: true });
+  const inner: RunHandle = Object.create(run, { log: { value: (ev: Parameters<RunHandle["log"]>[0]) => run.log(ev.parent ? ev : { ...ev, parent: job.toolUseId }) } });
+  const t = { ...s, run: inner };
+  const stop = () => { s.st.stopped = true; s.clearIdle(); s.input.close(); s.abort.abort(); };
+  if (job.abort.signal.aborted) stop(); else job.abort.signal.addEventListener("abort", stop, { once: true });
+  const prompt = [
+    `[백그라운드 에이전트] 이 git 워크트리에서만 일한다: ${job.cwd}. 커밋·푸시·머지·PR 은 하지 않는다 — 끝나면 데몬이 변경을 브랜치에 커밋해 둔다.`,
+    "마지막 보고의 summary 에 결과(바꾼 파일·확인한 것)를 한국어로 적는다. commit_message 는 한 줄 제목, 테스트를 안 돌렸으면 tests_ran 은 빈 문자열.",
+    "", job.prompt,
+  ].join("\n");
+  run.log({ type: "user", text: prompt, parent: job.toolUseId });
+  s.input.push(prompt);
+  try {
+    const out = usesAgy(cfg) ? await driveAgy(t, cfg, job.cwd, deps, () => {}) : await driveCodex(t, cfg, job.cwd, deps, () => {});
+    if (!out) {
+      if (!job.abort.signal.aborted) job.abort.abort(); // 세션 창에서 멈춤 — 카드도 멈춤으로
+      run.log({ type: "tool_result", toolUseId: job.toolUseId, output: "멈췄어요" });
+      run.end("stopped");
+      return "";
+    }
+    const text = `${String(out.summary).trim()}\n\n테스트: ${out.tests_ran ? `${out.tests_ran} — ${out.tests_passed ? "통과" : "실패"}` : "돌리지 않았어요"}`;
+    run.log({ type: "tool_result", toolUseId: job.toolUseId, output: text });
+    run.end("done");
+    return text;
+  } catch (e: any) {
+    run.log({ type: "tool_result", toolUseId: job.toolUseId, output: String(e?.message ?? e), isError: true });
+    run.end("failed", { error: String(e?.message ?? e) });
+    throw e;
+  } finally {
+    s.clearIdle();
+    s.input.close();
+  }
+}
+
 // 서브에이전트(Agent/Task): 포그라운드·내장 종류만(subagents.ts). isolation "worktree" 면 iso 가 워크트리를 파고 지시를 고친다.
 // 막은 도구(WebFetch·WebSearch)는 서브에이전트 안에서도 훅으로 한 번 더 막는다(disallowedTools 가 서브에이전트에 물려지는지와 상관없이)
 const FIX_BLOCKED = new Set(["WebFetch", "WebSearch"]);

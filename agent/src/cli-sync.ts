@@ -4,6 +4,8 @@
 //
 // - 데몬 SDK 가 쓴 줄(entrypoint "sdk-…")은 이미 run 기록에 있으니 건너뛴다. 기록 모양·가림·자르기는 runs.ts 와 같다(logEvent → sanitize).
 // - 다시 불러와도 겹치지 않게 파일마다 읽은 자리(바이트·마지막 uuid)를 `run_cli_sync` 표에 남긴다.
+// - Codex 로 돌린 run(sdkSessionId "codex:<id>")은 ~/.codex/sessions/YYYY/MM/DD/rollout-…-<id>.jsonl 을 같은 방식으로 읽는다(convertCodex — 읽기 전용).
+//   데몬의 `codex exec` 턴(turn_trigger "exec")은 이미 run 기록에 있으니 건너뛰고, 터미널 `codex resume` 턴만 붙인다.
 // - 안전: 세션 id 는 UUID, ~/.claude/projects 아래 일반 파일만(심볼릭 링크 안 따라감, realpath 확인), run 당 읽는 양 상한.
 import { closeSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync, watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
@@ -114,6 +116,60 @@ export function readFrom(file: string, offset: number, max: number): { lines: { 
     if (!lines.length && got === max) lines.push({ text: "", end: offset + got });
     return { lines, size };
   } finally { closeSync(fd); }
+}
+
+// ── Codex ─────────────────────────────────────────
+export const CODEX_PREFIX = "codex:"; // fixer.ts CODEX_SESSION 과 같다(fixer 를 끌어오지 않으려 따로 둠)
+const CODEX_ID = /^[\w-]{8,100}$/;
+export const codexDirDefault = () => join(homedir(), ".codex", "sessions");
+// rollout-<시각>-<id>.jsonl — 날짜 폴더(YYYY/MM/DD)를 따라 찾는다. 링크는 안 따라간다
+export function findCodexFile(dir: string, id: string): string | undefined {
+  if (!CODEX_ID.test(id) || !plainDir(dir)) return undefined;
+  const walk = (d: string, depth: number): string | undefined => {
+    let es; try { es = readdirSync(d, { withFileTypes: true }); } catch { return undefined; }
+    for (const e of es.sort((a, b) => (a.name < b.name ? 1 : -1))) {
+      const p = join(d, e.name);
+      if (e.isDirectory() && depth < 4) { const hit = walk(p, depth + 1); if (hit) return hit; }
+      else if (e.isFile() && e.name.startsWith("rollout-") && e.name.endsWith(`-${id}.jsonl`) && plainFile(p) && inside(dir, p)) return p;
+    }
+    return undefined;
+  };
+  return walk(dir, 0);
+}
+
+// 데몬의 codex exec 가 돈 턴 id 들(task_started.turn_attribution.turn_trigger === "exec")
+export function codexExecTurns(entries: any[]): Set<string> {
+  const out = new Set<string>();
+  for (const j of entries) {
+    const p = j?.payload;
+    if (j?.type === "event_msg" && p?.type === "task_started" && p.turn_attribution?.turn_trigger === "exec" && typeof p.turn_id === "string") out.add(p.turn_id);
+  }
+  return out;
+}
+
+// Codex 기록 줄들 → run 이벤트(via cli) + 대화 말. event_msg/item_completed 의 UserMessage·AgentMessage·CommandExecution 만(추론·MCP·서브에이전트 활동은 뺀다)
+export function convertCodex(entries: any[], execTurns: Set<string>): Converted {
+  const out: Converted = { events: [], chat: [], asyncAgents: [] };
+  for (const j of entries) {
+    const p = j?.payload, it = p?.item;
+    if (j?.type !== "event_msg" || p?.type !== "item_completed" || !it || execTurns.has(p.turn_id)) continue;
+    const at = typeof j.timestamp === "string" ? j.timestamp : undefined;
+    const base = { via: "cli" as const, ...(at ? { at } : {}) };
+    const text = (Array.isArray(it.content) ? it.content : []).map((c: any) => String(c?.text ?? "")).join("").trim();
+    if (it.type === "UserMessage" && text) {
+      out.events.push({ type: "user", text, ...base });
+      out.chat.push({ role: "user", text, at: at ?? "" });
+    } else if (it.type === "AgentMessage" && text && it.phase !== "commentary") {
+      out.events.push({ type: "assistant", text, ...base });
+      out.chat.push({ role: "assistant", text, at: at ?? "" });
+    } else if (it.type === "CommandExecution" && typeof it.id === "string") {
+      const cmd = Array.isArray(it.command) ? it.command.map(String) : [];
+      const shown = cmd.length === 3 && /sh$/.test(cmd[0]) && cmd[1] === "-lc" ? cmd[2] : cmd.join(" ");
+      out.events.push({ type: "tool_use", name: "Bash", input: compactInput("Bash", { command: shown }), toolUseId: it.id, ...base });
+      out.events.push({ type: "tool_result", toolUseId: it.id, output: String(it.aggregated_output ?? ""), ...(it.exit_code ? { isError: true } : {}), ...base });
+    }
+  }
+  return out;
 }
 
 // ── 변환(순수) ─────────────────────────────────────
@@ -270,6 +326,7 @@ export type CliSyncDeps = {
   db: DatabaseSync;
   store?: Pick<Store, "addChat" | "thread">;
   claudeDir?: string;
+  codexDir?: string; // 기본 ~/.codex/sessions
   onThread?(threadId: string): void; // 대화에 말을 붙였음(SSE threads)
   log?(msg: string): void;
 };
@@ -283,6 +340,7 @@ export class CliSync {
     this.d = d;
     d.db.exec(SCHEMA);
   }
+  private get codexDir() { return this.d.codexDir ?? codexDirDefault(); }
   private get claudeDir() { return this.d.claudeDir ?? claudeDirDefault(); }
 
   private cursor(runId: string, source: string): Cursor | undefined {
@@ -326,11 +384,43 @@ export class CliSync {
   sync(runId: string): SyncResult {
     const run = this.d.runs.summary(runId);
     if (!run) return { ok: false, status: 404, error: "no such run" };
+    if (run.sdkSessionId?.startsWith(CODEX_PREFIX)) {
+      if (this.busy.has(runId)) return { ok: true, imported: 0 };
+      this.busy.add(runId);
+      try { return this.syncCodex(run, run.sdkSessionId.slice(CODEX_PREFIX.length)); }
+      finally { this.busy.delete(runId); }
+    }
     if (!okSessionId(run.sdkSessionId)) return { ok: false, status: 409, error: "이 세션에는 Claude Code 세션 id 가 없어요" };
     if (this.busy.has(runId)) return { ok: true, imported: 0 };
     this.busy.add(runId);
     try { return this.syncRun(run, run.sdkSessionId); }
     finally { this.busy.delete(runId); }
+  }
+
+  // Codex 세션 기록 하나(서브에이전트 파일 없음). 데몬이 돌린 턴은 건너뛰고 터미널에서 이어 간 턴만
+  private syncCodex(run: Run, id: string): SyncResult {
+    const file = findCodexFile(this.codexDir, id);
+    if (!file) return { ok: false, status: 404, error: "이 세션 기록을 찾을 수 없어요" };
+    const budget = CLI_LIMITS.bytesPerRun - this.bytesRead(run.id);
+    if (budget <= 0) return { ok: true, imported: 0 };
+    const got = this.readNew(run.id, "main", file, budget);
+    if (!got) return { ok: true, imported: 0 };
+    // 턴 표시는 앞쪽 줄에 있어 이번에 읽은 조각에 없을 수 있다 → 파일 앞부분에서도 찾는다
+    const execTurns = codexExecTurns([...parseLines(readFrom(file, 0, Math.min(budget, CLI_LIMITS.readPerSync)).lines), ...got.entries]);
+    const conv = convertCodex(got.entries, execTurns);
+    let imported = 0;
+    const log = (ev: RunEventInput) => { if (this.d.runs.logEvent(run.id, ev)) imported++; };
+    if (got.cur.count === 0 && conv.events.length) log({ type: "system", text: "터미널 Codex 에서 이어 간 대화", via: "cli", ...(conv.events[0].at ? { at: conv.events[0].at } : {}) });
+    for (const ev of conv.events) log(ev);
+    got.cur.count += conv.events.length;
+    this.save(run.id, "main", got.cur);
+    const threadId = conv.chat.length ? this.threadOf(run) : undefined;
+    if (threadId && this.d.store) {
+      for (const m of conv.chat) this.d.store.addChat(m.role, redact(m.text).slice(0, CLI_LIMITS.chatText), m.at || new Date().toISOString(), undefined, threadId, "cli");
+      this.d.onThread?.(threadId);
+    }
+    if (imported) this.d.runs.touch(run.id);
+    return { ok: true, imported };
   }
 
   private syncRun(run: Run, sid: string): SyncResult {
@@ -418,7 +508,9 @@ export class CliSync {
     const first = this.sync(runId);
     if (!first.ok) return first;
     const run = this.d.runs.summary(runId)!;
-    const f = findSessionFile(this.claudeDir, run.sdkSessionId!, run.cwd);
+    const codexId = run.sdkSessionId!.startsWith(CODEX_PREFIX) ? run.sdkSessionId!.slice(CODEX_PREFIX.length) : undefined;
+    const codexFile = codexId ? findCodexFile(this.codexDir, codexId) : undefined;
+    const f = codexId ? (codexFile ? { file: codexFile, projectDir: "" } : undefined) : findSessionFile(this.claudeDir, run.sdkSessionId!, run.cwd);
     if (!f) return first;
     this.unwatch(runId);
     const started = Date.now();
@@ -435,7 +527,7 @@ export class CliSync {
     const add = (p: string) => { try { const w = watch(p, { persistent: false }, soon); w.on("error", () => {}); watchers.push(w); } catch {} };
     add(f.file);
     const sessDir = join(f.projectDir, run.sdkSessionId!);
-    if (plainDir(join(sessDir, "subagents"))) add(join(sessDir, "subagents"));
+    if (!codexId && plainDir(join(sessDir, "subagents"))) add(join(sessDir, "subagents"));
     const poll = setInterval(tick, CLI_LIMITS.pollMs);
     poll.unref?.();
     this.watches.set(runId, {

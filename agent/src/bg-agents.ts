@@ -32,6 +32,7 @@ export type BgPorts = {
   changed(threadId: string): void; // 대화 속 카드 다시(SSE agents)
   mood?(busy: boolean): void;
   isolate?(job: Readonly<BgAgent>): Promise<BgIsolated>; // isolation "worktree" — 없으면 격리 없이 부른 쪽 폴더에서
+  forceIsolation?(): boolean; // 지금 뇌가 Codex·agy 면 true — 이 뇌들은 샌드박스가 작업 폴더에 쓰므로 늘 자기 워크트리에서(fixer.ts runCliAgent)
 };
 
 const oneLine = (s: string, max: number) => {
@@ -51,7 +52,7 @@ export class BackgroundAgents {
     const description = oneLine(req.description || "에이전트", BG_LIMITS.description) || "에이전트";
     if (this.jobs.has(req.toolUseId)) return `${BG_MARK} 「${description}」 은(는) 이미 시작했어요. 결과는 끝나면 이 대화에 따로 올라가요.`;
     const at = new Date().toISOString();
-    const job: BgAgent = { ...req, description, status: "running", queuedAt: at, startedAt: at, abort: new AbortController() };
+    const job: BgAgent = { ...req, ...(!req.isolation && this.ports.forceIsolation?.() ? { isolation: "worktree" as const } : {}), description, status: "running", queuedAt: at, startedAt: at, abort: new AbortController() };
     this.jobs.set(job.toolUseId, job);
     this.prune();
     this.launch(job);
