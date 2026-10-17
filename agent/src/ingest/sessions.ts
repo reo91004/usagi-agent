@@ -20,6 +20,7 @@ export type SessionDigest = {
   ended?: string;
   turns: number;
   files: string[];
+  auto?: boolean; // 프로그램이 돌린 세션(codex exec·하위 에이전트) — 기록하지 않는다
 };
 
 const clip = (s: string | undefined, n: number) =>
@@ -28,7 +29,7 @@ const clip = (s: string | undefined, n: number) =>
 // 사람이 친 프롬프트만 — 하네스가 주입한 태그/지시문은 뺀다
 function isHumanText(s: string): boolean {
   const t = s.trimStart();
-  return t.length > 0 && !t.startsWith("<") && !t.startsWith("# AGENTS.md") && !t.startsWith("Caveat:");
+  return t.length > 0 && !t.startsWith("<") && !t.startsWith("# AGENTS.md") && !t.startsWith("Caveat:") && !t.startsWith("[Request interrupted");
 }
 
 function textOf(content: unknown, kind: "text" | "input_text" | "output_text"): string | undefined {
@@ -79,7 +80,7 @@ export function* readLines(path: string): Generator<string> {
 
 // 이어 접는 파서: step(줄) 로 먹이고 finish() 로 지금까지의 결과를 얻는다. save() 는 JSON 으로 저장할 중간 상태
 // (긴 글은 recordSession 이 자르는 길이로 미리 잘라 둔다 — 자르기는 여러 번 해도 같다)
-type Fold = { step(line: string): void; finish(): SessionDigest | undefined; save(): FoldState };
+type Fold = { id(): string; step(line: string): void; finish(): SessionDigest | undefined; save(): FoldState };
 type FoldState = Omit<SessionDigest, "tool">;
 const savedOf = (d: SessionDigest, files: Set<string>): FoldState => {
   const { tool: _, ...rest } = d;
@@ -94,6 +95,7 @@ function claudeFold(fallbackId: string, saved?: FoldState): Fold {
   const d: SessionDigest = { id: fallbackId, turns: 0, files: [], ...saved, tool: "claude" };
   const files = new Set<string>(saved?.files);
   return {
+    id: () => d.id,
     step(line) {
       const e = parseLine(line);
       if (!e) return;
@@ -103,7 +105,9 @@ function claudeFold(fallbackId: string, saved?: FoldState): Fold {
       if (e.timestamp) { d.started ??= e.timestamp; d.ended = e.timestamp; }
       if (e.type === "ai-title" && e.aiTitle) d.title ??= e.aiTitle;
       if (e.type === "custom-title" && e.customTitle) d.title = e.customTitle;
-      if (e.type === "user" && !e.isMeta) {
+      // 사람이 친 턴만: claude -p·SDK(entrypoint sdk-*), 다른 세션·작업 알림·조율자가 넣은 줄(origin.kind 가 human 이 아님), 사이드체인은 뺀다
+      const human = !String(e.entrypoint ?? "").startsWith("sdk") && !e.isSidechain && (e.origin?.kind ?? "human") === "human";
+      if (e.type === "user" && !e.isMeta && human) {
         const t = textOf(e.message?.content, "text");
         if (t && isHumanText(t)) { d.firstPrompt ??= t; d.lastPrompt = t; d.turns++; }
       }
@@ -125,12 +129,17 @@ function claudeFold(fallbackId: string, saved?: FoldState): Fold {
 function codexFold(fallbackId: string, saved?: FoldState): Fold {
   const d: SessionDigest = { id: fallbackId, turns: 0, files: [], ...saved, tool: "codex" };
   return {
+    id: () => d.id,
     step(line) {
       const e = parseLine(line);
       if (!e) return;
       if (e.timestamp) { d.started ??= e.timestamp; d.ended = e.timestamp; }
       const p = e.payload ?? {};
-      if (e.type === "session_meta") { d.id = p.id ?? d.id; d.cwd = p.cwd ?? d.cwd; d.branch = p.git?.branch ?? d.branch; }
+      if (e.type === "session_meta") {
+        d.id = p.id ?? d.id; d.cwd = p.cwd ?? d.cwd; d.branch = p.git?.branch ?? d.branch;
+        // codex exec(originator codex_exec · source exec)와 하위 에이전트(source 가 {subagent:…} 객체)는 사람 대화가 아니다
+        if (p.originator === "codex_exec" || p.source === "exec" || (p.source && typeof p.source === "object")) d.auto = true;
+      }
       if (e.type === "turn_context" && p.cwd) d.cwd = p.cwd;
       if (e.type === "response_item" && p.type === "message") {
         if (p.role === "user") {
@@ -142,7 +151,7 @@ function codexFold(fallbackId: string, saved?: FoldState): Fold {
         }
       }
     },
-    finish: () => (d.turns ? { ...d } : undefined),
+    finish: () => (d.turns && !d.auto ? { ...d } : undefined),
     save: () => savedOf(d, new Set()),
   };
 }
@@ -174,7 +183,7 @@ export function recordSession(store: Store, s: SessionDigest) {
 }
 
 // 접는 규칙(claudeFold·codexFold·isHumanText 등)을 바꾸면 올린다: 저장된 중간 상태를 버리고 처음부터 다시 읽는다
-const FOLD_V = 1;
+const FOLD_V = 2;
 type SavedRead = { v: number; offset: number; ino: number; edge: string; fold: FoldState };
 // 이어 읽을 자리가 같은 파일인지: 맨 앞과 읽은 자리 바로 앞 각 256바이트의 해시(덧붙기만 했으면 그대로다)
 function edgeHash(path: string, off: number): string {
@@ -231,7 +240,8 @@ export function ingestSessions(
       const sshId = !opts.host && tool === "claude" ? /^ssh-(.+)$/.exec(basename(dirname(path)))?.[1] : undefined;
       const hostMark = sshId ? `ssh-host:${path}` : "";
       // 바뀌지 않았고 서버도 이미 찾아본 파일은 앱 세션 정보를 읽지 않고 건너뛴다(못 찾은 것도 0 으로 남겨 매번 다시 읽지 않는다)
-      if (store.markOf(path) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
+      const seenKey = `fold${FOLD_V}:${path}`; // 접는 규칙 버전이 올라가면 안 바뀐 파일도 다시 읽는다(예전 규칙으로 남긴 노드를 바로잡는다)
+      if (store.markOf(seenKey) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
       const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
       const id = basename(path, ".jsonl");
       const mk = tool === "claude" ? claudeFold : codexFold;
@@ -254,6 +264,11 @@ export function ingestSessions(
           offset = end;
         }
         s ??= fold.finish();
+        if (!s) { // 사람 턴이 없다고 판정된 세션이 이전에 남긴 노드·줄
+          const sid = `session:${fold.id()}`;
+          store.db.prepare("DELETE FROM nodes WHERE id = ? AND kind = 'session'").run(sid);
+          store.db.prepare("DELETE FROM edges WHERE src = ?").run(sid);
+        }
         store.setState(path, JSON.stringify({ v: FOLD_V, offset, ino: st.ino, edge: edgeHash(path, offset), fold: fold.save() } satisfies SavedRead));
       } catch { continue; }
       if (s && !isCyAgentCwd(s.cwd, skipCwdPrefix)) {
@@ -261,7 +276,7 @@ export function ingestSessions(
         recordSession(store, s);
         n++;
       }
-      store.setMark(path, mtime);
+      store.setMark(seenKey, mtime);
       if (hostMark) store.setMark(hostMark, host ? 1 : 0);
     }
   }

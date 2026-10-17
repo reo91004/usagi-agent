@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, mkdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../store.ts";
@@ -172,4 +172,47 @@ test("ingestSessions 증분: 늘어난 부분만 읽고, 줄었거나 앞이 바
   ingestSessions(store, dirs);
   assert.equal(store.node("session:s1")?.props.turns, 5);
   rmSync(dir, { recursive: true, force: true });
+});
+
+const jl = (ls: object[]) => ls.map((l) => JSON.stringify(l)).join("\n");
+
+test("claude: 중단 안내·claude -p(sdk)·다른 세션/알림이 넣은 줄·사이드체인은 사람 턴이 아니다", () => {
+  const u = (text: string, extra: object = {}) => ({ type: "user", sessionId: "h1", cwd: "/r/app", entrypoint: "cli", message: { content: text }, ...extra });
+  const s = parseClaudeSession(jl([
+    u("고쳐줘", { origin: { kind: "human" } }),
+    u("[Request interrupted by user]"),
+    u("다른 세션이 보냄", { origin: { kind: "peer" } }),
+    u("끝났다는 알림", { origin: { kind: "task-notification" } }),
+    u("조율자 지시", { isSidechain: true, origin: { kind: "coordinator" } }),
+  ]), "x")!;
+  assert.equal(s.turns, 1);
+  assert.equal(s.lastPrompt, "고쳐줘");
+  assert.equal(parseClaudeSession(jl([u("한 번 물어봄", { entrypoint: "sdk-cli" })]), "x"), undefined);
+  assert.equal(parseClaudeSession(jl([u("앱에서 말함", { entrypoint: "claude-desktop", origin: { kind: "human" } })]), "x")?.turns, 1);
+});
+
+test("codex: exec 와 하위 에이전트 세션은 사람 대화가 아니라 기록하지 않는다", () => {
+  const raw = (payload: object) => jl([
+    { type: "session_meta", timestamp: "2026-10-17T01:00:00Z", payload: { id: "c9", cwd: "/r/app", ...payload } },
+    { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "점검해" }] } },
+  ]);
+  assert.equal(parseCodexSession(raw({ originator: "codex-tui", source: "cli" }), "x")?.turns, 1);
+  assert.equal(parseCodexSession(raw({ originator: "codex_exec", source: "exec" }), "x"), undefined);
+  assert.equal(parseCodexSession(raw({ originator: "codex-tui", source: { subagent: { thread_spawn: { depth: 1 } } } }), "x"), undefined);
+});
+
+test("ingestSessions: 규칙 바뀌기 전에 읽어 둔(안 바뀐) 파일도 다시 읽어, 사람이 아니라고 판정된 세션의 노드를 지운다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sess-auto-"));
+  const store = new Store(":memory:");
+  const dirs = { claude: join(dir, "none"), codex: dir };
+  const f = join(dir, "r.jsonl");
+  const meta = { type: "session_meta", payload: { id: "c9", cwd: "/r/app", originator: "codex_exec", source: "exec" } };
+  const msg = { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "점검해" }] } };
+  writeFileSync(f, jl([meta, msg]) + "\n");
+  store.upsertNode("session:c9", "session", "점검해", { tool: "codex", cwd: "/r/app", turns: 1 });
+  store.setMark(f, statSync(f).mtimeMs); // 예전 규칙으로 읽고 남긴 표시(버전 없는 키)
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:c9"), undefined);
+  assert.equal(ingestSessions(store, dirs), 0);
+  rmSync(dir, { recursive: true });
 });
