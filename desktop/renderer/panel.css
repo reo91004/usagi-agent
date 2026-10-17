@@ -1437,6 +1437,7 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 /* 행동 지침 */
 #sec-settings .gl-list { display: grid; gap: 6px; }
 #sec-settings .gl-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); }
+#sec-settings #sk-list { max-height: 280px; overflow-y: auto; margin-top: 8px; }
 #sec-settings .gl-row.am-row { grid-template-columns: 1fr auto; }
 #sec-settings .gl-row.off .gl-text { color: var(--faint); text-decoration: line-through; }
 #sec-settings .gl-row input[type="checkbox"] { margin: 0; accent-color: var(--accent); }

@@ -83,6 +83,7 @@ type Bubble = {
 - `briefing{exclude,sources}`, `phrases[]`, `autoMerge[]`
 - `todayReminder{mode,everyHours,times}`, `calendarAlert{minutesBefore[]}`
 - `brain{provider,model,keys{gemini,openai,anthropic: boolean}}`
+- `slackMuted[]`(끈 Slack 채널 id), `slackChannels[{id,name,type}]`(GET 에만, 내가 들어간 공개·비공개 채널 이름순)
 - `user{name?}`, `repoRoots[]`, `configPath`
 - `onboarded`(설치 마법사를 마쳤나), `readSessions`(이 맥의 Claude Code·Codex 작업 기록을 읽나)
 - `character`(고른 캐릭터 id), `characters[{id,name}]`(고를 수 있는 캐릭터)
@@ -95,6 +96,7 @@ type Bubble = {
   "briefing": { "exclude": ["mail"] },                    // mail·calendar·slack·issues·sessions
   "phrases": { "<키>": ["줄", "…"] | null },              // null = 기본값
   "autoMerge": ["owner/name"],
+  "slackMuted": ["C01ABC"],                                // 끈 채널은 수집·할 일·브리핑·반응·지시사항·지식그래프에서 뺀다(멘션 포함). 빈 목록 = 전부 받음
   "brain": { "provider": "gemini", "keys": { "gemini": "…" | null }, "model": "gemini-2.5-flash" | null },
   "user": { "name": "길동" | null },
   "repoRoots": ["/Users/me/code"],                        // 절대 경로만

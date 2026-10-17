@@ -800,6 +800,33 @@ async function addAutoMerge() {
 $('am-add').addEventListener('click', addAutoMerge);
 $('am-add-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addAutoMerge(); } });
 
+// ---- Slack 채널 켜기·끄기 (데몬이 아는 공개·비공개 채널. 목록은 GET /settings 에만 오고 저장 응답에는 없다) ----
+let slackChannels = [];
+function renderSlackChannels() {
+  const box = $('sk-list');
+  box.replaceChildren();
+  $('sk-card').hidden = !slackChannels.length;
+  const q = $('sk-search').value.trim().toLowerCase().replace(/^#/, '');
+  const muted = new Set(settings?.slackMuted ?? []);
+  for (const c of slackChannels.filter((x) => !q || x.name.toLowerCase().includes(q))) {
+    const row = el('label', `gl-row${muted.has(c.id) ? ' off' : ''}`);
+    const on = el('input');
+    on.type = 'checkbox';
+    on.checked = !muted.has(c.id);
+    on.title = on.checked ? '끄면 이 채널은 안 받아요' : '켜면 다시 받아요';
+    on.addEventListener('change', async () => {
+      on.disabled = true;
+      const next = new Set(settings.slackMuted ?? []);
+      if (on.checked) next.delete(c.id); else next.add(c.id);
+      if (await save({ slackMuted: [...next] })) renderSlackChannels();
+      else { on.checked = !on.checked; on.disabled = false; }
+    });
+    row.append(on, el('span', 'gl-text', `#${c.name}${c.type === 'private' ? ' (비공개)' : ''}`));
+    box.append(row);
+  }
+}
+$('sk-search').addEventListener('input', renderSlackChannels);
+
 // ---- 문구 ----
 const openGroups = new Set(['캐릭터']); // 펼쳐 둔 묶음(다시 그려도 유지)
 function phraseRow(p) {
@@ -1009,14 +1036,15 @@ async function checkAll() {
 // 데몬에서 받은 설정을 반영한다(처음 불러오기·다시 불러오기 공용). 다시 불러올 때는 입력 중일 수 있는 값
 // (문구·알림 시각 칸, 고치던 캐릭터)을 이전 것으로 두고, 다른 곳(연결 도우미·채팅)에서 바뀌는 값만 새로 그린다
 function applySnapshot(data, { first = false } = {}) {
+  if (Array.isArray(data.slackChannels)) slackChannels = data.slackChannels;
   if (first || !settings) {
     settings = data;
-    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderPhrases(); renderCharacter(); loadCharacters();
+    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderPhrases(); renderCharacter(); loadCharacters();
     return;
   }
   const { phrases, todayReminder, calendarAlert, character, characters } = settings;
   settings = { ...data, phrases, todayReminder, calendarAlert, ...(editDirty ? { character, characters } : {}) };
-  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge();
+  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge(); renderSlackChannels();
 }
 
 async function load() {
