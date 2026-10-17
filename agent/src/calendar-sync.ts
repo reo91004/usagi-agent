@@ -5,7 +5,8 @@
 // api(ICS): ics.ts 가 코드로 읽는다(모델 없음). mcp: 경량 모델이 매핑된 일정 도구를 한 번 부르고 구조화 출력으로 돌려준다.
 // 장소: location 이름(여러 곳이면 ", "). 장소 칸에 링크(Zoom 등)를 적은 일정은 온라인 링크로 본다.
 import { eventkitSource } from "./eventkit.ts";
-import { query as sdkQuery, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { mcpBrainNote, skipQuietly } from "./feature-brain.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

@@ -1,7 +1,7 @@
 // /btw 곁질문(Claude Code 의 /btw 처럼): 돌고 있는 작업을 멈추거나 그 대화에 끼어들지 않고, 그 run 의 기록만 보고 바로 답한다.
 // - 별도 가벼운 모델 호출 한 번(도구 없음 · 설정·MCP 안 읽음 · 세션 기록 안 남김 · 1턴). run 의 입력 큐·SDK 대화·run 기록 어디에도 안 들어간다
 // - 맥락: 제목·종류·상태·레포/브랜치 + 최근 맨 위 기록(사용자 말·답·도구 호출과 결과 앞부분) — 줄마다 자르고 비밀은 가린다(redact)
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "./claude-sdk.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";

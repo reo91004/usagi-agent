@@ -6,7 +6,7 @@
 // 페이지는 사용자와 같이 쓴다: 우사기는 「usagi-auto:: true」 블록 하나만 다시 쓰고 그 밖의 블록(맨 위 「메모」 등)은 건드리지 않는다.
 //   우사기 블록 안을 사용자가 고쳤거나 블록을 지웠으면 그 뒤로는 덮지도 다시 넣지도 않는다(마지막으로 쓴 블록의 해시로 안다).
 // 사용자 저널은 건드리지 않는다. 대신 페이지에 그날 저널 링크를 달아 저널의 「연결된 참조」에 뜨게 한다.
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

@@ -56,8 +56,6 @@ fs.cpSync(path.join(REPO, 'agent', 'src'), path.join(AGENT, 'src'), {
 });
 for (const f of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(REPO, 'agent', f), path.join(AGENT, f));
 run('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--os=darwin', `--cpu=${ARCH}`], { cwd: AGENT });
-const sdkBin = path.join(AGENT, 'node_modules', '@anthropic-ai', `claude-agent-sdk-darwin-${ARCH}`);
-if (!fs.existsSync(sdkBin)) throw new Error(`Claude Agent SDK 의 ${ARCH} 실행 파일 패키지가 없어요: ${sdkBin}`);
 // node_modules/.bin 의 심볼릭 링크는 앱에 복사될 때 빌드 폴더의 절대 경로를 가리켜 서명이 깨진다. 데몬은 안 쓰니 뺀다
 const dropBins = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -83,11 +81,9 @@ const pruneFiles = (dir) => {
 pruneFiles(path.join(AGENT, 'node_modules'));
 const links = execFileSync('find', [AGENT, '-type', 'l'], { encoding: 'utf8' }).trim();
 if (links) throw new Error(`데몬 폴더에 심볼릭 링크가 남았어요(서명이 깨져요):\n${links}`);
-// 다른 플랫폼용 바이너리가 섞여 들어오면 뺀다
+// Agent SDK 의 플랫폼 패키지(Claude Code 실행 파일, 풀어서 약 225MB)는 넣지 않는다. 데몬은 이 Mac 에 설치된 claude 를 쓴다(agent/src/claude-sdk.ts, #64)
 for (const name of fs.readdirSync(path.join(AGENT, 'node_modules', '@anthropic-ai'))) {
-  if (/^claude-agent-sdk-/.test(name) && name !== `claude-agent-sdk-darwin-${ARCH}`) {
-    fs.rmSync(path.join(AGENT, 'node_modules', '@anthropic-ai', name), { recursive: true, force: true });
-  }
+  if (/^claude-agent-sdk-/.test(name)) fs.rmSync(path.join(AGENT, 'node_modules', '@anthropic-ai', name), { recursive: true, force: true });
 }
 
 // 2) 캐릭터 그림·영상(레포 assets/) — 앱 Resources/assets 로. 대사(lines.json)는 렌더러용 사본도 맞춘다
@@ -151,7 +147,7 @@ const paths = await packager({
   quiet: true,
 });
 const APP = path.join(paths[0], `${APP_NAME}.app`);
-for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run', 'Contents/Resources/bin/usagi-eventkit']) {
+for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/agent/node_modules/@anthropic-ai/claude-agent-sdk/package.json', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run', 'Contents/Resources/bin/usagi-eventkit']) {
   if (!fs.existsSync(path.join(APP, need))) throw new Error(`앱 번들에 ${need} 가 없어요`);
 }
 

@@ -7,7 +7,7 @@
 // - 30일 넘게 재확인이 없으면 30일마다 −0.1 (decayedAt으로 중복 감쇠 방지)
 // - 증거는 데이터일 뿐 — 지시문 꼴(명령형, "이전 지시 무시" 등)의 사실은 버린다
 // - forgetFact로 지운 사실은 다시 배워도 되살리지 않는다
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { trackQuery, withRun } from "./runs.ts";
 import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
 import { createHash } from "node:crypto";

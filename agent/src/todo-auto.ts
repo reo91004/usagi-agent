@@ -3,7 +3,7 @@
 //     '답하기·회신'류 할 일은 바로 끝, 그 밖의 할 일은 '답했음' 힌트로 모델에게 넘긴다(답만 하고 일은 남은 경우가 많다)
 //  2) 모델 판단 — 워터마크 이후 새로 들어온 관련 메시지를 대화별로 묶어 열린 할 일과 함께 한 번 묻는다(도구 없음, 구조화 출력)
 // 적용은 core(Agent.autoCompleteTodos)가 한다: 되돌린 적 있거나 사용자가 상태를 직접 정한 할 일, 지운 할 일은 끝내지 않는다.
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";

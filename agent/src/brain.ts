@@ -3,7 +3,8 @@
 // api 모드(Slack 사용자 토큰·ICS)는 실시간 도구 없이 로컬 지식그래프·일정 캐시를 맥락으로 넣는다.
 // 정기 작업(브리핑 등)은 읽기 전용(guard.ts). 대화형(opts.interactive — 채팅·캐릭터 대화·할 일 팝오버·Slack DM 요청)은
 // 모든 도구를 쓰되 쓰기는 사용자 승인(permissions.ts: PreToolUse 훅 + canUseTool, 하드 차단 목록).
-import { query, type CanUseTool, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "./claude-sdk.ts";
 import { promptInput, type ContentBlock } from "./attachments.ts";
 export { promptInput };
 import { currentRunContext, resultText, trackQuery, withRun, type RunHandle, type RunKind } from "./runs.ts";

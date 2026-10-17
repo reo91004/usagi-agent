@@ -15,7 +15,8 @@
 // 도구 승인(type "tool_permission", permissions.ts): 대화형 에이전트가 쓰기 도구를 부르려 하면 SDK canUseTool 이 여기에
 // 승인 카드를 만들고 결정을 **기다린다**. 상태는 같은 표를 쓴다: pending → done(허용) | cancelled(거부) | expired(10분 무응답).
 // 실행은 모델 쪽 SDK 가 하므로 running·failed 는 없다. 데몬이 다시 켜지면 남은 대기는 expired(기다리던 호출이 없다).
-import { query as sdkQuery, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "./claude-sdk.ts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bus } from "./bus.ts";
 import type { Run } from "./runs.ts";
+import { CLAUDE_MISSING, SDK_CLAUDE_VERSION } from "./claude-sdk.ts";
 
 const NOW = new Date("2026-10-13T03:00:00Z");
 const TOKENS = ["xoxb-1234567890-abcdefghij", "xapp-1-A0B1C2-secret", "sk-ant-api03-abcdefghijklmnop", "ghp_abcdefghijklmnopqrstuvwxyz0123", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk_lmnop"];
@@ -147,6 +148,24 @@ test("Connections: 확인이 던져도 줄은 남고 오류는 가려진다 · �
   const cl = byId(rows, "claude");
   assert.equal(cl.state, "error");
   assert.doesNotMatch(cl.error!, /sk-ant/);
+});
+
+test("Connections: claude 가 없으면 설치 안내, 옛 버전이면 주황으로 claude update 안내", async () => {
+  const missing = make({ sdkProbe: async () => { throw new Error(CLAUDE_MISSING); } }).c;
+  await missing.check("claude");
+  const m = byId(missing.rows(), "claude");
+  assert.equal(m.state, "error");
+  assert.equal(m.error, CLAUDE_MISSING);
+  const account = { email: "me@example.com", provider: "firstParty" };
+  const old = make({ sdkProbe: async () => ({ account, servers: [], version: "2.1.285" }) }).c;
+  await old.check("claude");
+  const o = byId(old.rows(), "claude");
+  assert.equal(o.state, "warn");
+  assert.match(o.detail!, new RegExp(`claude 2\\.1\\.285 은 옛 버전이에요\\(${SDK_CLAUDE_VERSION.replace(/\./g, "\\.")} 이상\\).*claude update`));
+  const fresh = make({ sdkProbe: async () => ({ account, servers: [], version: "99.0.0" }) }).c;
+  await fresh.check("claude");
+  assert.equal(byId(fresh.rows(), "claude").state, "ok");
+  assert.match(byId(fresh.rows(), "claude").detail!, /로그인됨 · claude 99\.0\.0/);
 });
 
 test("GET /connections · POST /connections/check {id}: 헤더 필수, 모르는 id 는 400", async () => {
