@@ -17,7 +17,7 @@ import { AUTO_MERGE_MAX, inAutoMerge, normSlug } from "./auto-merge.ts";
 import { STEP_HEAD } from "./briefing-sources.ts";
 import { PHRASES, defaultLines, phraseDef, phraseLines, setPhrases, unknownVars } from "./phrases.ts";
 import { okJobDir, okJobHost } from "./jobs.ts";
-import { CAPABILITIES, MODES, PRESETS, type Capability } from "./connectors.ts";
+import { CAPABILITIES, MODES, PRESETS, resolveConnectors, type Capability, type Connectors } from "./connectors.ts";
 import { registeredMcpServerNames } from "./mcp.ts";
 import { characterOptions, isCharacterId, setCharacter, DEFAULT_CHARACTER, type CharacterId } from "./characters.ts";
 
@@ -468,6 +468,8 @@ export class Settings {
   private path: string;
   private env: NodeJS.ProcessEnv;
   private onChange?: (keys: string[]) => void;
+  // 저장했지만 데몬이 다시 켜져야 적용되는 연결. cfg.connectors 는 그대로 둬야 main 의 reloadConnectors 가 바뀜을 알아본다 — 화면에만 저장한 값을 보인다
+  private savedConnectors?: Connectors;
   constructor(cfg: Config, opts: { path?: string; env?: NodeJS.ProcessEnv; onChange?: (keys: string[]) => void } = {}) {
     this.cfg = cfg;
     this.onChange = opts.onChange;
@@ -478,7 +480,7 @@ export class Settings {
   }
 
   view(): SettingsView {
-    const c = this.cfg;
+    const c = this.cfg, conns = this.savedConnectors ?? c.connectors;
     return {
       models: { quick: c.models.quick ?? DEFAULT_QUICK, general: c.models.general, code: c.models.code, light: c.models.light },
       modelRoles: MODEL_ROLES.map((role) => ({ role, label: MODEL_ROLE_LABEL[role] })),
@@ -502,8 +504,8 @@ export class Settings {
       tineGraph: c.tineGraph ?? null,
       allowMcp: [...(c.allowMcp ?? [])],
       mcpServers: mcpServerNames(),
-      connectors: Object.fromEntries(CAPABILITIES.map((cap) => { const x = c.connectors[cap]; return [cap, { mode: x.mode, ...(x.mode === "mcp" ? { server: x.server } : {}) }]; })) as SettingsView["connectors"],
-      calendar: c.connectors.calendar.mode === "api" ? { timeZone: c.connectors.calendar.timeZone, email: c.connectors.calendar.email ?? "" } : null,
+      connectors: Object.fromEntries(CAPABILITIES.map((cap) => { const x = conns[cap]; return [cap, { mode: x.mode, ...(x.mode === "mcp" ? { server: x.server } : {}) }]; })) as SettingsView["connectors"],
+      calendar: conns.calendar.mode === "api" ? { timeZone: conns.calendar.timeZone, email: conns.calendar.email ?? "" } : null,
       repoRoots: [...(c.repoRoots ?? [])],
       onboarded: c.onboarded !== false,
       readSessions: c.readSessions !== false,
@@ -523,6 +525,7 @@ export class Settings {
       if (e instanceof ConfigFileError) return { ok: false, status: 409, error: e.message };
       return { ok: false, status: 500, error: `설정 파일을 쓰지 못했어요(${e?.code ?? "오류"}). 폴더 권한·남은 공간을 확인해 주세요` };
     }
+    if (patch.connectors) this.savedConnectors = resolveConnectors(this.env, file);
     if (patch.models) Object.assign(this.cfg.models, patch.models);
     if (patch.briefing?.exclude) this.cfg.briefing = { ...(this.cfg.briefing ?? {}), exclude: patch.briefing.exclude };
     if (patch.phrases) {

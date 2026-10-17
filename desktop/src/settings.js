@@ -109,7 +109,7 @@ export function sanitizeSettingsPatch(p) {
   if (p.user !== undefined) {
     if (!plain(p.user) || Object.keys(p.user).some((k) => k !== 'name' && k !== 'aliases')) return null;
     if (p.user.name !== undefined && p.user.name !== null && typeof p.user.name !== 'string') return null;
-    if (p.user.aliases !== undefined && (!Array.isArray(p.user.aliases) || p.user.aliases.length > 20 || !p.user.aliases.every((x) => typeof x === 'string' && x.length <= 200))) return null;
+    if (p.user.aliases !== undefined && (!Array.isArray(p.user.aliases) || p.user.aliases.length > 20 || !p.user.aliases.every((x) => typeof x === 'string' && x.trim().length <= 60))) return null;
     out.user = { ...p.user };
   }
   if (p.gitAuthor !== undefined) {

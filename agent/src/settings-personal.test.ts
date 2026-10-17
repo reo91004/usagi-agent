@@ -37,6 +37,10 @@ test("나·MCP·Tine·연결 설정: 검증 · 파일에 합쳐 쓰기 · cfg �
   assert.equal(file.connectors.calendar.icsUrl, "https://x/basic.ics"); // 시간대만 바꿔도 주소는 그대로
   assert.equal(file.connectors.calendar.timeZone, "America/New_York");
   assert.deepEqual(file.connectors.mail, { mode: "mcp", server: "gmail", preset: "gmail" });
+  // 연결은 재시작 뒤 적용 — 메모리 값은 그대로(재시작 판정용), 화면에는 저장한 값
+  assert.notEqual(cfg.connectors.mail.mode, "mcp");
+  assert.deepEqual(r.ok && r.settings.connectors.mail, { mode: "mcp", server: "gmail" });
+  assert.equal(r.ok && r.settings.calendar?.timeZone, "America/New_York");
   assert.deepEqual(seen.map((k) => [...k].sort()), [["allowMcp", "connectors", "gitAuthor", "tineGraph", "user"]]);
   assert.equal(s.put({ tineGraph: null }).ok, true);
   assert.equal(cfg.tineGraph, undefined);
