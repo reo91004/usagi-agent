@@ -1,12 +1,12 @@
 # 앱(dmg) 만들기와 내보내기
 
-비개발자가 받아 쓰는 「시사.app」 dmg를 만들고 GitHub Releases에 올리는 방법입니다. 애플 개발자 서명과 공증은 하지 않습니다.
+「우사기.app」 dmg를 만들어 GitHub Releases(`reo91004/usagi-agent`)에 올리고 Homebrew tap을 갱신하는 방법입니다. 애플 개발자 서명과 공증은 하지 않고, 자체 서명 인증서로 서명합니다.
 
 ## 앱 안에 든 것
 
-| 위치(`시사.app/Contents/`) | 내용 |
+| 위치(`우사기.app/Contents/`) | 내용 |
 |---|---|
-| `MacOS/shisa` | Electron 앱. 같은 실행 파일을 `ELECTRON_RUN_AS_NODE=1`로 띄우면 Node.js(Electron에 든 Node 24)로 동작합니다 |
+| `MacOS/usagi` | Electron 앱. 같은 실행 파일을 `ELECTRON_RUN_AS_NODE=1`로 띄우면 Node.js(Electron에 든 Node 24)로 동작합니다 |
 | `Resources/app.asar` | 데스크톱 앱 코드(`desktop/`의 main.js, preload, renderer, src) |
 | `Resources/agent/` | 데몬 소스(`agent/src`, 테스트 파일 제외)와 런타임 의존성(`npm ci --omit=dev`). Claude Agent SDK의 그 아키텍처용 실행 파일 패키지도 여기 들어갑니다 |
 | `Resources/assets/` | 캐릭터 그림·영상·스티커(레포 `assets/`) |
@@ -24,16 +24,16 @@
 
 로그인할 때 자동 실행(`app.setLoginItemSettings`)은 dmg로 깐 앱에서만 다룹니다. 설치 마법사를 마치면 켜지고, 설정의 「이 앱」에서 끌 수 있습니다. 터미널 설치(launchd), 개발 실행, `CY_AGENT_HOME`이나 기본이 아닌 `CY_AGENT_PORT`를 준 시험 실행, `CY_NO_LOGIN_ITEM=1`에서는 건드리지 않습니다.
 
-새 버전 알림은 하루 한 번 `https://api.github.com/repos/cheo0y/shisa-agent/releases?per_page=100`을 인증 없이 읽어서, 이 PC용 파일이 든 가장 높은 정식 버전이 `desktop/package.json`의 version보다 새로우면 캐릭터 말풍선으로 한 번 알립니다(`desktop/src/update-check.js`). 윈도우용 `v<버전>-windows` 릴리스는 윈도우 PC만 봅니다.
+새 버전 알림은 하루 한 번 `https://api.github.com/repos/reo91004/usagi-agent/releases?per_page=100`을 인증 없이 읽어서, 이 PC용 파일이 든 가장 높은 정식 버전이 `desktop/package.json`의 version보다 새로우면 캐릭터 말풍선으로 한 번 알립니다(`desktop/src/update-check.js`). 윈도우용 `v<버전>-windows` 릴리스는 윈도우 PC만 봅니다.
 
 ## 만들기
 
 ```bash
 cd desktop
 npm ci                 # 처음 한 번(@electron/packager)
-npm run dist           # 이 맥의 아키텍처 → dist/Shisa-<버전>-arm64.dmg
-npm run dist:x64       # 인텔 맥용 → dist/Shisa-<버전>-x64.dmg
-npm run dist -- --no-dmg   # dmg 없이 dist/app/시사-darwin-<arch>/시사.app 만
+npm run dist           # 이 맥의 아키텍처 → dist/Usagi-<버전>-arm64.dmg
+npm run dist:x64       # 인텔 맥용 → dist/Usagi-<버전>-x64.dmg
+npm run dist -- --no-dmg   # dmg 없이 dist/app/우사기-darwin-<arch>/우사기.app 만
 ```
 
 - 버전은 `desktop/package.json`의 `version`입니다. 내보내기 전에 올려 둡니다.
@@ -41,7 +41,7 @@ npm run dist -- --no-dmg   # dmg 없이 dist/app/시사-darwin-<arch>/시사.app
 - 아이콘은 개인 그림(`~/.cy-agent/assets`)이 아니라 레포 `assets/`의 그림으로 만듭니다.
 - `desktop/node_modules`가 없는 폴더(워크트리 등)에서는 다른 곳에 `npm ci`한 desktop 의존성을 `SHISA_BUILD_MODULES=<그 node_modules 경로>`로 알려 줍니다.
 - 서명은 키체인에 `Usagi Code Signing` 코드 서명 인증서가 있으면 그 인증서로, 없으면 ad-hoc(`codesign --force --deep --sign -`)으로 합니다. `USAGI_SIGN_IDENTITY=<인증서 이름이나 SHA-1>`로 다른 인증서를 고를 수 있습니다. 애플 실리콘은 서명이 아예 없으면 실행을 막기 때문에 어느 쪽이든 서명은 넣습니다. 빌드 끝에 지정 요구 사항(`codesign -d -r-`)을 출력합니다.
-- dmg는 macOS 기본 `hdiutil`로 「시사.app」과 「응용 프로그램」 바로가기를 담아 압축(UDZO)합니다.
+- dmg는 macOS 기본 `hdiutil`로 「우사기.app」과 「응용 프로그램」 바로가기를 담아 압축(UDZO)합니다.
 
 ## 업데이트해도 macOS 허락이 남게 하는 서명 인증서
 
@@ -63,19 +63,26 @@ security find-identity -p codesigning   # "Usagi Code Signing" 이 보이면 됩
 
 - 인증서를 신뢰로 바꿀 필요는 없습니다. 처음 서명할 때 키체인이 codesign의 키 사용을 물으면 「항상 허용」을 누릅니다.
 - 인증서로 처음 내보낸 버전에서 한 번 더 허락해야 하고, 그 뒤로는 같은 인증서로 서명하는 동안 허락이 남습니다. 다시 ad-hoc이나 다른 인증서로 내보내면 그때 또 한 번 풀립니다.
-- 모든 사용자의 허락이 이 개인 키 하나에 달려 있습니다. 키를 잃거나 다른 키로 내보내면 그 버전에서 모두 한 번 더 허락해야 하니 백업해 둡니다. 키체인 접근 → 로그인 → 내 인증서에서 `Usagi Code Signing`을 고르고 파일 → 항목 내보내기로 .p12(비밀번호 지정)를 만들어 비밀번호 관리자 같은 안전한 곳에 두고, Mac 에 남은 파일은 지웁니다. 다른 Mac 에서 릴리스를 만들 때는 그 파일을 `security import <파일> -k ~/Library/Keychains/login.keychain-db -P <비밀번호> -T /usr/bin/codesign`으로 넣습니다.
+- 키를 잃거나 다른 키로 내보내면 그 버전에서 모든 사용자가 허락을 한 번 더 해야 합니다. 아래 「서명 키 .p12 백업」을 해 둡니다.
 - 이 키를 가진 사람은 macOS가 우사기로 여기는 앱을 서명할 수 있으니 p12 파일은 나누지 않습니다.
 - 애플 Developer ID(유료 개발자 계정)로 바꾸면 같은 효과에 공증까지 할 수 있습니다. 그때는 `USAGI_SIGN_IDENTITY="Developer ID Application: …"`로 고르고 공증 단계를 더합니다.
+
+### 서명 키 .p12 백업
+
+- 왜: 서명 키는 이 Mac의 로그인 키체인에만 있습니다. Mac을 초기화하거나 바꾸면 사라지고, 새로 만든 인증서로 서명한 버전은 macOS가 다른 앱으로 보기 때문에 캘린더·미리알림 허락이 모두 풀립니다.
+- 내보내기: 키체인 접근 → 로그인 → 내 인증서에서 `Usagi Code Signing`을 고르고 파일 → 항목 내보내기. 형식은 개인 정보 교환(.p12)이고 비밀번호를 지정합니다. 인증서 왼쪽 화살표를 펼쳤을 때 개인 키가 딸려 있어야 합니다(키가 없는 p12는 서명에 쓸 수 없습니다).
+- 보관: p12 파일과 비밀번호를 비밀번호 관리자 같은 안전한 곳에 따로 둡니다. Mac에 내려받은 파일은 지우고, 다른 사람에게 주지 않습니다.
+- 다른 Mac에서 복원: `security import <파일> -k ~/Library/Keychains/login.keychain-db -P <비밀번호> -T /usr/bin/codesign` 후 `security find-identity -p codesigning`에 `Usagi Code Signing`이 보이는지 확인합니다.
 
 ## 손으로 확인하기
 
 실제 데이터(`~/.cy-agent`)와 포트(47823)를 건드리지 않게 임시 폴더와 빈 포트로 띄웁니다. 이때는 로그인 항목도 건드리지 않습니다.
 
 ```bash
-hdiutil attach dist/Shisa-<버전>-arm64.dmg -nobrowse -readonly -mountpoint /tmp/shisa-mnt
-ditto /tmp/shisa-mnt/시사.app /tmp/shisa-test/시사.app && hdiutil detach /tmp/shisa-mnt
-mkdir -p /tmp/shisa-home
-CY_AGENT_HOME=/tmp/shisa-home CY_AGENT_PORT=48300 /tmp/shisa-test/시사.app/Contents/MacOS/shisa
+hdiutil attach dist/Usagi-<버전>-arm64.dmg -nobrowse -readonly -mountpoint /tmp/usagi-mnt
+ditto /tmp/usagi-mnt/우사기.app /tmp/usagi-test/우사기.app && hdiutil detach /tmp/usagi-mnt
+mkdir -p /tmp/usagi-home
+CY_AGENT_HOME=/tmp/usagi-home CY_AGENT_PORT=48300 /tmp/usagi-test/우사기.app/Contents/MacOS/usagi
 curl -s http://127.0.0.1:48300/status   # 다른 터미널에서
 ```
 
@@ -87,16 +94,28 @@ sh ops/release.sh --publish   # gh release create v<버전> 까지 실행합니�
 SHISA_ARCHS=arm64 sh ops/release.sh   # 한 아키텍처만
 ```
 
-`--publish`가 실행하는 명령은 아래와 같습니다. `gh`에 로그인한 계정이 `cheo0y/shisa-agent`에 쓸 수 있어야 합니다.
+`--publish`가 실행하는 명령은 아래와 같습니다. `gh`에 로그인한 계정이 `reo91004/usagi-agent`에 쓸 수 있어야 합니다.
 
 ```bash
-gh release create v<버전> desktop/dist/Shisa-<버전>-arm64.dmg desktop/dist/Shisa-<버전>-x64.dmg desktop/dist/SHA256SUMS-<버전>.txt \
-  --repo cheo0y/shisa-agent --title "시사 v<버전>" --notes-file desktop/dist/release-notes-<버전>.md
+gh release create v<버전> desktop/dist/Usagi-<버전>-arm64.dmg desktop/dist/Usagi-<버전>-x64.dmg desktop/dist/SHA256SUMS-<버전>.txt \
+  --repo reo91004/usagi-agent --title "우사기 v<버전>" --notes-file desktop/dist/release-notes-<버전>.md
 ```
 
-같은 태그가 이미 있으면 멈춥니다. 파일만 바꾸려면 `gh release upload v<버전> <파일> --clobber --repo cheo0y/shisa-agent`를 씁니다.
+같은 태그가 이미 있으면 멈춥니다. 파일만 바꾸려면 `gh release upload v<버전> <파일> --clobber --repo reo91004/usagi-agent`를 씁니다.
+
+## Homebrew tap 갱신
+
+`ops/release.sh`는 두 아키텍처 dmg가 다 있을 때 `desktop/dist/usagi-agent.rb`(cask)를 만듭니다. 릴리스를 올린 뒤 tap에 복사해서 올립니다(tap 저장소는 `reo91004/homebrew-tap`).
+
+```bash
+cp desktop/dist/usagi-agent.rb $(brew --repo reo91004/tap)/Casks/
+cd $(brew --repo reo91004/tap) && git add Casks/usagi-agent.rb && git commit -m "usagi-agent <버전>" && git push
+brew update && brew upgrade --cask usagi-agent   # 설치한 Mac에서
+```
+
+cask는 `우사기.app`을 설치하고 `usagi-run`을 PATH에 연결하며, 받은 앱의 격리 표시(quarantine)를 지웁니다. `brew uninstall --zap --cask usagi-agent`는 `~/.cy-agent`까지 지웁니다.
 
 ## 남은 것
 
-- 애플 개발자 서명과 공증을 하지 않아서, 처음 열 때 「그래도 열기」를 한 번 거쳐야 합니다(README 「쉬운 설치(앱)」). 개발자 계정이 생기면 `@electron/packager`의 `osxSign`·`osxNotarize` 옵션으로 바꿀 수 있습니다.
-- 자동 업데이트는 하지 않습니다. 새 버전 알림을 보고 dmg를 받아 덮어씁니다.
+- 애플 개발자 서명과 공증을 하지 않아서, 처음 열 때 「그래도 열기」를 한 번 거쳐야 합니다(README 「설치와 업데이트」의 dmg 항목, Homebrew 설치는 격리 표시를 지워서 필요 없음). 개발자 계정이 생기면 `@electron/packager`의 `osxSign`·`osxNotarize` 옵션으로 바꿀 수 있습니다.
+- 자동 업데이트는 하지 않습니다. 새 버전 알림을 보고 `brew upgrade --cask usagi-agent`를 하거나 dmg를 받아 덮어씁니다.
