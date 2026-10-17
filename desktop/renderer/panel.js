@@ -3,7 +3,8 @@ import DOMPurify from './vendor/purify.js';
 import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
 import { shapeDashboard, shapeGpu, overlayHidden, priorityLabel, SECTIONS, SECTION_LABELS, normalizeSection, relativeTime, clockTime, visibleSections } from '../src/dashboard.js';
-import { needsSetup, stepForCap } from '../src/setup.js';
+import { needsSetup } from '../src/setup.js';
+import { REPO_SLUG } from '../src/update-check.js';
 import { isFeature, isAgent, buildWalk, agentSteps } from '../src/setup-flow.js';
 import { renderSetup, clearApiDraft, readSlot, clearSlot } from './setup-view.js';
 import { mountModels } from './models-view.js';
@@ -16,7 +17,7 @@ import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, se
 import { stamp, withDayDividers } from '../src/chat-time.js';
 import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
 import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, descriptionPatch, isDoing, patchToday, isToday } from '../src/todos.js';
-import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
+import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
 import { trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey, createUndo, readTrashOpen, writeTrashOpen, overTrash, CONFIRM_TEXT, UNDO_MS } from '../src/todo-trash.js';
@@ -116,7 +117,7 @@ let error = null;
 let connected = false;
 // 이 컴퓨터의 Claude Code·Codex(모르면 있다고 본다)
 let caps = { claude: null, codex: null, agy: null };
-const hasCoder = () => caps.claude !== false;
+const hasCoder = () => (caps.code ?? caps.claude) !== false; // 코드 고치기(main 이 데몬 features.code 를 붙여 준다)
 let section = 'overview';
 try { section = normalizeSection(localStorage.getItem('section')) ?? 'overview'; } catch { /* 저장소 없음 */ }
 let setupPhase = 'name'; // name·brain·ai-key·extras·connect·done (setup-plan.js — 키·토큰은 저장하지 않는다)
@@ -573,13 +574,15 @@ function connectorChip(c) {
   if (c.mode === 'off') return h('span.chip', { text: '연결 안 됨' });
   return h(`span.chip.${c.ready ? 'ok' : 'warn'}`, { text: `${c.ready ? '연결됨' : '준비 안 됨'} · ${c.modeLabel}` });
 }
+// 설치 탭 「더 연결하기」에 있는 연결(Slack·캘린더)은 거기로, 메일·이슈는 연결 안내 문서(GitHub)로
+const howToConnect = (c) => (c.cap === 'slack' || c.cap === 'calendar' ? openSetup('extras') : cy.openLink(`https://github.com/${REPO_SLUG}/blob/main/${c.doc}`));
 function connectorActions(c) {
   if (connectorAction(c) === 'connect') {
-    return [h('button.primary.small.conn-connect', { type: 'button', text: '연결하기', onclick: () => openSetup(stepForCap(c.cap)) })];
+    return [h('button.primary.small.conn-connect', { type: 'button', text: '연결하기', onclick: () => howToConnect(c) })];
   }
   const copy = connectorDisconnectCopy(c.cap, c.server);
   return [
-    c.ready ? null : h('button.ghost.setup-jump', { type: 'button', text: '설정 안내', onclick: () => openSetup(stepForCap(c.cap)) }),
+    c.ready ? null : h('button.ghost.setup-jump', { type: 'button', text: '설정 안내', onclick: () => howToConnect(c) }),
     disconnectControl(document, {
       ...copy,
       open: confirmingCap === c.cap,
@@ -688,6 +691,16 @@ function keyFail(error) {
 // 캐릭터를 바꾸면 설치 화면(그림·말)도 다시
 onWho(() => { if (section === 'setup') renderSetupView(false); });
 
+// 「더 연결하기」 항목의 연결됨 표시: 앱이 기억한 표시(sisa done)가 아니라 지금 설정 — 붙인 캘린더 주소의 종류·Slack 연결
+function extrasDone() {
+  const slack = (vm.connectors || []).find((c) => c.cap === 'slack');
+  return {
+    gcal: setupCalendars.some((c) => c.kind === 'gcal'),
+    outlook: setupCalendars.some((c) => c.kind !== 'gcal'),
+    slack: !!slack && slack.mode !== 'off',
+  };
+}
+
 function renderSetupView(resetScroll) {
   if (section !== 'setup') {
     clearInterval(loginTimer);
@@ -695,13 +708,13 @@ function renderSetupView(resetScroll) {
     return;
   }
   clampSetupCursor();
-  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupAgent}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${setupPicked.join(',')}|${JSON.stringify(setupChoices)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupApple)}|${JSON.stringify(setupSlotError)}`;
+  const key = `${whoId()}|${setupPhase}|${setupName}|${setupRepos.join(',')}|${setupReadSessions}|${JSON.stringify(detected)}|${JSON.stringify(brain)}|${(sisa.connected || []).join(',')}|${setupAgent}|${setupLink}|${setupCursor}|${keyStatus}|${keyNote}|${gskFound}|${JSON.stringify(sisa.done)}|${setupPicked.join(',')}|${JSON.stringify(setupChoices)}|${agentLoginState.loggedIn}|${agentLoginState.installed}|${JSON.stringify(setupCalendars)}|${JSON.stringify(setupApple)}|${JSON.stringify(setupSlotError)}|${JSON.stringify(vm.connectors)}|${JSON.stringify(vm.research?.hosts)}|${!!vm.research?.note}`;
   if (!resetScroll && key === setupKey && $('sec-setup').childElementCount) {
     watchAgentLogin();
     return;
   }
   setupKey = key;
-  if (setupPhase === 'extras') { loadCalendars(); if (!setupApple) loadApple(); }
+  if (setupPhase === 'extras' || setupPhase === 'done') { loadCalendars(); if (!setupApple) loadApple(); }
   const top = resetScroll ? 0 : ($('sec-setup').querySelector('.setup-scroll')?.scrollTop ?? 0);
   const redraw = (scroll) => { setupKey = ''; renderSetupView(scroll); };
   renderSetup($('sec-setup'), {
@@ -714,8 +727,10 @@ function renderSetupView(resetScroll) {
     link: setupLink,
     connectAgent: connectAgentNow(),
     keyStatus,
-    done: sisa.done,
+    done: extrasDone(),
     connected: sisa.connected,
+    connectors: vm.connectors,
+    research: vm.research,
     name: setupName,
     detected,
     current: sisa.provider,
@@ -965,7 +980,7 @@ function renderSetupView(resetScroll) {
           redraw(true);
           return;
         }
-        const url = (setupLink === 'gcal' || setupLink === 'outlook') ? readSlot(setupLink) : '';
+        const url = (setupLink === 'gcal' || setupLink === 'outlook' || setupLink === 'slack') ? readSlot(setupLink) : ''; // Slack 은 사용자 토큰
         let mark = null;
         try { mark = await cy.sisaMark(setupLink, url); } catch { /* 표시만 남긴다 */ }
         if (mark?.duplicate) {
@@ -975,6 +990,7 @@ function renderSetupView(resetScroll) {
           return;
         }
         setupSlotError = null;
+        if (setupLink === 'slack') clearSlot('slack'); // 토큰은 화면에 남기지 않는다
         if ((afterConnect === 'claudecode' && setupLink === 'claude') || (afterConnect === 'codexcli' && setupLink === 'codex') || (afterConnect === 'agycli' && setupLink === 'agy')) {
           afterConnect = '';
           try { await cy.sisaUseCli(setupLink); } catch { /* 목록에서 다시 고르면 된다 */ }
@@ -1672,7 +1688,7 @@ function todoRow(t) {
   h('input.check', { type: 'checkbox', 'aria-label': `완료: ${t.title}`, title: '완료', disabled: t.pending, onchange: () => completeTodo(t) }),
   // (진행중): 사용자가 ▶ 로 켠 것, 아니면 작업 세션을 보니 하는 중(todo-progress.ts 가 진척을 남김) → 제목 앞
   h('span.t', null, isDoing(t) ? h('span.doing', { text: '(진행중) ', title: t.progress ? `진행: ${t.progress}` : '직접 진행중으로 표시' }) : null, t.title),
-  t.source ? h('span.chip', { text: t.source === 'user' ? '직접 추가' : t.source }) : null,
+  t.source ? h('span.chip', { text: SOURCE_LABELS[t.source] ?? t.source }) : null,
   confirming ? null : todayButton(t),
   confirming ? null : doingButton(t),
   confirming ? confirmBox('trash', () => trashTodo(t)) : trashButton(t));
@@ -3232,7 +3248,7 @@ $('refresh').addEventListener('click', () => { cy.refreshSources?.(); load(); lo
 $('open-session')?.addEventListener('click', () => cy.openSession?.());
 // 이 컴퓨터에 Claude Code 가 없으면(Gemini·GPT 키·로컬) 코드 관련 버튼(작업 세션)은 숨긴다
 function applyCaps(c) {
-  if (c && typeof c === 'object' && 'claude' in c) caps = { claude: c.claude, codex: c.codex, agy: c.agy };
+  if (c && typeof c === 'object' && 'claude' in c) caps = { claude: c.claude, codex: c.codex, agy: c.agy, code: c.code };
   for (const id of ['open-session']) { const b = $(id); if (b) b.hidden = !hasCoder(); }
   if (section === 'chat') renderChat();
 }

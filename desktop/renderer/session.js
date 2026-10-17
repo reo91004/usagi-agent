@@ -691,13 +691,13 @@ $('btn-claude').addEventListener('click', () => openInClaude());
 const applyBrain = (v) => { if (v && typeof v === 'object') { brain = v; renderHead(); } };
 cy.brain?.().then(applyBrain).catch(() => {});
 cy.onBrain?.(applyBrain);
-// Claude Code 가 없는 컴퓨터: 새 작업(코드 고치기)은 숨기고, 세션 목록 위에 쉬운 안내
+// 코드를 고칠 수 없는 뇌(키·로컬 뇌에 Claude Code 도 없음): 새 작업은 숨기고, 세션 목록 위에 쉬운 안내
 cy.caps?.().then((c) => {
-  if (c?.claude !== false) return;
+  if ((c?.code ?? c?.claude) !== false) return;
   $('btn-new').hidden = true;
   const note = document.createElement('div');
   note.className = 'empty';
-  note.textContent = '코드 고치기·새 작업은 Claude Code 가 있어야 해요. 여기서는 브리핑·대화 기록만 볼 수 있어요.';
+  note.textContent = '코드 고치기·새 작업은 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 여기서는 브리핑·대화 기록만 볼 수 있어요.';
   $('btn-new').after(note);
 }).catch(() => {});
 

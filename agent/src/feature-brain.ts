@@ -15,7 +15,9 @@ export type CodexStat = { costUsd: number; inTokens: number; outTokens: number; 
 export const NEEDS_CODER = "이 기능은 Claude Code·Codex·Antigravity 가 있어야 돌아요";
 export const NEEDS_CLAUDE_MCP = "MCP 연결(메일·이슈·캘린더·Slack)은 Claude Code·Codex·Antigravity 뇌일 때만 읽어요";
 export const MCP_CHAT_ONLY = "Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요(브리핑·캘린더 동기화는 Claude Code 뇌일 때)";
-export const MCP_CLI_UNUSABLE = "Codex·Antigravity 로 읽으려면 connectors 의 tools 에 읽기 도구 이름이 있고, Claude Code 에 stdio·http 서버로 등록돼 있어야 해요";
+export const MCP_CLI_UNUSABLE = "Codex·Antigravity 로 읽으려면 connectors 의 tools 에 읽기 도구 이름이 있고, Claude Code 에 stdio 서버나 헤더(토큰)로 붙는 http 서버로 등록돼 있어야 해요. Claude Code 안에서 로그인한 서버(Slack 공식·Jira 등)는 넘기지 못해요";
+// 캘린더 MCP 동기화(일정 알림·오늘 일정)는 Claude Code 뇌로만 돈다(calendar-sync.ts mcpCalendarSource)
+export const CAL_MCP_CLAUDE_ONLY = "캘린더 MCP 는 Claude Code 뇌일 때만 일정을 가져와요. 이 Mac 캘린더나 ICS 주소는 어떤 뇌든 돼요";
 // 뇌가 Claude Code 가 아닐 때 MCP 연결 줄에 붙일 말
 export const mcpBrainNote = (provider?: string) => (provider === "codex" || provider === "agy" ? MCP_CHAT_ONLY : NEEDS_CLAUDE_MCP);
 
@@ -43,9 +45,9 @@ export function skipQuietly(feature: string, cfg: Pick<Config, "brain">, log: (s
 }
 export function resetSkipNotes() { noted.clear(); }
 
-// 패널·상태용 커넥터 목록: Codex·agy 뇌면 넘길 수 있는 서버(usable — cli-mcp.ts cliMcpServers 의 이름, 그 뇌일 때만 부른다)만 준비됨 + 「채팅에서만」,
+// 패널·상태용 커넥터 목록(대시보드·GET /status 가 같이 쓴다): Codex·agy 뇌면 넘길 수 있는 서버(usable — cli-mcp.ts cliMcpServers 의 이름, 그 뇌일 때만 부른다)만 준비됨 + 「채팅에서만」(캘린더는 동기화가 안 돌아 준비 안 됨),
 // 그 밖의 뇌면 MCP 연결은 준비 안 됨 + 이유(등록돼 있어도 읽지 않으니까)
-export function withMcpBrain<T extends { mode: string; ready: boolean; detail?: string; server?: string }>(cfg: Pick<Config, "brain">, list: T[], usable: () => readonly string[] = () => []): T[] {
+export function withMcpBrain<T extends { cap?: string; mode: string; ready: boolean; detail?: string; server?: string }>(cfg: Pick<Config, "brain">, list: T[], usable: () => readonly string[] = () => []): T[] {
   const p = cfg.brain?.provider ?? "claude-code";
   if (p === "claude-code") return list;
   const cli = p === "codex" || p === "agy";
@@ -54,6 +56,7 @@ export function withMcpBrain<T extends { mode: string; ready: boolean; detail?: 
     if (c.mode !== "mcp") return c;
     if (!cli) return { ...c, ready: false, detail: NEEDS_CLAUDE_MCP };
     if (!c.ready) return c; // 등록 안 됨 같은 원래 이유
+    if (c.cap === "calendar") return { ...c, ready: false, detail: CAL_MCP_CLAUDE_ONLY };
     return ok.includes(c.server ?? "") ? { ...c, detail: `${c.detail} · ${MCP_CHAT_ONLY}` } : { ...c, ready: false, detail: MCP_CLI_UNUSABLE };
   });
 }

@@ -114,12 +114,12 @@ test('[빼기] 문구·반영 안내', () => {
   const row = { title: '구글 캘린더', label: 'chae…@gmail.com' };
   assert.equal(calendarRemoveCopy(row, false).ask, '구글 캘린더 「chae…@gmail.com」를 뺄까요?');
   assert.match(calendarRemoveCopy(row, false).note, /이 주소만/);
-  assert.match(calendarRemoveCopy(row, true).note, /마지막 캘린더라서 빼면 캘린더 연결이 꺼져요/);
+  assert.match(calendarRemoveCopy(row, true).note, /마지막 주소라서 빼면 주소로 읽는 캘린더는 꺼져요. 이 Mac 캘린더를 연결해 두었으면 그건 그대로예요/);
   assert.equal(calendarRemoveCopy(row, true).label, '빼기');
   for (const c of [calendarRemoveCopy(row, false), calendarRemoveCopy(row, true)]) assert.ok(!Object.values(c).join('').includes('—'), 'em dash 없음');
-  assert.equal(calendarReloadNote({ changed: true, restarting: true }, false), '시사가 잠깐 다시 켜지며 적용돼요.');
-  assert.equal(calendarReloadNote({ changed: true, restarting: false }, false), '시사를 다시 켜면 적용돼요.');
-  assert.equal(calendarReloadNote(null, true), '시사가 꺼져 있어서 다음에 켤 때 적용돼요.');
+  assert.equal(calendarReloadNote({ changed: true, restarting: true }, false), '잠깐 다시 켜지며 적용돼요.');
+  assert.equal(calendarReloadNote({ changed: true, restarting: false }, false), '다시 켜면 적용돼요.');
+  assert.equal(calendarReloadNote(null, true), '지금 꺼져 있어서 다음에 켤 때 적용돼요.');
   assert.equal(calendarReloadNote({ changed: false, restarting: false }, false), '');
 });
 
@@ -220,7 +220,7 @@ test('설치 탭 「더 연결할까요?」: 연결된 캘린더 목록(가린 �
   renderSetup(root, { ...state, calendars: calendars.slice(0, 1) });
   const one = root.byClass('setup-cals')[0];
   one.byClass('dc-open')[0].fire('click');
-  assert.match(one.text, /마지막 캘린더라서/);
+  assert.match(one.text, /마지막 주소라서/);
   renderSetup(root, { ...state, calendars: [] });
   assert.equal(root.byClass('setup-cals').length, 0);
 

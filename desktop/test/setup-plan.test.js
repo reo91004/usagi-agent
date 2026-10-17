@@ -45,10 +45,15 @@ test('코딩 도구: 연결 끝낸 것 또는 시사 AI 로 쓰는 것', () => {
   assert.equal(agentFrom(), null);
 });
 
-test('끝 화면 요약: 된 것과 나중에 할 것', () => {
-  const s = setupSummary({ brain: { ready: true, label: 'Gemini' }, done: { gcal: true }, repos: ['/Users/me/code'], name: '홍길동' });
+test('끝 화면 요약: 된 것과 나중에 할 것 — 캘린더·Slack 은 데몬 연결 상태, 미리알림·실험 서버·연구 노트는 있을 때만', () => {
+  const s = setupSummary({ brain: { ready: true, label: 'Gemini' }, connectors: [{ cap: 'calendar', mode: 'api', ready: true, detail: '이 Mac 캘린더' }, { cap: 'slack', mode: 'off', ready: false, detail: '연결 안 됨' }], repos: ['/Users/me/code'], name: '홍길동' });
   assert.deepEqual(s.map((x) => [x.id, x.ok]), [['name', true], ['brain', true], ['calendar', true], ['slack', false], ['repos', true], ['sessions', false]]);
   assert.equal(s[1].text, 'Gemini');
+  assert.equal(s[2].text, '이 Mac 캘린더');
+  assert.equal(s[3].text, '나중에');
+  const more = setupSummary({ apple: { available: true, connected: { reminders: true } }, research: { hosts: ['gpu1', 'gpu2'], note: { day: '2026-10-17' } } });
+  assert.deepEqual(more.filter((x) => ['reminders', 'ssh', 'note'].includes(x.id)).map((x) => [x.id, x.ok, x.text]), [['reminders', true, '안 끝난 미리알림을 할 일로 가져와요'], ['ssh', true, 'gpu1, gpu2'], ['note', true, 'Tine 「우사기 연구 노트」에 그날 한 일을 써요']]);
+  assert.equal(setupSummary({ apple: { available: false } }).some((x) => x.id === 'reminders'), false, '도우미가 없는 실행은 미리알림 줄이 없다');
   const none = setupSummary({ brain: { ready: true, local: true } });
   assert.equal(none.every((x) => !x.ok), true, '로컬 뇌는 연결로 치지 않는다');
   assert.match(none[1].text, /나중에/);

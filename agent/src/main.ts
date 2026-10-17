@@ -30,7 +30,7 @@ import { CalendarSync, alertDetail } from "./calendar-sync.ts";
 import { withRun, asRoutine } from "./runs.ts";
 import { KgBackfill } from "./kg/backfill.ts";
 import { refineIncremental } from "./kg/refine.ts";
-import { connectorStatus, connectorsChanged, resolveConnectors } from "./connectors.ts";
+import { connectorStatus, connectorsChanged, resolveConnectors, slackIngestMode } from "./connectors.ts";
 import { phrase, phraseVoice } from "./phrases.ts";
 import { probeGh } from "./gh.ts";
 import { CliSync } from "./cli-sync.ts";
@@ -222,7 +222,7 @@ await bus.listen(cfg.port, {
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
     ...(() => { const r = researchSummary(cfg, store); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
-    ...(conns.slack.mode !== "off" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(Slack 을 연결했을 때만)
+    ...(slackIngestMode(conns) === "api" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(api 모드일 때만 — 재료는 api 수집만 쌓는다)
   }),
   researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
   directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
@@ -438,7 +438,7 @@ const slackTick = asRoutine(safe("slack-ingest", async () => {
   await safe("slack-todos", () => agent.slackTodosNow())(); // 새 DM·멘션은 바로 할 일로(정기 브리핑을 기다리지 않는다)
 }));
 
-// ↻ 새로고침(패널): 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
+// ↻ 새로고침(패널): 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 미리알림 맞추기 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
 // 새 할 일은 「할 일 추가했어요」 말풍선(reactions.newTodos)으로 뜬다. 동시에 눌러도 한 번만
 let refreshing: Promise<void> | undefined;
 const refreshAll = () => (refreshing ??= (async () => {
@@ -446,6 +446,7 @@ const refreshAll = () => (refreshing ??= (async () => {
   bus.bubble({ id: "refresh", text: phrase("refresh_prog"), kind: "info", ttlMs: 60e3 });
   const before = new Set(store.openTodos().map((t) => t.id));
   await slackTick();
+  await syncRemindersNow();
   await agent.runBriefing();
   if (!store.openTodos().some((t) => !before.has(t.id))) bus.bubble({ id: "refresh", text: phrase("refresh_none"), kind: "info", ttlMs: 6e3 });
 })().finally(() => { refreshing = undefined; }));

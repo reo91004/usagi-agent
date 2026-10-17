@@ -1,5 +1,5 @@
 // 이 Mac 의 캘린더·미리알림(EventKit, #53). 앱에 든 Swift 도우미(desktop/native/usagi-eventkit.swift → Resources/bin/usagi-eventkit)를 부른다.
-//   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS·Google 로그인과 합쳐진다)
+//   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS 주소와 합쳐진다)
 //   미리알림: config appleReminders → 10분마다 안 끝난 것은 할 일로(reminder:<id>), 미리알림에서 끝낸 것은 할 일도 끝낸다(읽기 전용, 되쓰지 않음)
 //   도우미가 맥 안 DB 를 읽기만 해서 네트워크를 쓰지 않는다. 한 번에 수십 ms
 import { execFile } from "node:child_process";

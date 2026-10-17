@@ -32,7 +32,8 @@ export function normStatus(raw) {
   };
 }
 
-// { status, sisa, caps } → { ready, known, provider, label, local, coder, codex, detail, connected: [cap…], background, mcp, needsClaude: [cap…] }
+// { status, sisa, caps } → { ready, known, provider, label, local, coder, code, codex, detail, connected: [cap…], background, mcp, needsClaude: [cap…] }
+// coder: 이 맥에 Claude Code 로그인(워크트리·백그라운드 에이전트) · code: 코드 고치기·이어 하기를 할 수 있나(뇌에 따라)
 // background: 뒤에서 하는 정리를 누가 돌리나('claude-code' | 'codex' | 'agy' | null) · mcp: MCP 연결을 읽나(Claude Code 뇌, Codex·agy 뇌는 채팅에서만) · needsClaude: Claude Code 뇌여야 읽는 연결
 // ready: 말 걸 수 있나. 확인 중(Claude Code 로그인 확인 전)이면 막지 않는다(known=false) — 앱이 본 로그인이 없다고 할 때만 막는다
 export function brainView({ status = null, sisa = null, caps = null } = {}) {
@@ -50,6 +51,7 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
       local: st.brain.local,
       detail: st.brain.detail,
       coder: claude !== false,
+      code: st.features.code ?? claude !== false, // 코드 고치기·이어 하기(뇌가 Codex·agy 면 그 명령 — 데몬 features.code)
       codex: st.coder.codex || caps?.codex === true,
       agy: st.coder.agy || caps?.agy === true,
       connected: st.connectors.filter((c) => c.ready).map((c) => c.cap),
@@ -63,7 +65,7 @@ export function brainView({ status = null, sisa = null, caps = null } = {}) {
   const hasKey = !!sisa?.hasKey;
   return {
     ready: hasKey, known: false, provider: str(sisa?.provider, 40), label: '', local: sisa?.provider === 'none', detail: '',
-    coder: capClaude !== false, codex: caps?.codex === true, agy: caps?.agy === true, connected: [], name: '',
+    coder: capClaude !== false, code: capClaude !== false, codex: caps?.codex === true, agy: caps?.agy === true, connected: [], name: '',
     background: null, mcp: null, needsClaude: [],
   };
 }

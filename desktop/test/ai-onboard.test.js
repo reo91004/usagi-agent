@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   AI_PROVIDERS, CLI_PROVIDERS, HUB, PLANS, SISA_SAY, planById,
-  connectSteps, cannedReply, slotCheck, DEFAULT_PERSONA,
+  connectSteps, cannedReply, slotCheck, slotOk, DEFAULT_PERSONA, SLACK_MANIFEST,
 } from '../src/ai-onboard.js';
 import { checkLlm } from '../src/llm-check.js';
 
@@ -12,14 +13,19 @@ test('AI 공급자는 넷이고, 슬랙은 쿠키를 쓰지 않는다', () => {
   assert.deepEqual(AI_PROVIDERS.map((p) => p.id), ['gemini', 'claude', 'openai', 'genspark']);
   assert.equal(/xoxc/.test(DEFAULT_PERSONA), false);
   assert.match(DEFAULT_PERSONA, /스이시~사/);
-  const slack = all(connectSteps('slack', 'claude'));
-  assert.equal(/xoxc|xoxd|SLACK_MCP/.test(slack), false);
-  assert.match(slack, /--client-id 1601185624273\.8899143856786 --callback-port 3118 slack https:\/\/mcp\.slack\.com\/mcp/);
-  assert.match(slack, /claude mcp remove slack --scope user/);
-  assert.match(slack, /\/plugin install slack@claude-plugins-official/);
-  assert.match(slack, /plugin:slack:slack/);
-  assert.equal(connectSteps('slack', 'codex')[0].gate, 'blocked');
-  assert.equal(connectSteps('slack', null)[0].gate, 'blocked');
+  // Slack: 어떤 뇌든 읽기 전용 앱의 사용자 토큰(xoxp-)을 붙인다. 쿠키·봇 토큰은 받지 않는다
+  for (const agent of ['claude', 'codex', 'agy', null]) {
+    const slack = all(connectSteps('slack', agent));
+    assert.equal(/xoxc|xoxd|SLACK_MCP/.test(slack), false);
+    assert.deepEqual(connectSteps('slack', agent).map((s) => s.id), ['slack-app', 'slack-token']);
+  }
+  const tok = (kind) => [kind, '1234567890', '1234567890', 'abcdefabcdef'].join('-'); // 비밀값 검사에 걸리지 않게 조각으로
+  assert.equal(slotOk('slack', tok('xoxp')), true);
+  for (const bad of [tok('xoxb'), tok('xoxc'), 'xoxp-짧음', 'xoxp-123 456']) assert.equal(slotOk('slack', bad), false, bad);
+  // 마법사의 매니페스트는 ops/slack-readonly-manifest.yaml 과 같아야 한다(주석 줄만 빼고)
+  const yaml = readFileSync(new URL('../../ops/slack-readonly-manifest.yaml', import.meta.url), 'utf8');
+  assert.equal(SLACK_MANIFEST, `${yaml.split('\n').filter((l) => !l.startsWith('#')).join('\n').trim()}\n`);
+  assert.doesNotMatch(SLACK_MANIFEST, /chat:write|:write\b/, '쓰기 스코프 없음');
   assert.ok(HUB.find((h) => h.id === 'slack'));
   for (const agent of ['claude', 'codex', null]) {
     assert.equal(/xoxc/.test(all(connectSteps('jira', agent))), false);

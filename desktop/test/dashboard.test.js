@@ -130,7 +130,7 @@ test('shapeConnectors: 아는 기능·모드만, 필드 검증, 중복은 앞의
     null, 'x', 42,
   ]);
   assert.deepEqual(c.map((x) => [x.cap, x.label, x.mode, x.modeLabel, x.ready]), [
-    ['slack', 'Slack', 'api', 'API', true],
+    ['slack', 'Slack', 'api', '직접', true],
     ['calendar', '캘린더', 'mcp', 'MCP', false],
     ['mail', '메일', 'off', '꺼짐', false],
   ]);

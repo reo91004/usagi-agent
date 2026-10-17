@@ -1,6 +1,6 @@
 // 모델 탭: 연결된 AI마다 쓸 수 있는 모델 목록을 보여 주고, 단순 채팅·코딩 작업에 쓸 모델을 고른다.
 // 말투(AI 연결 시)와 정해진 말(연결 안 됐을 때)도 여기서 고친다. 키는 이 화면에 오지 않는다.
-// 연결된 AI 마다 [연결 해제]: 키는 지우고, Claude Code·Codex 는 시사에서만 안 쓴다(CLI 로그인은 그대로). 지금 쓰던 AI 면 「AI 없이 쓰기」로.
+// 연결된 AI 마다 [연결 해제]: 키는 지우고, Claude Code·Codex·agy 는 이 앱에서만 안 쓴다(CLI 로그인은 그대로). 지금 쓰던 AI 면 「AI 없이 쓰기」로.
 
 import { who } from './who.js';
 import { CANNED, CANNED_CATALOG, CANNED_DEFAULTS } from '../src/canned.js';
@@ -105,7 +105,7 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
     busy = false;
     if (r?.ok) {
       onSisa(r);
-      // 대화 AI·코딩 모델은 시사가 다시 켜질 때 읽는다
+      // 대화 AI·코딩 모델은 데몬이 다시 켜질 때 읽는다
       note = 'code' in pick || r.brainSaved ? `저장함. ${who()}를 다시 켜면 대화·브리핑에도 적용돼요` : '저장함';
     } else {
       note = r?.error || '저장하지 못했어요.';
@@ -155,16 +155,18 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup }) {
         select(optionsFor(active, lists[active], model), model, (m) => save({ chat: { provider: active, model: m } }), busy)));
   }
 
+  // 코드 고치기·이어 하기: 뇌가 Codex·Antigravity 면 그 CLI 로(데몬 fixer), 그 밖에는 Claude Code 로 — 여기 모델은 Claude 쪽만
   function codeCard(sisa) {
     const canCode = sisa.connected.some((p) => p === 'claudecode' || p === 'claude');
+    const cli = sisa.provider === 'codexcli' || sisa.provider === 'agycli' ? PROVIDER_TITLE[sisa.provider] : '';
     const current = sisa.codeModel || 'default';
     return h('div.card.models-card', null,
       h('h2', { text: '코딩 작업' }),
+      cli ? h('p.muted.small', { text: `뇌가 ${cli}라서 코드 고치기·이어 하기도 ${cli}로 해요.${canCode ? ' 아래 모델은 뇌를 Claude Code 로 바꾸면 써요.' : ''}` }) : null,
       canCode
         ? h('label.model-row', null, h('span', { text: '모델' }),
           select(codeOptions(lists, sisa.connected, current), current, (m) => save({ code: m }), busy))
-        : h('p.muted', { text: 'Claude를 연결하면 고를 수 있습니다' }),
-      (sisa.connected.includes('codexcli') || sisa.connected.includes('agycli')) ? h('p.muted.small', { text: '코딩은 Claude만 씁니다' }) : null);
+        : cli ? null : h('p.muted', { text: 'Claude Code·Codex·Antigravity 중 하나를 연결하면 코드를 고칠 수 있어요' }));
   }
 
   function disconnectFor(p) {

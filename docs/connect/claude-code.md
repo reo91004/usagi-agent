@@ -1,6 +1,6 @@
 # Claude Code 준비: 로그인과 MCP 서버 등록
 
-Claude Code는 시사의 뇌 중 하나입니다(기본값 `brain.provider: "claude-code"`). 코드 고치기, 워크트리, 백그라운드 에이전트, 작업 세션, 자동 머지는 뇌를 다른 것으로 골라도 오직 Claude Code로만 돌아갑니다. 대화와 브리핑만 쓰실 거라면 Claude Code 없이 Codex·Gemini·OpenAI·Claude API 키로도 충분합니다([brain.md](brain.md) 참고).
+Claude Code는 시사의 뇌 중 하나입니다(기본값 `brain.provider: "claude-code"`). 워크트리와 백그라운드 에이전트는 뇌를 다른 것으로 골라도 Claude Code로만 돌아갑니다. 코드 고치기·작업 세션·자동 머지는 뇌가 Codex·Antigravity 면 그 CLI 로, 그 밖에는 Claude Code 로 돕니다. 대화와 브리핑만 쓰실 거라면 Claude Code 없이 Codex·Antigravity·Gemini·OpenAI·Claude API·Genspark 로도 충분합니다([brain.md](brain.md) 참고).
 
 데몬은 Claude Agent SDK를 씁니다. Agent SDK는 이 맥에 깔린 Claude Code 실행 파일을 그대로 띄우는 라이브러리라서, Claude Code를 설치하고 한 번 로그인해 두면 따로 API 키를 넣지 않아도 됩니다. MCP 서버도 Claude Code에 등록한 것(`~/.claude.json`)을 그대로 씁니다. 설치 마법사의 「뇌 고르기」는 로그인된 Claude Code를 찾으면 「찾았어요 ✓」로 보여 줍니다.
 

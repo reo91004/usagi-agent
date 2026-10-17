@@ -17,7 +17,7 @@ Slack은 두 가지 용도로 씁니다.
 
 `mcp` 모드는 Claude Code 뇌면 브리핑·채팅에서, Codex·Antigravity 뇌면 채팅에서만 읽힙니다([brain.md](brain.md#codexantigravity-뇌에서-mcp-연결-읽기)). 다른 뇌는 도구를 쓰지 못합니다. `api` 모드는 어떤 뇌든 됩니다.
 
-설치 마법사(패널 「설치」 → 「더 연결하기」 → Slack)에는 두 가지 길이 있습니다. 앱 사용자 토큰을 넣는 쪽은 아래 (a)와 같고, Slack 공식 MCP로 로그인하는 쪽은 `connectors.slack`을 `{ "mode": "mcp", "server": "slack" }`로 넣어 줍니다. 어느 쪽이든 끝나면 데몬을 한 번 다시 켜 주세요(`launchctl kickstart -k gui/$(id -u)/com.cy-agent.daemon`).
+설치 마법사(패널 「설치」 → 「더 연결하기」 → Slack)는 아래 읽기 전용 앱을 만드는 화면(매니페스트를 그대로 보여 줍니다)과 토큰 붙여 넣기 칸으로 안내하고, `connectors.slack`을 `{ "mode": "api", "userToken": "xoxp-…" }`로 넣은 뒤 데몬에 다시 읽게 알립니다. 어떤 뇌든 됩니다. Slack 공식 MCP(`mode: "mcp"`)는 마법사에 없고 아래 (b)대로 직접 넣습니다.
 
 ---
 
@@ -30,7 +30,7 @@ Slack은 두 가지 용도로 씁니다.
 3. **Install App** → **Install to Workspace**
    - 바로 설치되면 **User OAuth Token**(`xoxp-…`)이 생깁니다.
    - 「관리자에게 요청」이 나오면 요청을 보내고, 승인되면 같은 화면에서 토큰이 생깁니다. 요청 메모에는 「제 DM과 멘션을 제 컴퓨터에서만 읽는 개인 비서, 쓰기 권한 없음」이라고 적으면 됩니다.
-4. 우사기 패널 「설치」 → 「더 연결하기」 → Slack 에 토큰을 붙여 넣습니다.
+4. 우사기 패널 「설치」 → 「더 연결하기」 → Slack 의 두 번째 화면에 토큰을 붙여 넣고 [다음]을 누릅니다.
 
 관리자가 앱 설치를 막아 두었다면 아래 (b) mcp 모드(Slack 공식 MCP)를 시도해 볼 수 있습니다. 이쪽은 뇌가 Claude Code 일 때만 읽고, 로컬에 모으지 않아서 지시사항 카드는 채워지지 않습니다.
 

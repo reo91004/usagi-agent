@@ -302,11 +302,12 @@ function pickButton(on, title, blurb, onclick, linked, note) {
 
 // 1) 이름 — 비워 두고 넘어가도 된다
 let nameDraft = null;
+// 고치기 전까지는 데몬에 저장된 이름을 보인다(설정을 늦게 받아도 빈 칸으로 굳지 않게 — 그대로 [다음]을 누르면 이름이 지워졌다)
 function nameView({ name, onName, onSkipSetup }) {
-  if (nameDraft === null) nameDraft = name || '';
-  const input = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: '예: 길동', 'aria-label': '이름', value: nameDraft });
+  const value = () => (nameDraft ?? name ?? '').trim();
+  const input = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: '예: 길동', 'aria-label': '이름', value: nameDraft ?? name ?? '' });
   input.addEventListener('input', () => { nameDraft = input.value; });
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) onName(nameDraft.trim()); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) onName(value()); });
   focusSlot = null;
   queueMicrotask(() => input.focus());
   return screen({
@@ -318,7 +319,7 @@ function nameView({ name, onName, onSkipSetup }) {
       onSkipSetup ? h('button.ghost', { type: 'button', text: '설치는 나중에 할게요', title: '아무것도 연결하거나 읽지 않고 시작해요. 이 탭에서 언제든 이어서 할 수 있어요', onclick: onSkipSetup }) : null,
       h('span.spacer'),
       h('button.ghost', { type: 'button', text: '건너뛰기', onclick: () => onName('') }),
-      h('button.primary', { type: 'button', text: '다음', onclick: () => onName(nameDraft.trim()) })),
+      h('button.primary', { type: 'button', text: '다음', onclick: () => onName(value()) })),
   });
 }
 
@@ -342,7 +343,7 @@ function brainPickView({ detected = {}, connected = [], current = '', onPick, on
   });
 }
 
-// 3) 더 연결하기(선택) — 캘린더 ICS · Slack · 레포 폴더
+// 3) 더 연결하기(선택) — 이 Mac 캘린더·미리알림 · 캘린더 주소 · Slack · 레포 폴더 · 작업 기록 읽기
 let repoDraft = '';
 // 작업 기록 읽기: 체크해야만 읽는다(처음엔 꺼짐)
 function sessionsConsent(on, onToggle) {
@@ -397,7 +398,8 @@ function calendarsBlock(calendars, onAdd, onRemove) {
 }
 
 // 이 Mac 의 캘린더·미리알림(EventKit, #53): 주소 없이 macOS 허락 한 번으로. 앱에 도우미가 없으면(개발 실행 등) 안 보인다
-function appleBlock(a, onConnect, onDisconnect, onPrivacy) {
+// calMcp: 지금 캘린더를 MCP 로 읽고 있으면 그 서버 이름 — 이 Mac 캘린더를 연결하면 그 설정을 대신한다(eventkit.ts setAppleFlags)
+function appleBlock(a, onConnect, onDisconnect, onPrivacy, calMcp) {
   if (!a || a.available === false || !onConnect) return null;
   const cal = !!a.connected?.calendar, rem = !!a.connected?.reminders;
   const denied = (k) => a[k] === 'denied' || a[k] === 'restricted';
@@ -405,6 +407,7 @@ function appleBlock(a, onConnect, onDisconnect, onPrivacy) {
   return h('div.setup-folder.setup-apple', null,
     h('span.setup-pick-title', { text: on ? `이 Mac 의 캘린더·미리알림 · ${on} 연결됨` : '이 Mac 의 캘린더·미리알림' }),
     h('p.setup-blurb', { text: '주소를 붙이지 않고 캘린더 앱과 미리알림 앱을 바로 읽어요. 처음 한 번 macOS 가 허락을 물어요. 구글 캘린더는 시스템 설정 → 인터넷 계정에 Google 계정을 넣으면 함께 읽혀요. 읽기만 하고 바꾸지 않아요.' }),
+    calMcp && !cal ? h('p.setup-gate', { text: `지금은 캘린더를 MCP(${calMcp})로 읽고 있어요. 캘린더를 연결하면 이 Mac 캘린더로 바뀌어요.` }) : null,
     a.pending ? h('p.setup-gate', { text: 'macOS 창에서 허락을 기다리고 있어요…' }) : null,
     a.error ? h('p.setup-gate', { text: a.error }) : null,
     h('div.setup-fields.row', null,
@@ -427,12 +430,12 @@ function extrasView({ done = {}, repos = [], coder = true, readSessions = false,
     title: '더 연결할까요?',
     identity: '하나를 누르면 그 안내로 들어가고, 끝나면 이 목록으로 돌아와요.',
     extra: h('div', null,
-      appleBlock(apple, onAppleConnect, onAppleDisconnect, onOpenPrivacy),
+      appleBlock(apple, onAppleConnect, onAppleDisconnect, onOpenPrivacy, servers?.calendar),
       h('div.setup-picks', null, items.map((item) => extraItem(item, done, onOpen, onDisconnect, onCopy, servers))),
       calendarsBlock(calendars, onAddCalendar, onRemoveCalendar),
       h('div.setup-folder', null,
         h('span.setup-pick-title', { text: repos.length ? `${repo.title} · ${repos.length}개` : repo.title }),
-        h('p.setup-blurb', { text: coder ? repo.blurb : `${repo.blurb} (지금은 Claude Code 가 없어서 커밋만 보여 줘요)` }),
+        h('p.setup-blurb', { text: coder ? repo.blurb : `${repo.blurb} (지금은 코드를 고칠 AI가 없어서 커밋만 보여 줘요)` }),
         repos.length ? h('ul.setup-repos', null, repos.map((r) => h('li', null, h('code', { text: r }), h('button.ghost.small', { type: 'button', text: '빼기', onclick: () => onRemoveRepo(r) })))) : null,
         h('div.setup-fields.row', null, input,
           onPickFolder ? h('button.ghost', { type: 'button', text: '폴더 고르기…', onclick: onPickFolder }) : null,
@@ -447,8 +450,8 @@ function extrasView({ done = {}, repos = [], coder = true, readSessions = false,
 }
 
 // 4) 끝 — 된 것 요약 + 사용법 둘러보기
-function doneView({ brain, done, repos, name, readSessions, onTour, onClose, onBack }) {
-  const rows = setupSummary({ brain, done, repos, name, readSessions });
+function doneView({ brain, repos, name, readSessions, connectors, apple, research, onTour, onClose, onBack }) {
+  const rows = setupSummary({ brain, repos, name, readSessions, connectors, apple, research });
   return screen({
     say: sayFor(whoId()).done,
     title: name ? `${name} 님, 준비됐어요` : '준비됐어요',
@@ -484,7 +487,7 @@ function aiKeyView({ provider, say, keyStatus, keyNote, gskFound, onOpen, onCopy
   return screen({
     say,
     title: `${provider.title} 키 만들기`,
-    identity: `${provider.note} 키는 이 칸에만 붙입니다. 이 맥의 시사 설정 파일에만 저장하고, 화면에는 다시 보이지 않습니다.`,
+    identity: `${provider.note} 키는 이 칸에만 붙입니다. 이 맥의 설정 파일에만 저장하고, 화면에는 다시 보이지 않습니다.`,
     rows: provider.rows,
     rowCtx: { url: provider.url, onOpen, onCopy },
     extra: h('div', null,
@@ -524,7 +527,7 @@ export function renderSetup(root, state) {
     phase, agent, picked, cursor, choices, link, keyStatus, done, connectAgent, connected,
     onAgent, onToggle, onContinue, onChoose, onCopy, onList, onPrev, onBack, onSkip, onNext, onStart, onDone,
     onCheckKey, onKeyNext, onOpen, login,
-    name, detected, current, repos, brain, coder, readSessions,
+    name, detected, current, repos, brain, coder, readSessions, connectors, research,
     onName, onPickBrain, onSkipBrain, onOpenExtra, onDisconnectExtra, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onSkipSetup, onFinishExtras, onTour, onClose,
   } = state;
 
@@ -553,7 +556,7 @@ export function renderSetup(root, state) {
     return;
   }
   if (phase === 'done') {
-    root.replaceChildren(doneView({ brain, done, repos, name, readSessions, onTour, onClose, onBack }));
+    root.replaceChildren(doneView({ brain, repos, name, readSessions, connectors, apple: state.apple, research, onTour, onClose, onBack }));
     return;
   }
 
