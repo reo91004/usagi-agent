@@ -36,7 +36,7 @@ test("dashboard: 계약 모양, 세션·커밋 병합, 7일 밖 제외, 최신�
   ];
   const d = await buildDashboard(loadConfig(), store, { now, git: async () => repos });
 
-  assert.deepEqual(Object.keys(d).sort(), ["briefing", "commitsToday", "generatedAt", "projects", "proposals", "recentDone", "today", "todoRules", "todos", "trash", "trashCount"]);
+  assert.deepEqual(Object.keys(d).sort(), ["briefing", "commitsToday", "generatedAt", "projects", "proposals", "recentDone", "researchProjects", "today", "todoRules", "todos", "trash", "trashCount"]);
   assert.equal(d.generatedAt, now.toISOString());
   assert.deepEqual(d.briefing, { at: ago(1), bubble: "할 일 둘", replyMd: "## 오늘" });
   assert.equal(d.commitsToday, 3);

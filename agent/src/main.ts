@@ -52,6 +52,7 @@ import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { collectDay, sharedGit, summarizeDay, writeDay } from "./research-note.ts";
 import { awayAwareBriefing, hidIdleSec } from "./activity.ts";
 import { notePathFor, researchSummary } from "./research.ts";
+import { putResearchProject } from "./research-projects.ts";
 import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
@@ -236,13 +237,17 @@ await bus.listen(cfg.port, {
   hold: (id) => agent.hold(id),
   briefing: () => agent.runBriefing(),
   refresh: () => refreshAll(),
-  dashboard: async () => ({
-    ...(await agent.dashboard()),
+  dashboard: async () => {
+    const dash = await agent.dashboard();
+    return {
+    ...dash,
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
-    ...(() => { const r = researchSummary(cfg, store, new Date(), tmuxSeen); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
+    ...(() => { const r = researchSummary(cfg, store, new Date(), tmuxSeen, dash.researchProjects); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
     ...(slackIngestMode(conns) === "api" ? { directives: directivesView(store, cfg.directiveFrom ?? []) } : {}), // Slack 지시사항 카드(api 모드일 때만 — 재료는 api 수집만 쌓는다)
-  }),
+    };
+  },
+  researchProjectPut: (body) => { const r = putResearchProject(store, body); if ("ok" in r) bus.dashboardChanged(); return r; },
   jobForget: (id) => {
     const n = store.node(id);
     if (n?.kind !== "job" || n.props.running) return false;
