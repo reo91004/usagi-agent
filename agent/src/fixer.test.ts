@@ -4,7 +4,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectTestCommand, isBlockedBash, mergePr, noShipHook, resolveRepo, slugify } from "./fixer.ts";
+import { detectTestCommand, mergePr, noShipHook, resolveRepo, slugify } from "./fixer.ts";
+
+// 프로덕션 훅(noShipHook)으로 확인한다
+const isBlockedBash = async (command: string) =>
+  ((await noShipHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } } as any, "t", {} as any)) as any).hookSpecificOutput?.permissionDecision === "deny";
 
 test("resolveRepo: 허용 루트 안의 git 레포만", () => {
   const root = mkdtempSync(join(tmpdir(), "cy-root-"));
@@ -17,9 +21,9 @@ test("resolveRepo: 허용 루트 안의 git 레포만", () => {
   assert.throws(() => resolveRepo({ repoRoots: [root] }, join(root, "../nope-xyz")), /없어/);
 });
 
-test("에이전트의 커밋·푸시·머지는 막고 테스트는 허용", () => {
-  for (const c of ["git commit -m x", "git push origin main", "gh pr merge 1", "cd a && git push", "rm -rf ~/"]) assert.equal(isBlockedBash(c), true, c);
-  for (const c of ["npm test", "git status", "git diff", "pnpm install", "rm -rf node_modules"]) assert.equal(isBlockedBash(c), false, c);
+test("에이전트의 커밋·푸시·머지는 막고 테스트는 허용", async () => {
+  for (const c of ["git commit -m x", "git push origin main", "gh pr merge 1", "cd a && git push", "rm -rf ~/"]) assert.equal(await isBlockedBash(c), true, c);
+  for (const c of ["npm test", "git status", "git diff", "pnpm install", "rm -rf node_modules"]) assert.equal(await isBlockedBash(c), false, c);
 });
 
 test("앞 옵션·따옴표·sh -c 로 감싼 git·gh 배포 명령도 막는다(수정 run 훅)", async () => {
@@ -27,12 +31,12 @@ test("앞 옵션·따옴표·sh -c 로 감싼 git·gh 배포 명령도 막는다
     "'git' push", "g\\it push", "/usr/bin/git -C sub rebase main", "GIT.exe push", "bash -c 'git -C . push'", "sh -c \"git commit -m x\"",
     "git -c alias.ship=push ship", "git config alias.ship push", "gh -R owner/repo pr merge 1", "gh --repo=owner/repo pr create", "git switch main", "rm -fr ~/x", "env A=1 git push"];
   for (const c of blocked) {
-    assert.equal(isBlockedBash(c), true, c);
+    assert.equal(await isBlockedBash(c), true, c);
     const r: any = await noShipHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: c } } as any, "t", {} as any);
     assert.equal(r.hookSpecificOutput?.permissionDecision, "deny", c);
   }
   for (const c of ["git -C . diff", "git -c color.ui=false status", "git log --grep commit", "gh -R owner/repo pr view 1", "git checkout -b cy/x", "git ls-files | xargs grep TODO", "git config --get alias.ship", "npm test"])
-    assert.equal(isBlockedBash(c), false, c);
+    assert.equal(await isBlockedBash(c), false, c);
 });
 
 test("detectTestCommand", () => {

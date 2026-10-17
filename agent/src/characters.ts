@@ -39,7 +39,7 @@ export type LocalLineKey =
   | "todayEmpty" | "todayPick" | "todayAll" | "todayNone" | "todaySome" | "todoEmpty" | "todoTop"
   | "calOff" | "calNone" | "calNow" | "calNext" | "calThen";
 
-// 시사: 예전 말투 그대로(voice.ts TONE·MOODS, phrases.ts 기본값, local-mode.ts LINES).
+// 시사: 예전 말투 그대로(voice.ts TONE, character-store 기본 꼬리표, phrases.ts 기본값, local-mode.ts LINES).
 // 프롬프트(brain.ts BASE 등)에 박힌 첫 문장·말투 줄은 늘 이 글이다. withCharacter 가 이 자리만 지금 캐릭터 것으로 바꾼다
 // 첫 문장은 캐릭터 이름으로 소개한다(예전엔 「비서 "cy"」라 시사에게 이름을 물으면 「cy예요」라고 답했다)
 export const introFor = (name: string) => `너는 사용자 개인 PC에 상주하는 비서 캐릭터 "${name}"다.`;
@@ -105,7 +105,7 @@ function fromLines(id: CharacterId, e: Partial<LinesEntry>, extra: Partial<Chara
   };
 }
 
-// 고치지 않은 기본 캐릭터(시사 상수는 voice.ts TONE·MOODS 가 이걸 본다)
+// 고치지 않은 기본 캐릭터(시사 상수는 voice.ts TONE, character-store 기본 꼬리표 가 이걸 본다)
 export const CHARACTERS: Record<BuiltinId, Character> = {
   shisa: SHISA,
   hachi: fromLines("hachi", LINES_JSON.hachi as LinesEntry),
@@ -170,4 +170,3 @@ export function withCharacter(system: string | undefined): string | undefined {
   if (c.intro === SHISA_INTRO && c.tone === SHISA_TONE) return system;
   return system.split(`${SHISA_INTRO} ${SHISA_TONE}`).map((part) => part.split(SHISA_TONE).join(c.tone)).join(`${c.intro} ${c.tone}`);
 }
-export const SHISA_PERSONA = `${SHISA_INTRO} ${SHISA_TONE}`;

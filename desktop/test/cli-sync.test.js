@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { ipcHandlers, buildHandler, blocks } from './helpers/main-calls.js';
 import { buildItems } from '../src/session.js';
 import { normThreads, mergeMessages } from '../src/threads.js';
 import { planResume, sessionCwd, sessionFile, projectDirName, canSync, syncTip, syncNote, terminalArgs, resumeCommand } from '../src/resume.js';
@@ -72,21 +73,34 @@ test('canSync·syncTip·syncNote', () => {
   assert.equal(syncNote(0), '새로 불러올 터미널 기록이 없어요.');
 });
 
-test('IPC 배선: 세션 창 ↻ → session-sync → POST /runs/:id/sync · 열기 뒤 watch · 패널 ↻ → chat-thread-sync', () => {
+test('IPC 배선: 세션 창 ↻ → session-sync → POST /runs/:id/sync · 패널 ↻ → chat-thread-sync (보낸 창·id 검사 포함)', () => {
   const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
-  const main = read('main.js'), ps = read('preload-session.cjs'), pp = read('preload-panel.cjs');
-  const sess = read('renderer/session.js'), html = read('renderer/session.html'), panel = read('renderer/panel.js'), phtml = read('renderer/panel.html');
-  assert.match(ps, /syncRun: \(id\) => ipcRenderer\.invoke\('session-sync', String\(id\)\)/);
-  assert.match(main, /ipcMain\.handle\('session-sync', \(e, id\) => \(fromOurs\(e\) && okRunId\(id\) \? post\(`\/runs\/\$\{id\}\/sync`\) : denied\(\)\)\)/);
-  assert.match(main, /post\(`\/runs\/\$\{id\}\/sync`, \{ watch: true \}\)/);
+  const h = ipcHandlers();
+  // main.js 의 핸들러 소스를 가짜 의존물로 실제 실행한다
+  const run = (channel, { ours = true, okId = true } = {}) => {
+    const posts = [];
+    const fn = buildHandler(h.get(channel), { fromOurs: () => ours, okRunId: () => okId, okThreadId: () => okId, post: (path) => (posts.push(path), 'posted'), denied: () => 'denied' });
+    return [fn({}, 'ID'), posts];
+  };
+  assert.deepEqual(run('session-sync'), ['posted', ['/runs/ID/sync']]);
+  assert.deepEqual(run('session-sync', { ours: false }), ['denied', []]);
+  assert.deepEqual(run('session-sync', { okId: false }), ['denied', []]);
+  assert.deepEqual(run('chat-thread-sync'), ['posted', ['/chat/threads/ID/sync']]);
+  assert.deepEqual(run('chat-thread-sync', { ours: false }), ['denied', []]);
+  assert.deepEqual(run('chat-thread-sync', { okId: false }), ['denied', []]);
+  // 열기 뒤 watch 요청, 기록 찾기(심볼릭 링크 제외)
+  assert.ok(blocks('post(`/runs/${id}/sync`, {').some((a) => /\bwatch: true\b/.test(a)));
+  const main = read('main.js');
   assert.match(main, /findSession: \(sid\) => findSessionCwd\(claudeDir, sid\)/);
   assert.match(main, /isSymbolicLink\(\)/);
-  assert.match(pp, /chatThreadSync: \(id\) => ipcRenderer\.invoke\('chat-thread-sync', String\(id\)\)/);
-  assert.match(main, /ipcMain\.handle\('chat-thread-sync', \(e, id\) => \(fromOurs\(e\) && okThreadId\(id\) \? post\(`\/chat\/threads\/\$\{id\}\/sync`\) : denied\(\)\)\)/);
-  assert.match(html, /id="btn-sync"[^>]*>↻ 새로고침</);
-  assert.match(sess, /cy\.syncRun\(r\.id\)/);
-  assert.match(sess, /'Claude Code'/);
-  assert.match(phtml, /id="th-sync"/);
-  assert.match(panel, /cy\.chatThreadSync\(id\)/);
-  assert.match(panel, /m\.via === 'cli'/);
+  // preload · 렌더러 호출 이름
+  assert.match(read('preload-session.cjs'), /syncRun: \(id\) => ipcRenderer\.invoke\('session-sync', String\(id\)\)/);
+  assert.match(read('preload-panel.cjs'), /chatThreadSync: \(id\) => ipcRenderer\.invoke\('chat-thread-sync', String\(id\)\)/);
+  assert.match(read('renderer/session.html'), /id="btn-sync"[^>]*>↻ 새로고침</);
+  assert.match(read('renderer/session.js'), /cy\.syncRun\(r\.id\)/);
+  assert.match(read('renderer/session.js'), /'Claude Code'/);
+  assert.match(read('renderer/panel.html'), /id="th-sync"/);
+  assert.match(read('renderer/panel.js'), /cy\.chatThreadSync\(id\)/);
+  assert.match(read('renderer/panel.js'), /m\.via === 'cli'/);
 });
+

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   CharacterStore, validateLines, diffLines, renameLines, flattenLines, unflattenLines, linesSchema, mediaKind, sniffMedia, newUserId, isUserId, STORED_FILE, shisaDefaults,
 } from "./character-store.ts";
-import { CHARACTERS, SHISA_PERSONA, SHISA_TONE, character, characterId, characterOptions, installCharacters, isCharacterId, setCharacter, withCharacter } from "./characters.ts";
+import { CHARACTERS, SHISA_INTRO, SHISA_TONE, character, characterId, characterOptions, installCharacters, isCharacterId, setCharacter, withCharacter } from "./characters.ts";
 import { SYSTEM } from "./brain.ts";
 import { CHAT_SYSTEM } from "./chat.ts";
 import { phrase, setPhrases } from "./phrases.ts";
@@ -167,7 +167,7 @@ test("고치기: 사용자 캐릭터 이름·대사·테두리, 자리표시 검
   // 말투는 프롬프트의 말투 자리에만: 나머지 규칙·안전 지시는 그대로
   const out = withCharacter(SYSTEM);
   assert.ok(out.startsWith("너는 \"까망\"이다. 까망 말투."));
-  assert.equal(out.slice("너는 \"까망\"이다. 까망 말투.".length), SYSTEM.slice(SHISA_PERSONA.length));
+  assert.equal(out.slice("너는 \"까망\"이다. 까망 말투.".length), SYSTEM.slice(`${SHISA_INTRO} ${SHISA_TONE}`.length));
 });
 
 test("지우기: 사용자 캐릭터만, 폴더째, 쓰던 중이면 시사로(config.json 도)", () => {
