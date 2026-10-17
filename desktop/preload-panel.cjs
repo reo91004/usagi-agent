@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld('cy', {
   sisaSkip: () => ipcRenderer.invoke('sisa-skip'),
   sisaModels: (provider) => ipcRenderer.invoke('sisa-models', String(provider || '')),
   sisaSetModels: (pick) => ipcRenderer.invoke('sisa-set-models', pick && typeof pick === 'object' ? pick : {}),
+  sisaSetOrder: (order) => ipcRenderer.invoke('sisa-set-order', Array.isArray(order) ? order.map(String) : []),
   sisaSetVoice: (patch) => ipcRenderer.invoke('sisa-set-voice', patch && typeof patch === 'object' ? patch : {}),
   gskFound: () => ipcRenderer.invoke('gsk-found'), // gsk login 한 Genspark 키가 이 맥에 있나(키는 안 온다)
   sisaUseGsk: () => ipcRenderer.invoke('sisa-use-gsk'),

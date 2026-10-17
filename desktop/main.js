@@ -32,7 +32,7 @@ import { agentLogin } from './src/agent-login.js';
 import { createCapsProbe, hasCoder, sameCaps, coderHint } from './src/caps.js';
 import { slotOk } from './src/ai-onboard.js';
 import { checkLlm, listModels, gskLoginKey, KEY_REQ } from './src/llm-check.js';
-import { KEY_PROVIDERS, normalizeSisa, publicView, withKey, withCli, withGsk, withSkip, withoutProvider, activeProvider, withModels, withVoice, connectedProviders, daemonBrainPatch, withDaemonBrain, settingsBrainBody } from './src/sisa-store.js';
+import { KEY_PROVIDERS, normalizeSisa, publicView, withKey, withCli, withGsk, withSkip, withoutProvider, activeProvider, withModels, withOrder, withVoice, connectedProviders, daemonBrainPatch, withDaemonBrain, settingsBrainBody } from './src/sisa-store.js';
 import { personaFor } from './src/persona.js';
 import { okCharacter, characterName, appName, START_CHARACTER } from './src/character.js';
 import { applyCharacters } from './src/character-registry.js';
@@ -1390,6 +1390,15 @@ function setupIPC() {
     writeSisa(next);
     const brainSaved = 'chat' in args ? await writeBrain(next) : false;
     return { ok: true, ...sisaPublic(next), codeSaved, brainSaved };
+  });
+  // 우선순위: 연결한 AI 를 앞에서부터. 맨 앞이 지금 쓰는 AI, 나머지는 사용량을 다 쓰면 이어 받는다
+  ipcMain.handle('sisa-set-order', async (e, order) => {
+    if (!fromOurs(e) || !Array.isArray(order)) return denied();
+    const next = withOrder(readSisa(), order.map(String));
+    if (!next) return denied();
+    writeSisa(next);
+    const brainSaved = await writeBrain(next);
+    return { ok: true, ...sisaPublic(next), brainSaved };
   });
   ipcMain.handle('sisa-set-voice', (e, patch) => {
     if (!fromOurs(e) || !patch || typeof patch !== 'object') return denied();

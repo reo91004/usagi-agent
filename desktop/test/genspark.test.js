@@ -99,14 +99,14 @@ test('저장 모양: 「gsk login 한 키 쓰기」는 키를 저장하지 않�
   // 붙여 넣은 키
   const pasted = withKey({}, 'genspark', KEY);
   assert.deepEqual(connectedProviders(pasted), ['genspark']);
-  assert.deepEqual(settingsBrainBody(daemonBrainPatch(pasted)), { brain: { provider: 'genspark', keys: { genspark: KEY }, model: null } });
+  assert.deepEqual(settingsBrainBody(daemonBrainPatch(pasted)), { brain: { provider: 'genspark', fallback: [], keys: { genspark: KEY }, model: null } });
   // gsk login 키: 붙인 키는 지우고, 데몬엔 keys.genspark: null(데몬이 파일을 읽는다)
   const gsk = withGsk(pasted);
   assert.equal(gsk.keys.genspark, undefined);
   assert.equal(normalizeSisa(gsk).gsk, true);
   assert.deepEqual(connectedProviders(gsk), ['genspark']);
   assert.ok(!JSON.stringify(gsk).includes(KEY));
-  assert.deepEqual(settingsBrainBody(daemonBrainPatch(gsk)), { brain: { provider: 'genspark', keys: { genspark: null }, model: null } });
+  assert.deepEqual(settingsBrainBody(daemonBrainPatch(gsk)), { brain: { provider: 'genspark', fallback: [], keys: { genspark: null }, model: null } });
   const file = withDaemonBrain({ brain: { provider: 'gemini', geminiApiKey: 'AIza-keep', gensparkApiKey: KEY } }, daemonBrainPatch(gsk));
   assert.deepEqual(file.brain, { provider: 'genspark', geminiApiKey: 'AIza-keep' });
   // 연결 해제: gsk 표시도 뗀다
