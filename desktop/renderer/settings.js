@@ -895,7 +895,7 @@ function renderTine() {
   $('tine-clear').hidden = !g;
 }
 $('tine-pick').addEventListener('click', async () => {
-  const dir = await window.cy.pickFolder?.().catch(() => null);
+  const dir = await window.cy.pickFolder?.('tine').catch(() => null);
   if (!dir) return;
   const ok = await save({ tineGraph: dir });
   $('tine-err').textContent = ok ? '' : 'Tine 그래프 폴더(logseq/config.edn 이 있는 곳)를 골라 주세요';

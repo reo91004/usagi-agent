@@ -1537,9 +1537,10 @@ function setupIPC() {
     if (p.onboarded) setLoginDefault(true); // 마법사를 마침 → 로그인할 때 켜기 기본 켬(정한 적 없을 때만)
     return { ok: true, ...setupView(r.data?.settings) };
   });
-  ipcMain.handle('pick-folder', async (e) => {
+  ipcMain.handle('pick-folder', async (e, kind) => {
     if (!fromOurs(e)) return denied();
-    const r = await dialog.showOpenDialog(panel ?? undefined, { title: '레포가 모인 폴더 고르기', properties: ['openDirectory', 'createDirectory'], defaultPath: os.homedir() });
+    const title = kind === 'tine' ? 'Tine 그래프 폴더 고르기' : '레포가 모인 폴더 고르기';
+    const r = await dialog.showOpenDialog(panel ?? undefined, { title, properties: ['openDirectory', 'createDirectory'], defaultPath: os.homedir() });
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
 
