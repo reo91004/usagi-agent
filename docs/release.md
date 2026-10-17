@@ -47,23 +47,24 @@ npm run dist -- --no-dmg   # dmg 없이 dist/app/시사-darwin-<arch>/시사.app
 
 macOS(TCC)는 캘린더·미리알림·문서 폴더 허락을 줄 때 앱의 지정 요구 사항을 함께 저장하고, 다음 접근 때 지금 앱이 그 요구 사항을 만족하는지 봅니다. ad-hoc 서명의 지정 요구 사항은 `cdhash H"…"`라서 내용이 바뀐 새 버전은 만족하지 못하고, 업데이트할 때마다 허락이 풀립니다(#81, #84). 권한을 쓰는 프로세스는 `bin/usagi-eventkit`이지만 TCC가 확인하는 것은 책임 프로세스인 앱(`com.cy-agent.desktop`)의 서명입니다.
 
-인증서로 서명하면 지정 요구 사항이 `identifier "com.cy-agent.desktop" and certificate … = H"<인증서 해시>"`처럼 인증서 기준이 되어, 같은 인증서로 서명한 다음 버전도 만족합니다. 애플 개발자 계정이 없으면 이 Mac 로그인 키체인의 자체 서명 인증서로 충분합니다. 서명에 인증서가 들어가므로 brew로 설치한 다른 Mac에도 똑같이 적용됩니다.
+인증서로 서명하면 지정 요구 사항이 `identifier "com.cy-agent.desktop" and certificate leaf = H"<인증서 SHA-1>"`처럼 인증서 기준이 되어, 같은 인증서로 서명한 다음 버전도 만족합니다. 애플 개발자 계정이 없으면 이 Mac 로그인 키체인의 자체 서명 인증서로 충분합니다. 서명에 인증서가 들어가므로 brew로 설치한 다른 Mac에도 똑같이 적용됩니다.
 
 릴리스를 만드는 Mac에서 한 번 만듭니다(키체인을 바꾸는 일이라 직접 실행합니다).
 
 ```bash
-D=$(mktemp -d)
+D=$(mktemp -d); P=$(openssl rand -hex 16)   # p12 비밀번호는 옮길 때만 쓰고 버립니다
 printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=Usagi Code Signing\n[ext]\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n' > "$D/cs.cnf"
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$D/cs.cnf" -keyout "$D/key.pem" -out "$D/cert.pem"
-openssl pkcs12 -export -inkey "$D/key.pem" -in "$D/cert.pem" -out "$D/usagi.p12" -passout pass:usagi
-security import "$D/usagi.p12" -k ~/Library/Keychains/login.keychain-db -P usagi -T /usr/bin/codesign
+openssl pkcs12 -export -inkey "$D/key.pem" -in "$D/cert.pem" -out "$D/usagi.p12" -passout "pass:$P"
+security import "$D/usagi.p12" -k ~/Library/Keychains/login.keychain-db -P "$P" -T /usr/bin/codesign
 rm -rf "$D"
 security find-identity -p codesigning   # "Usagi Code Signing" 이 보이면 됩니다(신뢰 안 됨 표시는 괜찮습니다)
 ```
 
 - 인증서를 신뢰로 바꿀 필요는 없습니다. 처음 서명할 때 키체인이 codesign의 키 사용을 물으면 「항상 허용」을 누릅니다.
 - 인증서로 처음 내보낸 버전에서 한 번 더 허락해야 하고, 그 뒤로는 같은 인증서로 서명하는 동안 허락이 남습니다. 다시 ad-hoc이나 다른 인증서로 내보내면 그때 또 한 번 풀립니다.
-- 개인 키를 잃으면 새 인증서를 만들고 사용자가 한 번 더 허락하면 됩니다. 반대로 이 키를 가진 사람은 macOS가 우사기로 여기는 앱을 서명할 수 있으니 p12 파일은 남기거나 나누지 않습니다.
+- 모든 사용자의 허락이 이 개인 키 하나에 달려 있습니다. 키를 잃거나 다른 키로 내보내면 그 버전에서 모두 한 번 더 허락해야 하니 백업해 둡니다. 키체인 접근 → 로그인 → 내 인증서에서 `Usagi Code Signing`을 고르고 파일 → 항목 내보내기로 .p12(비밀번호 지정)를 만들어 비밀번호 관리자 같은 안전한 곳에 두고, Mac 에 남은 파일은 지웁니다. 다른 Mac 에서 릴리스를 만들 때는 그 파일을 `security import <파일> -k ~/Library/Keychains/login.keychain-db -P <비밀번호> -T /usr/bin/codesign`으로 넣습니다.
+- 이 키를 가진 사람은 macOS가 우사기로 여기는 앱을 서명할 수 있으니 p12 파일은 나누지 않습니다.
 - 애플 Developer ID(유료 개발자 계정)로 바꾸면 같은 효과에 공증까지 할 수 있습니다. 그때는 `USAGI_SIGN_IDENTITY="Developer ID Application: …"`로 고르고 공증 단계를 더합니다.
 
 ## 손으로 확인하기
