@@ -1,5 +1,5 @@
 // 오늘 할 일: 따로 표를 두지 않고 할 일(todos)에 "오늘로 고른 날"(plan_day)을 단다.
-// 그래서 '오늘 할 일' 탭은 할 일 탭과 같은 줄·같은 우선순위 묶음(P1·P2·P3·백로그)으로 보이고, 끝내기·진행중·휴지통·끌기도 같다.
+// 그래서 할 일 탭 맨 위 「오늘」 묶음에 같은 줄로 보이고, 끝내기·진행중·휴지통도 같다.
 // 서버에 올리지 않고 로컬 SQLite 에만 둔다. 패널·에이전트 plan_ops 가 같이 쓴다.
 // 알림(영업일 아침 첫 실행 등)은 설정 todayReminder 를 따르고, 모델 없이 정해진 말로만 한다.
 import type { Store, Todo, TodoPatch } from "./store.ts";
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS daily_plan_meta (
 
 export const PLAN_OPS_SCHEMA = {
   type: "array",
-  description: "오늘 할 일(패널 '오늘 할 일' 탭)을 바꿀 때. 오늘 할 일은 할 일 목록 중 오늘로 고른 것이라 우선순위(P1·P2·P3·백로그)가 같다. 새로 적으면 add(title, priority), 이미 있는 할 일을 오늘로 고르면 add(id). remove 는 오늘에서만 빼고 할 일은 남긴다. 일정·회의를 보고 오늘 할 일을 적어 달라면 add. 없으면 빈 배열.",
+  description: "오늘 할 일(패널 할 일 탭의 「오늘」 묶음)을 바꿀 때. 오늘 할 일은 할 일 목록 중 오늘로 고른 것이라 우선순위(P1·P2·P3·백로그)가 같다. 새로 적으면 add(title, priority), 이미 있는 할 일을 오늘로 고르면 add(id). remove 는 오늘에서만 빼고 할 일은 남긴다. 일정·회의를 보고 오늘 할 일을 적어 달라면 add. 없으면 빈 배열.",
   items: {
     type: "object",
     additionalProperties: false,
@@ -43,7 +43,7 @@ export const PLAN_OPS_SCHEMA = {
       op: { type: "string", enum: ["add", "toggle", "edit", "remove"] },
       id: { type: "string", description: "toggle·edit·remove 때 오늘 할 일의 id. add 에 넣으면 그 할 일을 오늘로 고른다" },
       title: { type: "string", description: "add·edit 때 제목" },
-      priority: { type: "integer", minimum: 1, maximum: 4, description: "1=오늘 꼭, 2=이번 주, 3=참고, 4=백로그. add 기본 2" },
+      priority: { type: "integer", minimum: 1, maximum: 4, description: "1=오늘 꼭, 2=이번 주, 3=나중에, 4=백로그. add 기본 2" },
       done: { type: "boolean" },
     },
   },

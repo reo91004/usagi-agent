@@ -32,7 +32,7 @@ export function tourSteps(view = {}, character) {
     { id: 'character' },
     { id: 'todos', section: 'todos' },
     { id: 'chat', section: 'chat' },
-    { id: 'today', section: 'today' },
+    { id: 'today', section: 'todos' },
     { id: 'settings' },
   ];
   return steps.map((s, i) => ({ ...s, text: (own[s.id] ?? SISA_TOUR_SAY[s.id])(o), step: i + 1, total: steps.length }));

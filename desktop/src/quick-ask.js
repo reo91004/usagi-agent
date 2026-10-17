@@ -48,7 +48,7 @@ export function chipAction(id) {
   return null;
 }
 
-const OPEN_OK = { today: true, todos: true, setup: true };
+const OPEN_OK = { todos: true, setup: true };
 
 // main 의 POST /local/ask 결과({ ok, status, data } | { ok:false, error }) → 답 말풍선
 export function answerBubble(id, r) {
@@ -62,7 +62,7 @@ export function answerBubble(id, r) {
   const o = a.open;
   if (o && OPEN_OK[o.section]) {
     b.open = { section: o.section, ...(typeof o.id === 'string' && o.id ? { id: o.id } : {}) };
-    b.openLabel = o.section === 'setup' ? '연결하러 가기' : o.section === 'today' ? '오늘 할 일 보기' : '할 일 보기';
+    b.openLabel = o.section === 'setup' ? '연결하러 가기' : '할 일 보기';
   }
   return b;
 }

@@ -81,6 +81,7 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
   return {
     id: `reminder:${r.id}`, title: title.slice(0, 200), source: "reminders", priority: reminderPriority(r, now),
     note: `미리알림 「${String(r.list ?? "").slice(0, 60)}」${due}`,
+    ...(d && !Number.isNaN(d.getTime()) ? { due: d.toISOString() } : {}),
     ...(typeof r.url === "string" && /^https:\/\//.test(r.url) ? { link: r.url } : {}),
   } as Parameters<Store["upsertTodo"]>[0];
 }

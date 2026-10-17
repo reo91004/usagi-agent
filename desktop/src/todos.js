@@ -4,12 +4,15 @@ import { reorderLocal } from './todo-rows.js';
 
 
 // 화면에 보이는 우선순위 이름(데이터는 1~4 그대로 — 모델 프롬프트는 P1~P4 로 쓴다)
+// hint = 묶음 이름 옆에 보이는 기준 한 줄(데몬의 PRIORITY_DESC 와 같은 뜻)
 export const PRIORITIES = [
-  { value: 1, label: '오늘 꼭' },
-  { value: 2, label: '이번 주' },
-  { value: 3, label: '천천히' },
-  { value: 4, label: '언젠가' }, // 기한 없고 안 중요(예전 「백로그」)
+  { value: 1, label: '오늘 꼭', hint: '오늘 마감이거나 중요한 일' },
+  { value: 2, label: '이번 주', hint: '일주일 안에 마감' },
+  { value: 3, label: '나중에', hint: '마감이 일주일 넘게 남았거나 날짜가 없는 일' },
+  { value: 4, label: '언젠가', hint: '규칙으로 미뤄 둔 일' }, // 기한 없고 안 중요(예전 「백로그」)
 ];
+// 맨 위 묶음: 오늘로 고른 일(우선순위와 별개라 값 0, 끌어 놓을 칸이 아님)
+export const TODAY_GROUP = { value: 0, label: '오늘', hint: '내가 오늘 하려고 고른 일' };
 
 const str = (v) => (typeof v === 'string' ? v : '');
 
