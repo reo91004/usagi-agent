@@ -364,7 +364,7 @@ html, body {
 
 /* ---- 호버 입력창 / 진행 캡션 ---- */
 #ask {
-  width: 240px;
+  width: 312px;
   margin-bottom: 8px;
   padding: 3px;
   border-radius: 999px;
@@ -394,6 +394,8 @@ html, body {
 #ask .att-thumb { width: 22px; height: 22px; }
 #ask .att-pick { height: 26px; min-width: 26px; padding: 0 2px 0 6px; border: 0; background: transparent; font-size: 14px; cursor: pointer; opacity: 0.75; }
 #ask .att-pick:hover { opacity: 1; }
+#ask .att-pick[hidden] { display: none; }
+#ask-input { min-width: 0; }
 /* 칩을 눌러 캐릭터가 행동·정해진 말 하는 동안 입력창을 잠깐 숨긴다(renderer.js pauseAsk) */
 #ask.paused { display: none; } /* 자리째 빼서 말풍선이 캐릭터 바로 위로 내려온다 — 그동안 포커스가 빠져도 닫지 않는다(renderer.js askPauseTimer) */
 #char-wrap.att-drop, #ask.att-drop { outline-offset: 2px; }

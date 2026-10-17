@@ -69,7 +69,7 @@ test('사용법 둘러보기: 3~5 장면, 연결된 것에 맞춰 문구가 바�
   assert.match(on[0].text, /두 번/);
   assert.match(on.find((s) => s.id === 'todos').text, /두 번.*제목·설명/);
   assert.match(tourSteps(brainView({})).find((s) => s.id === 'todos').text, /두 번.*제목·설명/, '뇌가 없어도 같은 고치기');
-  assert.ok(on.some((s) => s.section === 'todos') && on.some((s) => s.section === 'chat') && on.some((s) => s.section === 'today'));
+  assert.ok(on.some((s) => s.section === 'todos') && on.some((s) => s.section === 'chat') && on.some((s) => s.id === 'today'));
   assert.match(on.find((s) => s.id === 'today').text, /일정 10분 전엔/);
   assert.match(on.find((s) => s.id === 'settings').text, /슬랙을 연결하면/);
   const off = tourSteps(brainView({}));

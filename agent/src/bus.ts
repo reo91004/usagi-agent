@@ -31,7 +31,7 @@ export type Bubble = {
   blocked?: string; // merge: ✓ 를 막는 이유(실패한 검사·충돌·초안) — 오버레이는 ✓ 를 끄고 이유를 보인다
 };
 export type BubbleImage = "merge" | "merge_complete" | "lots" | "daily" | "daily_all_complete" | "daily_half_complete" | "to_do_new";
-export type PanelSection = "overview" | "projects" | "todos" | "today" | "chat";
+export type PanelSection = "overview" | "projects" | "todos" | "chat";
 export type BusHandlers = {
   approve(id: string): Promise<unknown>;
   hold(id: string): Promise<unknown>;

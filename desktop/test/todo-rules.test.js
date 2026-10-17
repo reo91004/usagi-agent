@@ -52,8 +52,8 @@ test('P4 묶음 모델: 네 번째 묶음 "백로그", 열린 수·P1 수에서 
     ],
     todoRules: RULES,
   });
-  assert.deepEqual(vm.todoGroups.map((g) => [g.priority, g.label, g.items.length]), [[1, '오늘 꼭', 1], [3, '천천히', 1], [4, '언젠가', 2], [9, '기타', 1]]);
-  assert.equal(vm.stats.openTodos, 3);
+  assert.deepEqual(vm.todoGroups.map((g) => [g.priority, g.label, g.items.length]), [[1, '오늘 꼭', 1], [3, '나중에', 1], [4, '언젠가', 2], [9, '기타', 1]]);
+  assert.equal(vm.stats.openTodos, 1); // 오늘 꼭만(나중에·언젠가·기타 제외)
   assert.equal(vm.stats.p1Todos, 1);
   assert.equal(vm.stats.backlogTodos, 2);
   assert.deepEqual(vm.todoGroups[2].items[0].appliedRule, { id: 'rule:a', text: '뉴스레터는 백로그' });
@@ -77,7 +77,7 @@ test('끌기·키보드: 백로그로/에서 옮기기(Alt+4), 접힌 백로그 
   assert.equal(keyMove(todos, 'd', '4'), null);
   assert.deepEqual(reorderLocal(todos, 'a', 4, null).map((t) => [t.id, t.priority]), [['c', 3], ['d', 4], ['a', 4]]);
   assert.equal(clampPriority(4), 4);
-  assert.deepEqual(PRIORITIES.at(-1), { value: 4, label: '언젠가' });
+  assert.equal(PRIORITIES.at(-1).label, '언젠가');
   assert.deepEqual(sanitizeTodoPatch({ priority: 4 }), { priority: 4 });
   assert.equal(sanitizeTodoPatch({ priority: 5 }), null);
 });

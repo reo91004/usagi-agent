@@ -81,11 +81,11 @@ test("chat: 오늘 할 일 표를 연다", async () => {
   const store = new Store(":memory:");
   const events: ChatEvent[] = [], panels: string[] = [];
   const chat = new Chat(loadConfig(), store, { emit: (e) => events.push(e), openPanel: (p) => panels.push(p), changed: () => {}, propose: async () => {} },
-    async () => reply({ reply_md: "오늘 표 열게요", show: "today" }));
+    async () => reply({ reply_md: "오늘 표 열게요", show: "todos" }));
   const { chatId: id } = chat.send("오늘 할 일 보여줘") as { chatId: string };
   await chat.idle();
-  assert.deepEqual(panels, ["today"]);
-  assert.equal((events.find((e) => e.chatId === id && e.status === "done") as any).show, "today");
+  assert.deepEqual(panels, ["todos"]);
+  assert.equal((events.find((e) => e.chatId === id && e.status === "done") as any).show, "todos");
 });
 
 test("chat: 기억해줘는 바로 개인 기억으로 남기고, memory_ops도 적용한다", async () => {

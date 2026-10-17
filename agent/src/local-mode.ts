@@ -133,10 +133,10 @@ export type QuickFacts = {
   open?: LocalTodo[]; // 열린 할 일(우선순위 순)
   calendar?: { enabled: boolean; meetings: QuickMeeting[] };
 };
-export type QuickAnswer = { id: QuickAskId; text: string; detail?: string; kind: "info" | "done"; open?: { section: "today" | "todos" | "setup"; id?: string } };
+export type QuickAnswer = { id: QuickAskId; text: string; detail?: string; kind: "info" | "done"; open?: { section: "todos" | "setup"; id?: string } };
 
 export const QUICK_LINES = {
-  todayEmpty: "오늘 할 일이 아직 비어 있어요. 오늘 할 일 탭에 적어 주시면 같이 챙길게요.",
+  todayEmpty: "오늘 할 일이 아직 비어 있어요. 할 일 탭의 「오늘」에 적어 주시면 같이 챙길게요.",
   todayPick: "오늘 할 일로 고른 건 아직 없어요. 할 일 {n}개가 기다리고 있어요.",
   todayAll: "오늘 할 일 {total}개 다 끝냈어요! 정말 잘하셨어요.",
   todayNone: "오늘 할 일 {total}개 중 아직 끝낸 건 없어요. 하나만 먼저 해 봐요.",
@@ -183,15 +183,15 @@ function answerToday(f: QuickFacts, seed: string): QuickAnswer {
   const items = (f.today ?? []).filter((x) => cleanTitle(x.title));
   if (!items.length) {
     const n = (f.open ?? []).length;
-    return { id: "today", kind: "info", text: spoken(n ? fill(localLine("todayPick"), { n }) : localLine("todayEmpty"), seed, "calm"), open: { section: "today" } };
+    return { id: "today", kind: "info", text: spoken(n ? fill(localLine("todayPick"), { n }) : localLine("todayEmpty"), seed, "calm"), open: { section: "todos" } };
   }
   const total = items.length;
   const done = items.filter((x) => x.done).length;
-  if (done === total) return { id: "today", kind: "done", text: spoken(fill(localLine("todayAll"), { total }), seed, "happy"), open: { section: "today" } };
+  if (done === total) return { id: "today", kind: "done", text: spoken(fill(localLine("todayAll"), { total }), seed, "happy"), open: { section: "todos" } };
   const left = items.filter((x) => !x.done);
-  if (!done) return { id: "today", kind: "info", text: spoken(fill(localLine("todayNone"), { total }), seed, "busy"), detail: left.slice(0, 5).map((x) => `- ${cleanTitle(x.title)}`).join("\n"), open: { section: "today" } };
+  if (!done) return { id: "today", kind: "info", text: spoken(fill(localLine("todayNone"), { total }), seed, "busy"), detail: left.slice(0, 5).map((x) => `- ${cleanTitle(x.title)}`).join("\n"), open: { section: "todos" } };
   const rest = left.slice(0, 2).map((x) => quote(x.title)).join(", ") + (left.length > 2 ? ` 외 ${left.length - 2}개` : "");
-  return { id: "today", kind: "info", text: spoken(fill(localLine("todaySome"), { total, done, rest }), seed, "happy"), open: { section: "today" } };
+  return { id: "today", kind: "info", text: spoken(fill(localLine("todaySome"), { total, done, rest }), seed, "happy"), open: { section: "todos" } };
 }
 
 function answerTodo(f: QuickFacts, seed: string): QuickAnswer {

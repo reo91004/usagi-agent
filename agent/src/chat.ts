@@ -118,7 +118,7 @@ export function todoThreadFor(store: Store, todo: Pick<Todo, "id" | "title">): {
   return { thread: store.createThread({ title: `할 일: ${todo.title}`.slice(0, 80), kind: "todo", todoId: todo.id }), created: true };
 }
 
-const SECTIONS = ["overview", "projects", "todos", "today", "chat"] as const;
+const SECTIONS = ["overview", "projects", "todos", "chat"] as const;
 
 // 채팅 제안 = 사용자가 시킨 코드 작업. 넣으면 바로 수정 run 이 돈다(워크트리 → 수정 → 테스트 → 커밋·푸시 → PR). 머지만 사용자 승인
 const THOUGHT_ITEM = THOUGHT_SCHEMA.properties.proposals.items;
@@ -170,7 +170,7 @@ export const CHAT_SCHEMA = {
     bubble: { type: "string", description: "캐릭터 말풍선용 요약. 정해진 캐릭터 말투로, 40자 이내." },
     show: {
       anyOf: [{ type: "string", enum: [...SECTIONS] }, { type: "null" }],
-      description: "사용자가 현황을 '보여줘/열어줘' 하면 해당 패널 섹션. overview=전체, projects=프로젝트·커밋, todos=할 일 탭, today=오늘 할 일(할 일 중 오늘로 고른 것). 아니면 null.",
+      description: "사용자가 현황을 '보여줘/열어줘' 하면 해당 패널 섹션. overview=전체, projects=프로젝트·커밋, todos=할 일 탭(맨 위 「오늘」 묶음이 오늘 할 일). 아니면 null.",
     },
     proposals: CHAT_PROPOSALS,
     todo_ops: TODO_OPS_SCHEMA,
