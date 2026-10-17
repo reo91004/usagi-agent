@@ -3,8 +3,8 @@ import { isSafeLink } from './bubbles.js';
 import { shapeRules } from './todo-rules.js';
 import { PRIORITIES, TODAY_GROUP } from './todos.js';
 
-export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'chat', 'models'];
-export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '프로젝트', todos: '할 일', chat: '채팅', models: '모델' };
+export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'chat', 'research', 'models'];
+export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '프로젝트', todos: '할 일', chat: '채팅', research: '연구', models: '모델' };
 
 // 모르는 섹션은 null. 「오늘 할 일」은 할 일에 합쳤다(예전 저장 상태·말풍선 open.section=scrum 도 할 일로)
 export function normalizeSection(s) {
@@ -201,17 +201,27 @@ export function shapeResearch(r, now = Date.now()) {
         : `${relativeTime(j.at, now)} · ${durationText(j.seconds)}${j.state === 'failed' && Number.isInteger(j.code) ? ` · 종료 코드 ${j.code}` : ''}`;
     const where = j.host ? ` @${j.host}` : '';
     return {
-      id: j.id, name: j.name, host: str(j.host), state: j.state, label: st.label, chip: st.chip, time,
+      id: j.id, name: j.name, host: str(j.host), state: j.state, forgettable: j.state !== 'running', label: st.label, chip: st.chip, time,
       detail: [str(j.cwd), str(j.cmd)].filter(Boolean).join(' · '),
       files: arr(j.files).filter((f) => str(f)).slice(0, 3),
       ask: j.state === 'running' ? `'${j.name}'${where} 실험 지금 어디까지 왔어? 로그 끝부분 봐 줘.` : `'${j.name}'${where} 실험 결과 정리해 줘.`,
     };
   });
+  // 서버별 tmux 세션(작업 확인 ssh 에 실려 옴): 창에서 셸 말고 프로그램이 돌면 「도는 중」, 아니면 「쉬는 중」
+  const tm = r.tmux && typeof r.tmux === 'object' ? r.tmux : {};
+  const tmux = arr(r.hosts).filter((h) => str(h) && tm[h]).map((host) => ({
+    host, rel: relativeTime(tm[host].at, now),
+    sessions: arr(tm[host].sessions).filter((x) => x && str(x.name)).map((x) => ({
+      name: x.name, running: str(x.running), label: str(x.running) ? `도는 중 (${x.running})` : '쉬는 중', chip: str(x.running) ? 'warn' : '',
+      path: str(x.path), time: `${num(x.created) ? `${relativeTime(new Date(num(x.created) * 1000).toISOString(), now)} 만듦` : ''}${num(x.activity) ? ` · 마지막 활동 ${relativeTime(new Date(num(x.activity) * 1000).toISOString(), now)}` : ''}`.replace(/^ · /, ''),
+    })),
+  }));
   const n = r.note && typeof r.note === 'object' && str(r.note.day) ? r.note : null;
   const y = n?.yesterday && typeof n.yesterday === 'object' ? n.yesterday : null;
   return {
     hosts: arr(r.hosts).filter((h) => str(h)),
     jobs,
+    tmux,
     note: n ? { day: n.day, exists: n.exists === true, yesterday: y ? { day: str(y.day), lines: arr(y.lines).filter((l) => str(l)), next: arr(y.next).filter((l) => str(l)) } : null } : null,
   };
 }
@@ -248,9 +258,9 @@ export function shapeDirectives(d, now = Date.now()) {
   const person = (p) => p && str(p.id) && /^[UW][A-Z0-9]{2,20}$/.test(p.id);
   return {
     from: arr(d.from).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id })),
-    candidates: arr(d.candidates).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id, count: num(p.count) })),
+    candidates: arr(d.candidates).filter(person).map((p) => ({ id: p.id, name: str(p.name) || p.id, count: num(p.count), channel: num(p.channel) })),
     open: arr(d.open).filter((x) => x && /^message:/.test(str(x.id)) && str(x.text)).map((x) => ({
-      id: x.id, who: str(x.authorName) || str(x.author), where: x.isDM ? 'DM' : `#${str(x.channelLabel)}`,
+      id: x.id, who: str(x.authorName) || str(x.author), where: x.isDM ? 'DM' : `#${str(x.channelLabel).replace(/^#/, '')}`,
       text: x.text.replace(/\s+/g, ' ').trim(), rel: relativeTime(x.at, now),
       link: str(x.permalink) && isSafeLink(x.permalink) ? x.permalink : null,
     })),

@@ -14,12 +14,13 @@ function fixture() {
   s.db.prepare("INSERT INTO slack_meta VALUES ('teamUrl', 'https://lab.slack.com')").run();
   s.upsertNode("person:UPROF", "person", "김교수", { slackId: "UPROF" });
   s.upsertNode("channel:D1", "channel", "김교수", { isDM: true });
-  s.upsertNode("channel:C1", "channel", "lab-general", {});
+  s.upsertNode("channel:C1", "channel", "#lab-general", {});
   const msg = (id: string, p: Record<string, unknown>, h: number) => s.upsertNode(id, "message", "x", p, ago(h));
   msg("message:D1:1.1", { channel: "D1", ts: "1.1", text: "논문 그림 3 축 라벨 고쳐 주세요\n그리고 표도", author: "UPROF", authorName: "김교수", isDM: true }, 1);
   msg("message:D1:1.2", { channel: "D1", ts: "1.2", text: "넵 :+1:", author: "UPROF", authorName: "김교수", isDM: true }, 0.9); // 맞장구
   msg("message:C1:2.1", { channel: "C1", ts: "2.1", thread_ts: "2.0", text: "<@UME> 이번 주 실험 결과 공유해 주세요", author: "UPROF", authorName: "김교수", mentionsMe: true }, 2);
-  msg("message:C1:2.2", { channel: "C1", ts: "2.2", text: "모두 금요일 세미나 준비", author: "UPROF", authorName: "김교수" }, 2); // 멘션 아님
+  msg("message:C1:2.2", { channel: "C1", ts: "2.2", text: "모두 금요일 세미나 준비", author: "UPROF", authorName: "김교수" }, 1.5); // 멘션 아님 — 채널 글
+  msg("message:C1:2.3", { channel: "C1", ts: "2.3", text: "자동 공지 봇이 올린 글", author: "UPROF", authorName: "김교수", bot: true }, 1.2);
   msg("message:D2:3.1", { channel: "D2", ts: "3.1", text: "점심 먹어요", author: "UFRIEND", authorName: "친구", isDM: true }, 3);
   msg("message:D2:3.2", { channel: "D2", ts: "3.2", text: "점심 뭐 먹지", author: "UFRIEND", authorName: "친구", isDM: true }, 3.5);
   msg("message:D1:9.9", { channel: "D1", ts: "9.9", text: "내 답장", author: "UME", authorName: "나", isDM: true, fromMe: true }, 0.5);
@@ -27,17 +28,18 @@ function fixture() {
   return s;
 }
 
-test("directivesSince: 지시자의 DM·멘션만, 맞장구·내 글은 빼고, 링크·상태", () => {
+test("directivesSince: 지시자의 DM·멘션·채널 글, 맞장구·봇·내 글은 빼고, 링크·상태", () => {
   const s = fixture();
   assert.deepEqual(directivesSince(s, [], ago(48)), []);
   const ds = directivesSince(s, ["UPROF"], ago(48));
-  assert.deepEqual(ds.map((d) => [d.id, d.isDM, d.channelLabel, d.state]), [["message:D1:1.1", true, "김교수", "open"], ["message:C1:2.1", false, "lab-general", "open"]]);
+  assert.deepEqual(ds.map((d) => [d.id, d.isDM, d.channelLabel, d.state]), [["message:D1:1.1", true, "김교수", "open"], ["message:C1:2.2", false, "#lab-general", "open"], ["message:C1:2.1", false, "#lab-general", "open"]]);
   assert.equal(ds[0].permalink, "https://lab.slack.com/archives/D1/p11");
-  assert.equal(ds[1].permalink, "https://lab.slack.com/archives/C1/p21?thread_ts=2.0&cid=C1");
+  assert.equal(ds[2].permalink, "https://lab.slack.com/archives/C1/p21?thread_ts=2.0&cid=C1");
+  assert.match(formatDirectives(ds), /김교수 #lab-general: 모두 금요일 세미나 준비/); // 「@#」가 되지 않게
   markDirective(s.db, "message:D1:1.1", "todo", "user:1");
   markDirective(s.db, "message:C1:2.1", "dismissed");
-  assert.deepEqual(directivesSince(s, ["UPROF"], ago(48)).map((d) => [d.state, d.todoId]), [["todo", "user:1"], ["dismissed", undefined]]);
-  assert.deepEqual(directivesSince(s, ["UPROF"], ago(48), { state: "open" }), []);
+  assert.deepEqual(directivesSince(s, ["UPROF"], ago(48)).map((d) => [d.state, d.todoId]), [["todo", "user:1"], ["open", undefined], ["dismissed", undefined]]);
+  assert.deepEqual(directivesSince(s, ["UPROF"], ago(48), { state: "open" }).map((d) => d.id), ["message:C1:2.2"]);
   assert.match(formatDirectives(directivesSince(s, ["UPROF"], ago(48))), /김교수 DM \(할 일로 넣음\): 논문 그림 3 축 라벨 고쳐 주세요 그리고 표도 <https/);
   assert.equal(directivesSince(new Store(":memory:"), ["UPROF"], ago(48)).length, 0); // 수집 전
 });
@@ -46,12 +48,12 @@ test("directiveTodo·directiveCandidates·directivesView", () => {
   const s = fixture();
   const [d] = directivesSince(s, ["UPROF"], ago(48));
   assert.deepEqual(directiveTodo(d), { title: "논문 그림 3 축 라벨 고쳐 주세요", priority: 2, note: "김교수 지시(DM): 논문 그림 3 축 라벨 고쳐 주세요 그리고 표도", link: "https://lab.slack.com/archives/D1/p11", source: "slack" });
-  assert.deepEqual(directiveCandidates(s, ago(24 * 30)).map((c) => [c.id, c.name, c.count]), [["UFRIEND", "친구", 2], ["UPROF", "김교수", 2]]); // 많이 보낸 순, 같으면 id 순
+  assert.deepEqual(directiveCandidates(s, ago(24 * 30)).map((c) => [c.id, c.name, c.count, c.channel]), [["UPROF", "김교수", 2, 2], ["UFRIEND", "친구", 2, 0]]); // DM+채널 글 많이 보낸 순(봇 글은 안 셈)
   assert.ok(!directiveCandidates(s, ago(24 * 30)).some((c) => c.id === "UBOT" || c.id === "UME"));
   const v = directivesView(s, ["UPROF"], NOW);
   assert.deepEqual(v.from, [{ id: "UPROF", name: "김교수" }]);
   assert.deepEqual(v.candidates.map((c) => c.id), ["UFRIEND"]);
-  assert.equal(v.open.length, 2);
+  assert.equal(v.open.length, 3);
 });
 
 test("설정 directiveFrom: Slack 사용자 id 목록만", () => {
