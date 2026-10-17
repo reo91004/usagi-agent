@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('cy', {
   todoReorder: (id, priority, beforeId) => ipcRenderer.invoke('todo-reorder', String(id), Number(priority), beforeId == null ? null : String(beforeId)),
   // 프로젝트 숨기기(hide=true) / 다시 보이기(false). id = 프로젝트 경로
   projectHide: (path, hide) => ipcRenderer.invoke('project-hide', String(path), !!hide),
+  folderHosts: () => ipcRenderer.invoke('folder-hosts'), // ~/.ssh/config 서버 별칭 [{ host, user }]
+  folderOpen: (path, how, host) => ipcRenderer.invoke('folder-open', String(path), String(how), host ? String(host) : null), // how: code | finder
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기({ enabled?, text? }) · 지우기
   todoRules: () => ipcRenderer.invoke('todo-rules'),
   todoRuleEdit: (id, patch) => ipcRenderer.invoke('todo-rule-edit', String(id), patch),

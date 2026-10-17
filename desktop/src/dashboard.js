@@ -4,7 +4,7 @@ import { shapeRules } from './todo-rules.js';
 import { PRIORITIES } from './todos.js';
 
 export const SECTIONS = ['setup', 'overview', 'projects', 'todos', 'today', 'chat', 'models'];
-export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '프로젝트', todos: '할 일', today: '오늘 할 일', chat: '채팅', models: '모델' };
+export const SECTION_LABELS = { setup: '설치', overview: '개요', projects: '작업 폴더', todos: '할 일', today: '오늘 할 일', chat: '채팅', models: '모델' };
 
 // 모르는 섹션은 null. 예전 말풍선 open.section=scrum 은 오늘 표로
 export function normalizeSection(s) {
@@ -104,7 +104,7 @@ export function overlayHidden(projects, pending) {
   return projects.map((p) => (p && pending.has(p.path) ? { ...p, hidden: pending.get(p.path) } : p));
 }
 
-// 최근 24시간 안에 손댄 프로젝트를 "진행 중"으로 본다
+// 최근 24시간 안에 손댄 작업 폴더를 "진행 중"으로 본다
 export function isActiveProject(p, now = Date.now()) {
   const t = toMs(p.lastActive);
   return p.sessions24h > 0 || p.commitsToday > 0 || (Number.isFinite(t) && now - t < DAY);
@@ -121,13 +121,15 @@ function shapeProject(p, now) {
   return {
     name: str(p.name) || '(이름 없음)',
     path, // 숨기기 키 — 접두 포함 원본
-    ...splitHost(path), // host: 서버 이름(이 Mac 이면 ''), dir: 보여줄 경로
+    ...splitHost(path), // host: 서버 이름(접두 없으면 ''), dir: 보여줄 경로
+    // server: 접두로 서버를 앎 · mac: 이 Mac 에 있음 · unknown: 접두 없는데 이 Mac 에 없음(VS Code 원격 세션 기록 등)
+    where: splitHost(path).host ? 'server' : p.onMac === false ? 'unknown' : 'mac',
     lastActive: str(p.lastActive),
     lastActiveRel: relativeTime(p.lastActive, now),
     sessions24h: num(p.sessions24h),
     branch: str(p.branch),
     commitsToday: num(p.commitsToday),
-    hidden: p.hidden === true, // 패널에서 숨김 — 맨 아래 '숨긴 프로젝트'에 모은다
+    hidden: p.hidden === true, // 패널에서 숨김 — 맨 아래 '숨긴 작업 폴더'에 모은다
     lastTitle: str(p.lastTitle),
     lastPrompt: str(p.lastPrompt),
     recentCommits: arr(p.recentCommits)
