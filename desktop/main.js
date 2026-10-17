@@ -1078,14 +1078,21 @@ function setupAppActivation() {
 }
 
 // 맥에서 setFocusable 을 바꾸면 창이 처음 위치로 돌아간다. 바꾸기 전 자리를 붙잡아 둔다.
+let dragEpoch = 0; // 드래그 시작·끝마다 +1 (keepOverlayPos 가 낡은 자리를 알아보는 표)
 function keepOverlayPos(fn) {
   if (!win || win.isDestroyed()) return fn();
   const { x, y } = win.getBounds();
+  const epoch = dragEpoch;
   const out = fn();
   const pin = () => {
     if (!win || win.isDestroyed()) return;
     const b = win.getBounds();
-    if (b.x !== x || b.y !== y) win.setBounds({ ...b, x, y });
+    // 드래그 중엔 붙잡아 둔 옛 자리가 아니라 커서를 따라간 자리로 돌려놓는다(옛 자리로 가면 한 프레임 튄다)
+    // 드래그가 시작·끝난 뒤엔 붙잡은 자리가 낡았으니 건드리지 않는다
+    if (!drag && epoch !== dragEpoch) return;
+    const c = drag && screen.getCursorScreenPoint();
+    const t = drag ? { x: c.x - drag.offX, y: c.y - drag.offY } : { x, y };
+    if (b.x !== t.x || b.y !== t.y) win.setBounds({ ...b, ...t });
   };
   pin();
   setImmediate(pin);
@@ -1188,6 +1195,7 @@ function endDrag() {
   if (!drag) return;
   clearInterval(drag.timer);
   drag = null;
+  dragEpoch++;
   if (!win) return;
   const [x, y] = win.getPosition();
   // 화면 위쪽에 놓았으면 뒤집어서 말풍선이 캐릭터 아래로 가게(geometry.js dropPlacement)
@@ -1235,6 +1243,7 @@ function setupIPC() {
     const c = screen.getCursorScreenPoint();
     const [wx, wy] = win.getPosition();
     drag = { offX: c.x - wx, offY: c.y - wy };
+    dragEpoch++;
     drag.started = Date.now();
     drag.timer = setInterval(() => {
       if (!win || !drag) return;
