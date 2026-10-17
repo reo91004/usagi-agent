@@ -276,13 +276,13 @@ function wantsBriefingShape(schema: unknown): boolean {
 
 // context: 맥락 넣는 법. inline(기본 — 브리핑) = 큰 맥락 블록, tools = 작은 머리말 + 맥락 도구(Slack DM 요청이 cfg.contextMode 로)
 export async function think(
-  cfg: Config, store: Store, task: string, onStep?: (s: string) => void, opts: { todoOps?: boolean; run?: AskRun; interactive?: AskOpts["interactive"]; context?: "tools" | "inline"; ctx?: CtxDeps; onResult?: AskOpts["onResult"]; deps?: ProviderDeps } = {},
+  cfg: Config, store: Store, task: string, onStep?: (s: string) => void, opts: { todoOps?: boolean; run?: AskRun; interactive?: AskOpts["interactive"]; context?: "tools" | "inline" | "light"; ctx?: CtxDeps; onResult?: AskOpts["onResult"]; deps?: ProviderDeps } = {},
 ): Promise<Thought> {
   const run = opts.run ?? (task.startsWith(BRIEFING_HEAD) ? { kind: "briefing", title: "정기 브리핑" } : { kind: "other", title: task.split("\n")[0].slice(0, 80) });
   const tools = opts.context === "tools";
   if (task.startsWith(BRIEFING_HEAD)) task = excludeBriefingSources(task, briefingExcludeOf(cfg)); // 설정에서 뺀 출처는 브리핑에서 빼기(연결 상태로 만든 과제 글 위에)
   // 사용자가 정한 행동 지침(guidelines.ts): 브리핑은 briefing, 사용자가 직접 말한 요청(Slack DM)은 chat 범위. 그 밖의 정기 작업엔 없음
-  const prompt = thinkPrompt(cfg, store, task, { tools, scope: run.kind === "briefing" ? "briefing" : opts.interactive ? "chat" : undefined });
+  const prompt = thinkPrompt(cfg, store, task, { tools, light: opts.context === "light", scope: run.kind === "briefing" ? "briefing" : opts.interactive ? "chat" : undefined });
   return ask<Thought>(cfg, prompt, opts.todoOps ? REQUEST_SCHEMA : SCHEMA, onStep, {
     run, ...(opts.interactive ? { interactive: opts.interactive } : {}), ...(opts.onResult ? { onResult: opts.onResult } : {}),
     ...(tools ? { system: `${opts.interactive ? INTERACTIVE_SYSTEM : SYSTEM}\n${CTX_GUIDE}`, ctx: { ...opts.ctx, store } } : {}),
@@ -290,10 +290,25 @@ export async function think(
   });
 }
 
+// 새 Slack 글에서 할 일만 뽑는 가벼운 맥락: 시각 + 규칙 + 열린 할 일(같은 일 거르기) + 지운 일 기억(되살리지 않기).
+// 프로필·지식그래프·일정·세션·최근 끝낸 일·오늘 계획과, 과제에 이미 들어 있는 Slack 미답 목록은 뺀다
+export function lightContext(store: Store, now: Date): string {
+  const lines = [`현재 시각: ${fmtTime(now.toISOString())} (KST)`];
+  const rules = rulesContext(listRules(store));
+  if (rules) lines.push("", rules);
+  const open = store.openTodos();
+  lines.push("", "## 현재 열린 할 일", ...(open.length ? open.map(todoLine) : ["(없음)"]));
+  const memory = ledgerContext(store, now);
+  if (memory) lines.push("", memory);
+  return lines.join("\n");
+}
+
 // think 의 프롬프트: 맥락(tools = 작은 머리말, inline = 큰 맥락 블록) + 그 범위의 행동 지침 + 지금 할 일
-export function thinkPrompt(cfg: Config, store: Store, task: string, o: { tools?: boolean; scope?: "briefing" | "chat"; now?: Date } = {}): string {
+export function thinkPrompt(cfg: Config, store: Store, task: string, o: { tools?: boolean; light?: boolean; scope?: "briefing" | "chat"; now?: Date } = {}): string {
   const guidelines = o.scope ? guidelinesFor(store, o.scope) : "";
-  const head = o.tools
+  const head = o.light
+    ? `${lightContext(store, o.now ?? new Date())}${guidelines ? `\n\n${guidelines}` : ""}`
+    : o.tools
     ? contextHeader(cfg, { ...(o.now ? { now: o.now } : {}), ...(guidelines ? { guidelines } : {}) })
     : `${buildContext(store, o.now ?? new Date(), { selfId: cfg.slackUserId, sessions: sessionsAllowed(cfg) })}${guidelines ? `\n\n${guidelines}` : ""}`;
   return `${head}\n\n## 지금 할 일\n${task}`;
