@@ -6,7 +6,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpa
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, pullJobs, type RunSsh } from "./jobs.ts";
+import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, parseTmux, mineOnly, pullJobs, type RunSsh } from "./jobs.ts";
 import { setCharacter } from "./characters.ts";
 import { loadConfig } from "./config.ts";
 import { Bus } from "./bus.ts";
@@ -56,7 +56,8 @@ test("pullJobs: 끝난 것(D)은 읽고 지우고, 도는 것(R)은 두되 끊�
       `no tab line`,
     ].join("\n");
   };
-  const { done, running } = await pullJobs("gpu1", run);
+  const { done, running, tmux } = await pullJobs("gpu1", run);
+  assert.deepEqual(tmux, []);
   assert.deepEqual(done, [
     { name: "학습", seconds: 10, code: 0, host: "gpu1", id: "20261016-1-1", cwd: "/home/u/exp", files: ["r.json"] },
     { name: "평가", seconds: 5, code: 2, host: "gpu1" },
@@ -70,7 +71,7 @@ test("pullJobs: 끝난 것(D)은 읽고 지우고, 도는 것(R)은 두되 끊�
   assert.equal(calls[1][2], "cd ~/.usagi-agent/jobs && rm -f -- '20261016-1-1.json' '20261016-1-2.json' 'broken.json' '20261017-1-4.running' 'bad.running'");
   // 끝난 게 없고 도는 것만 있으면 지우지 않는다
   const quiet: string[][] = [];
-  assert.deepEqual(await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; }), { done: [], running: [] });
+  assert.deepEqual(await pullJobs("gpu1", async (a) => { quiet.push(a); return ""; }), { done: [], running: [], tmux: [] });
   assert.equal(quiet.length, 1);
   await assert.rejects(pullJobs("-oProxyCommand=x", run), /jobHosts/);
 });
@@ -165,9 +166,9 @@ test("usagi-run 이 남긴 파일 → pullJobs(원격 명령을 실제 sh 로) �
   const { done } = await pullJobs("gpu1", localSh);
   assert.deepEqual(done.map((j) => [j.name, j.code, j.host]).sort(), [["학습 A", 0, "gpu1"], ["학습 B", 1, "gpu1"]]);
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
-  assert.deepEqual(await pullJobs("gpu1", localSh), { done: [], running: [] });
+  assert.deepEqual(await pullJobs("gpu1", localSh), { done: [], running: [], tmux: [] });
   // 폴더가 아직 없는 서버도 조용히 빈 목록
-  assert.deepEqual(await pullJobs("gpu1", async (a) => spawnSync("sh", ["-c", a[2]], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "empty-")) }, encoding: "utf8" }).stdout), { done: [], running: [] });
+  assert.deepEqual(await pullJobs("gpu1", async (a) => spawnSync("sh", ["-c", a[2]], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "empty-")) }, encoding: "utf8" }).stdout), { done: [], running: [], tmux: [] });
 });
 
 test("usagi-run: 도는 동안 .running 표시(pullJobs 가 살아 있음으로 읽음), 끝나면 지우고 폴더·명령·바뀐 파일을 남긴다", async () => {
@@ -224,4 +225,30 @@ test("공용 계정: 개인 폴더의 usagi-run(~/reo/bin)은 ~/reo/.usagi-agent
   const cfg = loadConfig({}, { jobDirs: { "pacl-208": "~/reo/.usagi-agent/jobs", "-oX": "~/a", "gpu2": "~/a;b" } } as any);
   assert.deepEqual(cfg.jobDirs, { "pacl-208": "~/reo/.usagi-agent/jobs" });
   assert.ok(cfg.configNotes?.some((n) => /jobDirs/.test(n)));
+});
+
+// 실제 서버(pacl-208)에서 본 모양: 세션\t만든 시각\t마지막 활동\t창 프로그램\t창 폴더
+test("parseTmux·mineOnly: 세션별로 합치고 셸만 있으면 쉬는 중, 공용 계정은 내 폴더 세션만", async () => {
+  const panes = [
+    ["claude", "1791532244", "1792224999", "claude", "/home/user/reo/dp"],
+    ["train", "1792000000", "1792100000", "bash", "/home/user/reo/exp"],
+    ["train", "1792000000", "1792100000", "python", "/home/user/reo/exp/sub"],
+    ["idle", "1792000001", "1792000002", "-bash", "/home/user/reo/x"],
+    ["other", "1792000001", "1792300000", "python", "/home/user/other/exp"],
+    ["sibling", "1792000001", "1792000003", "vim", "/home/user/reo2/exp"],
+    ["bad", "x", "1", "bash", "/p"],
+  ];
+  const all = parseTmux(panes);
+  assert.deepEqual(all.map((s) => [s.name, s.running, s.path]), [
+    ["other", "python", "/home/user/other/exp"], ["claude", "claude", "/home/user/reo/dp"], ["train", "python", "/home/user/reo/exp/sub"],
+    ["sibling", "vim", "/home/user/reo2/exp"], ["idle", null, "/home/user/reo/x"]]);
+  assert.deepEqual(mineOnly(all, "~/reo/.usagi-agent/jobs", "/home/user").map((s) => s.name), ["claude", "train", "idle"]); // reo2·other 는 내 폴더 밖
+  assert.equal(mineOnly(all, "~/.usagi-agent/jobs", "/home/me").length, 5); // 개인 계정은 거르지 않음
+  // 같은 ssh 호출 하나에 H·T 줄이 실려 오고 지우기 호출 말고는 ssh 가 늘지 않는다
+  const calls: string[][] = [];
+  const run: RunSsh = async (a) => { calls.push(a); return "H\t/home/user\nT\tclaude\t1791532244\t1792224999\tclaude\t/home/user/reo/dp\nT\tother\t1\t2\tpython\t/home/user/o\n"; };
+  const r = await pullJobs("pacl-208", run, "~/reo/.usagi-agent/jobs");
+  assert.deepEqual(r.tmux, [{ name: "claude", created: 1791532244, activity: 1792224999, running: "claude", path: "/home/user/reo/dp" }]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][2], /tmux list-panes -a -F/);
 });
