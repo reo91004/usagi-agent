@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  sanitizeAppPrefs, sanitizeSettingsPatch, okPanelTarget, needsSetupHint, okCheckId, dotClass, agoText, latencyText, groupRows, pendingChecks, mergeRows, toggleExclude, metaText,
+  sanitizeAppPrefs, sanitizeSettingsPatch, needsSetupHint, okCheckId, dotClass, agoText, latencyText, groupRows, pendingChecks, mergeRows, toggleExclude, metaText,
   phraseGroups, phraseText, phraseCustom, phraseSaveValue, phraseProblem, repoSlugFrom, autoMergeNext,
   cleanReminder, parseTimes, reminderSummary, REMINDER_DEFAULT,
   cleanCalendarAlert, alertMinutesNext, parseAlertMinutes, alertChoices, calendarAlertSummary, ALERT_DEFAULT,
@@ -28,15 +28,12 @@ test('자동 머지 레포: 저장 본문(owner/name 목록만) · 입력 글 �
   assert.deepEqual(autoMergeNext(['a/b'], 'c/d', true), ['a/b', 'c/d']);
   assert.deepEqual(autoMergeNext(['a/b'], 'A/B', true), ['a/b']);
   assert.deepEqual(autoMergeNext(['a/b', 'c/d'], 'A/b', false), ['c/d']);
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   assert.match(html, /id="am-list"/);
   assert.match(html, /id="am-add"/);
 });
 
-test('패널로 보낼 탭·[설치 안내] 붙일 줄', () => {
-  assert.ok(okPanelTarget('setup'));
-  assert.ok(okPanelTarget('models'));
-  for (const s of ['chat', 'https://evil.example/', '', null]) assert.equal(okPanelTarget(s), false, String(s));
+test('[설치 안내] 붙일 줄', () => {
   assert.equal(needsSetupHint({ state: 'error' }), true);
   assert.equal(needsSetupHint({ state: 'warn' }), true);
   for (const st of ['ok', 'off', 'unknown']) assert.equal(needsSetupHint({ state: st }), false);
@@ -84,25 +81,18 @@ test('groupRows·pendingChecks·mergeRows·toggleExclude', () => {
   assert.deepEqual(toggleExclude(['mail', 'jira'], 'jira', true), ['mail']);
 });
 
-test('설정 창 IPC: 이 창에서 온 것만, 저장 본문은 걸러서 PUT, 패널은 설치·모델 탭만 연다', async () => {
-  const handlers = {}, listeners = {}, requests = [], opened = [];
+test('설정 IPC: 패널에서 온 것만(오버레이·세션 창은 거절), 저장 본문은 걸러서 PUT', async () => {
+  const handlers = {}, listeners = {}, requests = [];
   let caps = { claude: false, codex: false };
   const fakeWin = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {}, once() {}, on() {}, show() {}, focus() {}, isDestroyed: () => false };
-  class BW { constructor() { return fakeWin; } }
-  const ui = setupSettings({
-    BrowserWindow: BW,
+  setupSettings({
+    fromPanel: (e) => e.sender === fakeWin.webContents,
     ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } },
     shell: { openExternal: async () => { throw new Error('밖으로 열지 않는다'); } },
-    openPanel: (s) => { opened.push(s); },
     caps: async () => caps,
     request: async (...a) => { requests.push(a); return { ok: true }; },
-    fromOurs: (e) => e.sender === 'panel',
-    preload: 'p', html: 'h',
   });
   const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
-  assert.deepEqual(await handlers['settings-get'](mine), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } }, '창이 아직 없다');
-  listeners['open-settings']({ sender: 'panel' });
-  assert.equal(ui.window, fakeWin);
   await handlers['settings-get'](mine);
   assert.deepEqual(await handlers['settings-get'](other), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } });
   await handlers['settings-put'](mine, { models: { quick: 'claude-haiku-5-5' } });
@@ -110,10 +100,6 @@ test('설정 창 IPC: 이 창에서 온 것만, 저장 본문은 걸러서 PUT, 
   await handlers['connections-check'](mine, 'services');
   assert.deepEqual(await handlers['connections-check'](mine, '../x'), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } });
   assert.deepEqual(requests.map((r) => r.slice(0, 3)), [['GET', '/settings'], ['PUT', '/settings', { models: { quick: 'claude-haiku-5-5' } }], ['POST', '/connections/check', { id: 'services' }]]);
-  listeners['settings-open-panel'](mine, 'setup');
-  listeners['settings-open-panel'](mine, 'https://evil.example/');
-  listeners['settings-open-panel'](other, 'models');
-  assert.deepEqual(opened, ['setup']);
   assert.deepEqual(await handlers['settings-caps'](mine), { claude: false, codex: false });
   caps = { claude: true, codex: true };
   assert.deepEqual(await handlers['settings-caps'](mine), { claude: true, codex: true });
@@ -127,9 +113,12 @@ test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더�
   assert.match(r, /dispatchActivity\(\{ type: 'localDance', on: true, clip \}\)/); // 칩 춤·응원은 고른 영상(clip)
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
   assert.match(m, /hover \? \{ kind: 'hover' \}/);
-  // 설정 창으로 가는 길: 트레이·앱 메뉴·패널 ⚙
-  assert.match(m, /settings: \(\) => settingsUi\?\.show\(\)/);
-  assert.match(readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8'), /id="open-settings"/);
+  // 설정으로 가는 길: 트레이·앱 메뉴(⌘,) 모두 패널의 설정 화면. 따로 뜨는 설정 창은 없다
+  assert.match(m, /settings: \(\) => showPanel\('settings'\)/);
+  assert.match(m, /accelerator: 'CmdOrCtrl\+,', click: \(\) => showPanel\('settings'\)/);
+  assert.doesNotMatch(m, /settingsUi|preload-settings/);
+  assert.match(m, /fromPanel: \(e\) => !!panel && !panel\.isDestroyed\(\) && e\.sender === panel\.webContents,/); // 설정 IPC 는 패널만
+  assert.doesNotMatch(readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8'), /id="open-settings"/);
   // PUT 도 X-CY-Agent 헤더를 단다
   assert.match(m, /if \(method === 'POST' \|\| method === 'PUT'\) \{\s*headers\['X-CY-Agent'\] = '1';/);
 });
@@ -158,7 +147,7 @@ test('문구: 저장 본문(키 → 글|null)·묶기·보일 글·저장 값·�
 });
 
 test('설정 창: 문구 칸 · 저장은 그 문구 하나만 PUT', async () => {
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   assert.match(html, /id="h-phrases">문구</);
   assert.match(html, /id="phrases"/);
   const r = readFileSync(new URL('../renderer/settings.js', import.meta.url), 'utf8');
@@ -169,8 +158,7 @@ test('설정 창: 문구 칸 · 저장은 그 문구 하나만 PUT', async () =>
   const fakeWin = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {}, once() {}, on() {}, show() {}, focus() {}, isDestroyed: () => false };
   class BW { constructor() { return fakeWin; } }
   const listeners = {};
-  setupSettings({ BrowserWindow: BW, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } }, shell: {}, request: async (...a) => { requests.push(a); return { ok: true }; }, fromOurs: () => true, preload: 'p', html: 'h' });
-  listeners['open-settings']({ sender: 'panel' });
+  setupSettings({ fromPanel: (e) => e.sender === fakeWin.webContents, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } }, shell: {}, request: async (...a) => { requests.push(a); return { ok: true }; }, preload: 'p', html: 'h' });
   await handlers['settings-put']({ sender: fakeWin.webContents }, { phrases: { dance: '춤!' } });
   assert.deepEqual(requests.map((x) => x.slice(0, 3)), [['PUT', '/settings', { phrases: { dance: '춤!' } }]]);
 });
@@ -190,7 +178,7 @@ test('오늘 할 일 알림: 저장 본문 거르기 · 시각 읽기 · 한 줄
   assert.equal(reminderSummary({ mode: 'auto', everyHours: 2, times: ['15:00'] }), '영업일 아침 첫 실행 때 한 번, 그 뒤 2시간마다(8시~21시), 15:00에 알려요. 다 끝냈으면 조용히 있어요.');
   assert.match(reminderSummary({ mode: 'off' }), /알리지 않아요/);
   assert.doesNotMatch(reminderSummary({ mode: 'auto', everyHours: 1, times: [] }), /—/);
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   for (const id of ['rem-mode', 'rem-every', 'rem-times', 'rem-times-save', 'rem-summary']) assert.match(html, new RegExp(`id="${id}"`));
 });
 
@@ -207,7 +195,7 @@ test('이 맥에서 읽는 것: 작업 기록 읽기는 켜고 끄기만, 레포
   assert.equal(some.sessions, true);
   assert.match(some.reposText, /\/r\/a/);
   assert.equal(localReadView(undefined).sessions, false);
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   assert.match(html, /id="local-read"/);
   assert.match(html, /id="open-repos"/);
   for (const t of [none.reposText, some.reposText]) assert.doesNotMatch(t, /—/);
@@ -237,7 +225,7 @@ test('일정 알림: 저장 본문 거르기 · 칩 켜고 끄기 · 직접 적�
   assert.equal(calendarAlertSummary({ minutesBefore: [15, 5] }), '일정 15분, 5분 전에 춤추며 알려요. 일정마다 그때그때 한 번씩이에요.');
   assert.match(calendarAlertSummary({ minutesBefore: [] }), /껐어요/);
   for (const c of [ALERT_DEFAULT, { minutesBefore: [15, 5] }, { minutesBefore: [] }]) assert.doesNotMatch(calendarAlertSummary(c), /—/);
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   for (const id of ['h-cal', 'cal-mins', 'cal-custom', 'cal-custom-add', 'cal-off', 'cal-summary', 'cal-err']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, />일정 알림</);
   assert.match(html, /알림 끄기/);

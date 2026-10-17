@@ -127,11 +127,10 @@ test('설정 창 IPC: 행동 지침은 이 창에서만, 인자는 걸러서 데
   const handlers = {}, requests = [];
   const fakeWin = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {}, once() {}, on() {}, show() {}, focus() {}, isDestroyed: () => false };
   class BW { constructor() { return fakeWin; } }
-  const ui = setupSettings({
-    BrowserWindow: BW, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: () => {} }, shell: { openExternal: async () => {} },
-    request: async (...a) => { requests.push(a); return { ok: true }; }, fromOurs: () => false, preload: 'p', html: 'h',
+  setupSettings({
+    fromPanel: (e) => e.sender === fakeWin.webContents, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: () => {} }, shell: { openExternal: async () => {} },
+    request: async (...a) => { requests.push(a); return { ok: true }; }, preload: 'p', html: 'h',
   });
-  ui.show();
   const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
   const bad = { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } };
   await handlers['guidelines-get'](mine);
@@ -147,10 +146,10 @@ test('설정 창 IPC: 행동 지침은 이 창에서만, 인자는 걸러서 데
     ['GET', '/guidelines'], ['POST', '/guidelines', { text: '표 쓰지 마', scope: 'chat' }], ['PUT', '/guidelines/gl-1', { active: false }], ['DELETE', '/guidelines/gl-1'],
   ]);
   // 화면·프리로드·헤더
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   for (const id of ['gl-list', 'gl-count', 'gl-add-text', 'gl-add-scope', 'gl-add']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, />행동 지침</);
-  const pre = readFileSync(new URL('../preload-settings.cjs', import.meta.url), 'utf8');
+  const pre = readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8');
   for (const c of ['guidelines-get', 'guidelines-add', 'guidelines-edit', 'guidelines-delete']) assert.match(pre, new RegExp(`'${c}'`));
   assert.match(readFileSync(new URL('../renderer/settings.js', import.meta.url), 'utf8'), /mountGuidelines\(document, cy, flash\)/);
   assert.match(readFileSync(new URL('../main.js', import.meta.url), 'utf8'), /else if \(method === 'DELETE'\) headers\['X-CY-Agent'\] = '1';/);

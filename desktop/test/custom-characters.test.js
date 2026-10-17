@@ -247,11 +247,10 @@ test('설정 저장·IPC: 사용자 캐릭터 id 를 고를 수 있고, 만들�
   const handlers = {}, requests = [], uploads = [];
   const fakeWin = { webContents: { setWindowOpenHandler() {}, on() {} }, loadFile() {}, once() {}, on() {}, show() {}, focus() {}, isDestroyed: () => false };
   class BW { constructor() { return fakeWin; } }
-  const ui = setupSettings({
-    BrowserWindow: BW, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: () => {} }, shell: {},
-    request: async (...a) => { requests.push(a); return { ok: true }; }, upload: async (...a) => { uploads.push(a); return { ok: true }; }, fromOurs: () => false, preload: 'p', html: 'h',
+  setupSettings({
+    fromPanel: (e) => e.sender === fakeWin.webContents, ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: () => {} }, shell: {},
+    request: async (...a) => { requests.push(a); return { ok: true }; }, upload: async (...a) => { uploads.push(a); return { ok: true }; }, preload: 'p', html: 'h',
   });
-  ui.show();
   const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
   await handlers['characters-list'](mine);
   await handlers['characters-create'](mine, { name: '까망', from: 'shisa', lines: {} });
@@ -270,9 +269,9 @@ test('설정 저장·IPC: 사용자 캐릭터 id 를 고를 수 있고, 만들�
   ]);
   assert.deepEqual(uploads.map((u) => u.slice(0, 4)), [['PUT', `/characters/${U}/media/cheer`, 'a.gif', 'image/gif']]);
   // 프리로드·화면·메인 연결
-  const pre = readFileSync(new URL('../preload-settings.cjs', import.meta.url), 'utf8');
+  const pre = readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8');
   for (const c of ['characters-list', 'characters-create', 'characters-update', 'characters-reset', 'characters-delete', 'characters-media-put', 'characters-media-delete']) assert.match(pre, new RegExp(`'${c}'`));
-  const html = readFileSync(new URL('../renderer/settings.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   assert.match(html, /＋ 새 캐릭터/);
   const sjs = readFileSync(new URL('../renderer/settings.js', import.meta.url), 'utf8');
   assert.match(sjs, /add\.id = 'char-new'/, '새 캐릭터도 같은 크기 카드');

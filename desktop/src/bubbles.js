@@ -8,7 +8,7 @@ export const MAX_VISIBLE = 3;
 export const IMAGES = ['merge', 'merge_complete', 'lots', 'daily', 'daily_all_complete', 'daily_half_complete', 'to_do_new'];
 export const SEQUENCE_GAP = 600; // 그림 → 글 사이
 export const STICKER_TTL = 15000; // 글이 오래 남아도 그림은 이만큼만
-const OPEN_SECTIONS = ['overview', 'projects', 'todos', 'chat', 'setup', 'models'];
+const OPEN_SECTIONS = ['overview', 'projects', 'todos', 'chat', 'research', 'setup', 'models', 'settings'];
 const DETAIL_MAX = 1200;
 
 // 데몬에서 온 payload 정리. 잘못된 건 null.

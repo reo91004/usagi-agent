@@ -212,9 +212,6 @@ export function sanitizeCharacterBody(b, create = false) {
 }
 export const okMediaSlot = (s) => typeof s === 'string' && MEDIA_SLOTS.includes(s);
 
-// 연결 줄에서 패널로 보낼 수 있는 탭(설치 안내 · AI 고르기)
-export const PANEL_TARGETS = ['setup', 'models'];
-export const okPanelTarget = (s) => typeof s === 'string' && PANEL_TARGETS.includes(s);
 // 줄에 [설치 안내]를 붙일까: 써야 하는데 안 되는 것만(안 씀·정상·모름은 아님)
 // 「이 맥에서 읽는 것」 카드: 작업 기록 읽기 켬/끔 + 레포 폴더(고른 폴더만 읽는다)
 export function localReadView(st) {

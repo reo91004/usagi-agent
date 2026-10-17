@@ -1,5 +1,5 @@
-// 모델 탭: 연결된 AI마다 쓸 수 있는 모델 목록을 보여 주고, 단순 채팅·코딩 작업에 쓸 모델을 고른다.
-// 말투(AI 연결 시)와 정해진 말(연결 안 됐을 때)도 여기서 고친다. 키는 이 화면에 오지 않는다.
+// 설정 > AI 칸: 연결된 AI마다 쓸 수 있는 모델 목록을 보여 주고, 단순 채팅·코딩 작업에 쓸 모델을 고른다.
+// 말투 안내와 정해진 말은 설정 > 캐릭터 칸(voiceSection)에 따로 그린다. 키는 이 화면에 오지 않는다.
 // 연결된 AI 마다 [연결 해제]: 키는 지우고, Claude Code·Codex·agy 는 이 앱에서만 안 쓴다(CLI 로그인은 그대로). 지금 쓰던 AI 면 「AI 없이 쓰기」로.
 
 import { who } from './who.js';
@@ -87,7 +87,7 @@ export function cannedOverrideOf(draft, stored) {
   return out;
 }
 
-export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBrain = () => null }) {
+export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, gotoSetup, gotoRules, getBrain = () => null }) {
   const lists = {};
   let note = '';
   let busy = false;
@@ -219,13 +219,13 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
     render();
   }
 
-  // 처음 설정 뒤에 CLI AI 를 하나 더 붙인다 — 키로 쓰는 AI 는 설치 탭
+  // 처음 설정 뒤에 CLI AI 를 하나 더 붙인다 — 키로 쓰는 AI 는 설치 화면
   function addCard(sisa) {
     const rows = addableClis(sisa.connected || [], logins);
     if (!rows.length) return null;
     return h('div.card.models-card', null,
       h('h2', { text: 'AI 더 연결하기' }),
-      h('p.muted.small', { text: '연결하면 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙어요. 키로 쓰는 AI 는 설치 탭에서 붙여요.' }),
+      h('p.muted.small', { text: '연결하면 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙어요. 키로 쓰는 AI 는 설치 화면에서 붙여요.' }),
       h('ul.priority-list', null, rows.map((r) => h('li.row', null,
         h('span.t', { text: PROVIDER_TITLE[r.provider] }),
         r.state ? h('span.muted.small', { text: r.state }) : null,
@@ -286,13 +286,13 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
           : h('ul.model-list', null, l.models.map((m) => h('li', null, h('code', { text: m.id }), m.label ? h('span.muted.small', { text: ` ${m.label}` }) : null))));
   }
 
-  // 말투: 대화는 전부 시사(데몬)가 답한다 — 말투·답 모양은 설정 창의 「행동 지침」에 적는다
+  // 말투: 대화는 전부 시사(데몬)가 답한다 — 말투·답 모양은 설정 > 작업 규칙의 「행동 지침」에 적는다
   function voiceCard() {
     return h('div.card.models-card', null,
       h('h2', { text: '말투' }),
       h('p.muted.small', null,
-        h('span', { text: `${who()}의 말투·답 모양은 설정 창의 「행동 지침」에 적어요(예: 답은 짧게, 반말로). ` }),
-        cy.openSettings ? h('button.ghost.small', { type: 'button', text: '설정 열기', onclick: () => cy.openSettings() }) : null));
+        h('span', { text: `${who()}의 말투·답 모양은 「작업 규칙」의 「행동 지침」에 적어요(예: 답은 짧게, 반말로). ` }),
+        gotoRules ? h('button.ghost.small', { type: 'button', text: '작업 규칙 열기', onclick: gotoRules }) : null));
   }
 
   function cannedCard() {
@@ -330,12 +330,12 @@ export function mountModels({ section, h, cy, getSisa, onSisa, gotoSetup, getBra
     } else {
       kids.push(chatCard(sisa), priorityCard(sisa), addCard(sisa), codeCard(sisa));
     }
-    kids.push(voiceCard(), cannedCard());
     if (note) kids.push(h('p.muted.small.models-note', { role: 'status', text: note }));
     if (connected.length) {
       kids.push(h('h2', { text: '연결된 AI · 모델 목록' }), ...connected.map(listCard));
     }
     section.replaceChildren(...kids.filter(Boolean));
+    voiceSection?.replaceChildren(voiceCard(), cannedCard());
   }
 
   return {

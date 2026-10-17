@@ -132,13 +132,12 @@ test('설정 창 IPC: 캘린더 목록·하나 빼기는 이 창에서만, id �
   function BW() { return fakeWin; }
   const calls = [];
   setupSettings({
-    BrowserWindow: BW,
+    fromPanel: (e) => e.sender === fakeWin.webContents,
     ipcMain: { handle: (c, f) => { handlers[c] = f; }, on: (c, f) => { listeners[c] = f; } },
-    shell: {}, request: async () => ({ ok: true }), fromOurs: (e) => e.sender === 'panel', preload: 'p', html: 'h',
+    shell: {}, request: async () => ({ ok: true }), preload: 'p', html: 'h',
     calendars: () => ({ ok: true, items: [{ id: '0123456789abcdef', kind: 'gcal', title: '구글 캘린더', label: 'chae…@gmail.com' }] }),
     removeCalendar: async (id) => { calls.push(id); return { ok: true, items: [] }; },
   });
-  listeners['open-settings']({ sender: 'panel' });
   const mine = { sender: fakeWin.webContents }, other = { sender: 'evil' };
   assert.equal((await handlers['settings-calendars'](mine)).items.length, 1);
   assert.equal((await handlers['settings-calendars'](other)).ok, false);
@@ -162,7 +161,7 @@ test('화면 연결: 패널 설치 탭·설정 창·프리로드·main 이 캘�
   assert.match(settings, /cy\.removeCalendar\(c\.id\)/);
   assert.match(settings, /캘린더 하나 더 추가/);
   assert.match(read('../preload-panel.cjs'), /calendarRemove: .*'calendar-remove'/);
-  assert.match(read('../preload-settings.cjs'), /removeCalendar: .*'settings-calendar-remove'/);
+  assert.match(read('../preload-panel.cjs'), /removeCalendar: .*'settings-calendar-remove'/);
   const main = read('../main.js');
   assert.match(main, /ipcMain\.handle\('calendar-remove'/);
   assert.match(main, /if \(wrote === 'dup'\) return \{ ok: false, duplicate: true/);

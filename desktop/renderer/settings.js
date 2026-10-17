@@ -1,4 +1,5 @@
-// 설정 창: 캐릭터 · AI·모델 · 브리핑 출처 · 오늘 할 일 알림 · 일정 알림 · 자동 머지 레포 · 문구 · 행동 지침 · 연결 상태. 데몬은 메인 프로세스를 거쳐서만(window.cy)
+// 패널 「설정」 화면(panel.html #sec-settings): 캐릭터 · 연결된 AI · Claude 세부 모델 · 브리핑 출처 · 오늘 할 일 알림 · 일정 알림 · 자동 머지 레포 · 문구 · 행동 지침 · 연결 상태 · 이 앱.
+// 설정 화면을 처음 열 때 panel.js 가 불러온다(그전에는 데몬에 아무것도 묻지 않는다). 데몬은 메인 프로세스를 거쳐서만(window.cy.settings)
 // Claude Code 가 없는 컴퓨터(Gemini·GPT 키·로컬)에서는 Claude 세부 모델·자동 머지 칸을 안내로 바꾼다
 import {
   groupRows, pendingChecks, mergeRows, toggleExclude, dotClass, metaText, STATE_LABEL,
@@ -12,15 +13,20 @@ import { CHARACTERS, CHARACTER_IDS, characterAssets, characterName, okCharacterI
 import { applyCharacters, effectiveLines, defaultsOf } from '../src/character-registry.js';
 import { editorSections, flattenLines, unflattenLines, fieldText, fieldProblem, linesFromTexts, diffLines, slotRows, okMediaName, previewKind, missingRequired, sourceOptions, ACCEPT } from '../src/character-edit.js';
 import { who, setWho, onWho } from './who.js';
+const cy = window.cy.settings;
+const $ = (id) => document.getElementById(id);
+const root = $('sec-settings');
+// 패널이 알려 주는 이동: setup() 설치 화면 · aiTab() 설정의 AI 칸
+const nav = { setup: () => {}, aiTab: () => {} };
+export function setNav(n) { Object.assign(nav, n); }
 // 안내 글 속 이름(<span class="who">)도 캐릭터 이름으로
-const fillWho = () => { for (const n of document.querySelectorAll('.who')) n.textContent = who(); };
+const fillWho = () => { for (const n of root.querySelectorAll('.who')) n.textContent = who(); };
 onWho(fillWho);
 fillWho(); // 처음 캐릭터가 기본값과 같으면 onWho 가 안 불려 HTML 의 「시사」가 남았다
 import { brainRows, brainDisconnectCopy, connectorAction, capOfRow, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { calendarRemoveCopy } from '../src/calendars.js';
 
-const cy = window.cy;
-const $ = (id) => document.getElementById(id);
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -46,14 +52,14 @@ let calendars = []; // 연결된 캘린더(가린 이름만, 주소 없음) — 
 // ---- 저장 알림 ----
 let savedTimer = null;
 function flash(text, err = false) {
-  const s = $('saved');
+  const s = $('set-saved');
   s.textContent = text;
   s.classList.toggle('err', err);
   clearTimeout(savedTimer);
   savedTimer = setTimeout(() => { s.textContent = ''; }, err ? 8000 : 4000);
 }
 function banner(text) {
-  const b = $('banner');
+  const b = $('set-banner');
   b.hidden = !text;
   b.textContent = text ?? '';
 }
@@ -71,15 +77,15 @@ async function save(patch) {
 
 // ---- 모델 ----
 function renderModels() {
-  const box = $('models');
+  const box = $('set-models');
   box.replaceChildren();
   if (!settings) return;
-  // Claude 세부 모델은 뇌가 Claude Code 일 때만(목록도 Claude 모델이다. agy·Codex 뇌는 같은 칸을 자기 모델로 쓴다 — 패널 [모델] 탭)
+  // Claude 세부 모델은 뇌가 Claude Code 일 때만(목록도 Claude 모델이다. agy·Codex 뇌는 같은 칸을 자기 모델로 쓴다 — AI 칸 위쪽)
   const provider = settings.brain?.provider ?? 'claude-code';
   const show = provider === 'claude-code' && caps.claude !== false && (settings.modelOptions ?? []).length > 0;
   $('models-note').hidden = !show;
   $('models-hint').hidden = show;
-  $('models-hint').textContent = show ? '' : provider === 'claude-code' ? 'Claude Code 에 로그인하면 일마다 다른 Claude 모델을 고를 수 있어요.' : '지금 AI의 모델은 패널의 [모델] 탭에서 골라요. 일마다 다른 Claude 모델은 뇌가 Claude Code 일 때 고를 수 있어요.';
+  $('models-hint').textContent = show ? '' : provider === 'claude-code' ? 'Claude Code 에 로그인하면 일마다 다른 Claude 모델을 고를 수 있어요.' : '지금 AI의 모델은 이 칸 위쪽에서 골라요. 일마다 다른 Claude 모델은 뇌가 Claude Code 일 때 고를 수 있어요.';
   if (!show) return;
   $('config-path').textContent = settings.configPath ? `(${settings.configPath} 에 저장)` : '';
   for (const { role, label } of settings.modelRoles ?? []) {
@@ -126,7 +132,7 @@ function renderBrains() {
     main.append(el('div', 'name', 'AI 없이 쓰는 중'), el('div', 'detail', '정해진 말·할 일·오늘 표·회의 알림은 그대로 돼요.'));
     const b = el('button', 'small primary', '연결하기');
     b.type = 'button';
-    b.addEventListener('click', () => cy.openPanel('models'));
+    b.addEventListener('click', () => nav.aiTab());
     const acts = el('div', 'acts');
     acts.append(b);
     row.append(el('span', 'dot off'), main, acts);
@@ -850,7 +856,7 @@ function renderPhrases() {
 }
 
 // ---- 연결 상태 ----
-// 캘린더 줄 아래: 연결된 캘린더마다 가린 이름 + [빼기](그 주소만, 마지막이면 캘린더 연결 해제) · [하나 더 추가](패널 설치 탭)
+// 캘린더 줄 아래: 연결된 캘린더마다 가린 이름 + [빼기](그 주소만, 마지막이면 캘린더 연결 해제) · [하나 더 추가](설치 화면)
 function calendarList() {
   const box = el('div', 'cals');
   if (calendars.length) {
@@ -876,8 +882,8 @@ function calendarList() {
   }
   const add = el('button', 'small ghost', '캘린더 하나 더 추가');
   add.type = 'button';
-  add.title = '패널의 설치 탭에서 같은 안내로 주소를 하나 더 붙여요';
-  add.addEventListener('click', () => cy.openPanel('setup'));
+  add.title = '설치 화면에서 같은 안내로 주소를 하나 더 붙여요';
+  add.addEventListener('click', () => nav.setup());
   box.append(add);
   return box;
 }
@@ -885,9 +891,9 @@ function loadCalendars() {
   return cy.getCalendars?.().then((r) => { if (r?.ok && Array.isArray(r.items)) { calendars = r.items; renderRows(); } }).catch(() => {});
 }
 
-// 설치 탭 「더 연결하기」에 있는 연결(Slack·캘린더)은 거기로, 그 밖(메일·이슈)은 안내 문서로
+// 설치 화면 「더 연결하기」에 있는 연결(Slack·캘린더)은 거기로, 그 밖(메일·이슈)은 안내 문서로
 const hasSetupStep = (r) => !r.doc || ['slack', 'calendar'].includes(capOfRow(r));
-const howToConnect = (r) => (hasSetupStep(r) ? cy.openPanel('setup') : cy.openDoc?.(r.doc));
+const howToConnect = (r) => (hasSetupStep(r) ? nav.setup() : cy.openDoc?.(r.doc));
 
 function rowEl(r) {
   const n = el('div', 'conn');
@@ -912,7 +918,7 @@ function rowEl(r) {
   if (action === 'connect') {
     const b = el('button', 'small primary', '연결하기');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '설치 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   } else if (action === 'disconnect') {
@@ -933,7 +939,7 @@ function rowEl(r) {
   if (needsSetupHint(r)) {
     const b = el('button', 'small primary', '설치 안내');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '패널의 설치 탭에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '설치 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   }
@@ -1000,22 +1006,20 @@ loadAppPrefs();
 const guidelines = mountGuidelines(document, cy, flash); // 행동 지침(src/guidelines.js)
 guidelines.load();
 $('check-all').addEventListener('click', checkAll);
-$('open-models').addEventListener('click', () => cy.openPanel('models'));
-$('open-repos')?.addEventListener('click', () => cy.openPanel('setup'));
-$('open-setup')?.addEventListener('click', () => cy.openPanel('setup'));
+$('open-repos')?.addEventListener('click', () => nav.setup());
+$('open-setup')?.addEventListener('click', () => nav.setup());
 $('start-tour')?.addEventListener('click', () => cy.startTour?.());
-// 창으로 돌아오면(브라우저에서 연결하고 온 뒤 등) 싼 확인만 새로
-window.addEventListener('focus', () => { guidelines.load(); }); // 채팅에서 넣은 지침도 보이게
-// 패널 모델 탭에서 AI를 붙이거나 끊었으면 연결된 AI 줄도 맞춘다
-window.addEventListener('focus', () => {
+
+// 설정 화면으로 돌아왔을 때(탭을 다시 열거나 창에 포커스가 돌아올 때) 다른 곳에서 바뀐 것만 싸게 다시 읽는다
+export function refresh() {
+  guidelines.load(); // 채팅에서 넣은 지침도 보이게
+  // AI 칸에서 AI를 붙이거나 끊었으면 연결된 AI 줄도 맞춘다
   Promise.all([cy.getSisa?.().catch(() => null), cy.getSettings().catch(() => null)]).then(([v, r]) => {
     if (v && typeof v === 'object' && Array.isArray(v.connected)) sisaView = v;
-    if (r?.ok && settings) settings = { ...settings, brain: r.data.brain ?? settings.brain };
-    renderBrains();
+    if (r?.ok && settings) { settings = { ...settings, brain: r.data.brain ?? settings.brain, autoMerge: r.data.autoMerge ?? [] }; renderBrains(); renderAutoMerge(); } // 채팅에서 바꾼 자동 머지 레포도
   });
-});
-// 채팅에서 바꾼 자동 머지 레포도 보이게
-window.addEventListener('focus', () => { cy.getSettings().then((r) => { if (r?.ok && settings) { settings = { ...settings, autoMerge: r.data.autoMerge ?? [] }; renderAutoMerge(); } }).catch(() => {}); });
-window.addEventListener('focus', () => { loadCalendars(); }); // 패널에서 캘린더를 더하거나 뺐으면
-window.addEventListener('focus', () => { if (!busy.size) cy.getConnections().then((c) => { if (c?.ok && Array.isArray(c.data?.rows)) { rows = mergeRows(rows, c.data.rows); renderRows(); } }).catch(() => {}); });
+  loadCalendars(); // 설치 화면에서 캘린더를 더하거나 뺐으면
+  if (!busy.size) cy.getConnections().then((c) => { if (c?.ok && Array.isArray(c.data?.rows)) { rows = mergeRows(rows, c.data.rows); renderRows(); } }).catch(() => {});
+}
+window.addEventListener('focus', () => { if (!root.hidden) refresh(); });
 load();
