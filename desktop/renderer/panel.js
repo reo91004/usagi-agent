@@ -1167,7 +1167,7 @@ function unboundFolders() {
   const kids = [h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(foldersOpen), onclick: toggle },
     h('span.caret', { text: foldersOpen ? '▾' : '▸' }), h('span', { text: `묶지 않은 폴더 (${free.length})` }))];
   if (foldersOpen) {
-    kids.push(h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.'));
+    kids.push(h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' }));
     if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
     if (free.length) kids.push(projectRows(free));
     if (hidden.length) {
