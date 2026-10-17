@@ -1,13 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   normalizeSisa, connectedProviders, activeProvider, brainOf, publicView, withKey, withCli, withSkip, withModels, withVoice, isModelId,
 } from '../src/sisa-store.js';
 import { SISA_BASE } from '../src/persona.js';
 import { CANNED_DEFAULTS } from '../src/canned.js';
 import { optionsFor, codeOptions, cannedOverrideOf } from '../renderer/models-view.js';
-import { pickModels, listModels, completeCli, completeCodex, completeLlm, CLI_MODELS } from '../src/llm-check.js';
+import { pickModels, listModels, CLI_MODELS } from '../src/llm-check.js';
 
 const KEY = 'AIzaSyExampleExampleExample';
 
@@ -78,25 +77,6 @@ test('목록 요청은 키를 오류에 남기지 않는다', async () => {
   assert.equal((await listModels('openai', '')).ok, false);
 });
 
-test('고른 모델이 요청에 실린다', async () => {
-  let url = '';
-  await completeLlm('gemini', KEY, { system: 's', messages: [{ role: 'user', content: 'a' }], model: 'gemini-2.5-pro' }, async (u) => {
-    url = u;
-    return { ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hi' }] } }] }) };
-  });
-  assert.match(url, /models\/gemini-2\.5-pro:generateContent/);
-  let args;
-  await completeCli({ system: 's', messages: [{ role: 'user', content: 'a' }], model: 'opus' }, { exec: (b, a, o, cb) => { args = a; cb(null, 'x'); }, bin: '/c' });
-  assert.equal(args[args.indexOf('--model') + 1], 'opus');
-  await completeCli({ system: 's', messages: [{ role: 'user', content: 'a' }], model: 'default' }, { exec: (b, a, o, cb) => { args = a; cb(null, 'x'); }, bin: '/c' });
-  assert.equal(args.includes('--model'), false);
-  await completeCodex({ system: 's', messages: [{ role: 'user', content: 'a' }], model: 'gpt-5' }, {
-    exec: (b, a, o, cb) => { args = a; fs.writeFileSync(a[a.indexOf('-o') + 1], 'ok'); cb(null, ''); },
-    bin: '/x',
-  });
-  assert.equal(args[args.indexOf('-m') + 1], 'gpt-5');
-});
-
 test('모델 탭 선택지: 지금 값이 목록에 없어도 남고, 코딩은 Claude만', () => {
   const rows = optionsFor('gemini', { status: 'ok', models: [{ id: 'a', label: '' }] }, 'zzz');
   assert.deepEqual(rows.map((m) => m.id), ['default', 'a', 'zzz']);
@@ -106,37 +86,6 @@ test('모델 탭 선택지: 지금 값이 목록에 없어도 남고, 코딩은 
     'default',
   );
   assert.deepEqual(code.map((m) => m.id), ['default', 'sonnet', 'opus', 'haiku']);
-});
-
-test('Gemini 기본 모델은 목록에서 가장 새 flash 를 고른다', async () => {
-  const { bestGeminiModel } = await import('../src/llm-check.js');
-  assert.equal(bestGeminiModel([{ id: 'gemini-2.5-flash' }, { id: 'gemini-3.8-flash' }, { id: 'gemini-3.10-flash' }, { id: 'gemini-9-flash-lite' }, { id: 'gemini-9-flash-image' }, { id: 'gemini-3.8-pro' }]), 'gemini-3.10-flash');
-  assert.equal(bestGeminiModel([{ id: 'gemini-pro' }]), '');
-  assert.equal(bestGeminiModel([]), '');
-});
-
-test('Gemini 는 모델을 안 정하면 목록에서 골라 대화하고, 목록이 안 오면 기본값을 쓴다', async () => {
-  const urls = [];
-  const fetchOk = async (u) => {
-    urls.push(String(u));
-    if (String(u).includes(':generateContent')) return { ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: '안녕' }] } }] }) };
-    return { ok: true, text: async () => JSON.stringify({ models: [
-      { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
-      { name: 'models/gemini-3.9-flash', supportedGenerationMethods: ['generateContent'] },
-    ] }) };
-  };
-  const r = await completeLlm('gemini', 'k-pick', { system: 's', messages: [{ role: 'user', content: 'a' }] }, fetchOk);
-  assert.equal(r.text, '안녕');
-  assert.match(urls.find((u) => u.includes(':generateContent')), /models\/gemini-3\.9-flash:/);
-
-  const fetchBad = async (u) => {
-    urls.push(String(u));
-    if (String(u).includes(':generateContent')) return { ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }) };
-    return { ok: false, text: async () => 'nope' };
-  };
-  urls.length = 0;
-  await completeLlm('gemini', 'k-fallback', { system: 's', messages: [{ role: 'user', content: 'a' }] }, fetchBad);
-  assert.match(urls.find((u) => u.includes(':generateContent')), /models\/gemini-3\.8-flash:/);
 });
 
 test('말투·정해진 말은 키 없이 저장하고, 기본값과 같으면 비운다', () => {

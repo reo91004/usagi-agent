@@ -23,7 +23,6 @@ import { focusDuration } from "./focus.ts";
 import { directivesSince, formatDirectives } from "./directives.ts";
 
 export { CTX_SERVER, CTX_TOOL_NAMES };
-export type ContextMode = "tools" | "inline";
 // 큰 맥락 블록을 프롬프트에 그대로 붙이는 예전 방식인가(config contextMode: "inline").
 // Claude Code 가 아닌 뇌(Gemini·OpenAI·Claude API·Codex·agy)는 맥락 도구를 못 부르니 늘 inline — 아니면 할 일·일정 없이 답했다
 export const inlineContext = (cfg: Pick<Config, "contextMode"> & { brain?: Pick<Config["brain"], "provider"> }) =>
@@ -309,6 +308,3 @@ export function ctxMcpServer(cfg: Config, store: Store, deps: CtxDeps = {}) {
     tools,
   });
 }
-
-// 이름 목록이 guard.ts 와 맞는지(테스트용)
-export const ctxToolNames = (): readonly string[] => CTX_TOOL_NAMES;

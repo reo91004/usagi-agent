@@ -30,72 +30,7 @@ export type CalEvent = {
 };
 export type Meeting = { id: string; subject: string; start: string; end: string; link?: string; webLink?: string; response?: string; location?: string }; // response: 내 응답(accepted·notresponded·organizer…), location: 회의실·장소
 
-// ── 파싱 ─────────────────────────────────────────────────────
-
-const unwrap = (v: unknown): string => typeof v === "string" ? v.trim() : "";
-
-// { dateTime, timeZone } → ISO(UTC). 우리가 Asia/Seoul 로 요청하므로 오프셋 없는 값은 KST 로 본다(UTC 라고 하면 UTC)
-export function toIso(t: unknown): string | null {
-  const dt = unwrap((t as any)?.dateTime);
-  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.exec(dt);
-  if (!m) return null;
-  const tz = unwrap((t as any)?.timeZone).toLowerCase();
-  const off = m[2] ?? (tz === "utc" || tz === "etc/utc" ? "Z" : "+09:00"); // 그 밖의 시간대 이름은 요청한 Asia/Seoul 로 본다
-  const ms = Date.parse(`${m[1]}${off}`);
-  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
-}
-
-const httpUrl = (s: string) => { try { const u = new URL(s); return u.protocol === "https:" || u.protocol === "http:" ? u.href : undefined; } catch { return undefined; } };
-
-// Teams·Skype 가 장소 칸에 넣는 자리표시 이름 — 회의실이 아니다
-const ONLINE_PLACEHOLDER = /^(microsoft\s+teams|skype)(\s+(meeting|모임|회의|미팅))?$/i;
-
-// 일정 항목 → 회의실·장소 이름들과 장소 칸에 적힌 링크(있으면). 순서 유지, 중복 제거
-export function extractLocation(it: any): { rooms: string[]; url?: string } {
-  const names: string[] = [];
-  if (Array.isArray(it?.locations)) for (const l of it.locations) names.push(unwrap(l?.displayName));
-  names.push(...unwrap(it?.location?.displayName).split(";"));
-  const rooms: string[] = [];
-  let url: string | undefined;
-  for (const raw of names) {
-    const n = raw.replace(/\s+/g, " ").trim();
-    if (!n || ONLINE_PLACEHOLDER.test(n)) continue;
-    if (/^https?:\/\//i.test(n)) { url ??= httpUrl(n); continue; }
-    if (!rooms.includes(n)) rooms.push(n);
-  }
-  return url ? { rooms, url } : { rooms };
-}
-
-export function parseCalendarView(data: any): { events: CalEvent[]; cursor: string | null } | { error: string } {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "응답 없음" };
-  if (data.error || data.ok === false) return { error: String(data.error ?? "ok=false").slice(0, 200) };
-  const items = Array.isArray(data.items) ? data.items : Array.isArray(data.value) ? data.value : null;
-  if (!items) return { error: "일정 목록 모양이 아님" };
-  const events: CalEvent[] = [];
-  for (const it of items) {
-    const id = unwrap(it?.id), start = toIso(it?.start), end = toIso(it?.end);
-    if (!id || !start || !end) continue;
-    const loc = extractLocation(it);
-    const join = httpUrl(unwrap(it?.onlineMeeting?.joinUrl) || unwrap(it?.onlineMeetingUrl)) ?? loc.url;
-    const web = httpUrl(unwrap(it?.webLink));
-    const ev: CalEvent = {
-      id, subject: unwrap(it?.subject) || "(제목 없음)", start, end,
-      allDay: it?.isAllDay === true, cancelled: it?.isCancelled === true,
-      showAs: unwrap(it?.showAs).toLowerCase() || "unknown",
-      response: unwrap(it?.responseStatus?.response).toLowerCase() || "none",
-      online: it?.isOnlineMeeting === true || !!join,
-    };
-    if (join) ev.joinUrl = join;
-    if (web) ev.webLink = web;
-    const lt = unwrap(it?.location?.locationType);
-    if (lt) ev.locationType = lt;
-    if (loc.rooms.length) ev.location = loc.rooms.join(", ");
-    if (Array.isArray(it?.attendees)) ev.attendees = it.attendees.length;
-    events.push(ev);
-  }
-  const cursor = unwrap(data.cursor) || null;
-  return { events, cursor };
-}
+// ── 거르기 ──────────────────────────────────────────────────
 
 // 거를 이유(없으면 null) — 알림·패널에 넣지 않는다
 export function skipReason(e: CalEvent): string | null {

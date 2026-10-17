@@ -267,7 +267,7 @@ test("bus: 휴지통 라우트(삭제→옮긴 할 일, 되살리기·영구 삭
   const calls: unknown[] = [];
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     todoDelete: (id) => { calls.push(["delete", id]); if (!open.delete(id)) return undefined; trash.add(id); return { id, trashedAt: "t" }; },
     todoRestore: (id) => { calls.push(["restore", id]); if (!trash.delete(id)) return undefined; open.add(id); return { id, status: "open" }; },
     todoPurge: (id) => { calls.push(["purge", id]); return trash.delete(id); },
@@ -298,7 +298,7 @@ test("bus: 휴지통 라우트(삭제→옮긴 할 일, 되살리기·영구 삭
   } finally { bus.close(); }
 
   const bare = new Bus();
-  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   const b2 = `http://127.0.0.1:${(bare.server!.address() as any).port}`;
   try {
     for (const p of ["/todos/a/restore", "/todos/a/purge", "/todos/trash/empty"]) assert.equal((await fetch(b2 + p, { method: "POST", headers: { "x-cy-agent": "1" } })).status, 503);

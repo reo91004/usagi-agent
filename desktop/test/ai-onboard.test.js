@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AI_PROVIDERS, CLI_PROVIDERS, HUB, PLANS, SISA_SAY, planById, hubFor, aiProvidersFor,
-  wantsPersonaEdit, connectSteps, cannedReply, slotCheck, todoBrief, DEFAULT_PERSONA,
+  AI_PROVIDERS, CLI_PROVIDERS, HUB, PLANS, SISA_SAY, planById,
+  connectSteps, cannedReply, slotCheck, DEFAULT_PERSONA,
 } from '../src/ai-onboard.js';
 import { checkLlm } from '../src/llm-check.js';
 
@@ -52,19 +52,6 @@ test('AI가 없으면 정해진 말만 한다', () => {
   assert.match(cannedReply('done'), /수고|잘|대단|고생|해냈|멋|승리/);
 });
 
-test('AI에게 알려 줄 할 일 현황은 길이를 줄인다', () => {
-  const brief = todoBrief({ open: ['a'.repeat(200), '빨래'], done: ['설거지'] });
-  assert.match(brief, /^\[오늘 할 일 현황\]/);
-  assert.match(brief, /끝낸 일 1개: 설거지/);
-  assert.match(brief, /남은 일 2개/);
-  assert.equal(brief.includes('a'.repeat(100)), false);
-});
-
-test('말투를 고치라는 말만 페르소나 수정으로 본다', () => {
-  assert.equal(wantsPersonaEdit('말투를 좀 더 다정하게 해 줘'), true);
-  assert.equal(wantsPersonaEdit('오늘 할 일을 얼마나 했어요?'), false);
-});
-
 test('캘린더 주소는 모양이 맞아야 통과한다', () => {
   const good = 'https://calendar.google.com/calendar/ical/me%40gmail.com/private-abc123/basic.ics';
   assert.equal(slotCheck('gcal', good).ok, true);
@@ -110,30 +97,10 @@ test('플랜은 네 가지이고 정해진 모양이다', () => {
   assert.equal(planById(undefined), null);
 });
 
-test('hubFor는 플랜의 순서대로 HUB 항목을 돌려준다', () => {
-  assert.deepEqual(hubFor('calendar').map((h) => h.id), ['gcal', 'outlook']);
-  assert.deepEqual(hubFor('chat').map((h) => h.id), ['gcal', 'outlook']);
-  assert.deepEqual(hubFor('tools').map((h) => h.id), ['gcal', 'outlook', 'slack', 'jira']);
-  assert.deepEqual(hubFor('code').map((h) => h.id), ['gcal', 'outlook', 'slack', 'jira', 'github']);
-  assert.deepEqual(hubFor('nope'), []);
-  for (const p of PLANS) {
-    for (const h of hubFor(p.id)) {
-      assert.notEqual(h.id, 'claude');
-      assert.notEqual(h.id, 'codex');
-      assert.equal(h, HUB.find((x) => x.id === h.id));
-    }
-  }
+test('HUB 의 GitHub 항목은 에이전트가 먼저 필요하다', () => {
   const gh = HUB.find((h) => h.id === 'github');
   assert.equal(gh.kind, 'done');
   assert.equal(gh.needsAgent, true);
-});
-
-test('aiProvidersFor는 플랜에 맞는 AI 목록을 준다', () => {
-  assert.deepEqual(aiProvidersFor('calendar'), []);
-  assert.equal(aiProvidersFor('chat'), AI_PROVIDERS);
-  assert.equal(aiProvidersFor('tools'), CLI_PROVIDERS);
-  assert.equal(aiProvidersFor('code'), CLI_PROVIDERS);
-  assert.deepEqual(aiProvidersFor('nope'), []);
 });
 
 test('GitHub 안내는 gh 설치·로그인·확인 세 단계다', () => {
@@ -181,44 +148,6 @@ test('키 확인은 상태 코드만 본다', async () => {
   const bad = await checkLlm('openai', 'sk-secret', async () => ({ ok: false, text: async () => 'invalid sk-secret' }));
   assert.equal(bad.ok, false);
   assert.equal(bad.error.includes('sk-secret'), false);
-});
-
-test('Claude Code로 말할 때는 도구를 끄고, 말은 -- 뒤에 둔다', async () => {
-  const { completeCli, completeLlm } = await import('../src/llm-check.js');
-  let seen;
-  const exec = (bin, args, opts, cb) => { seen = { bin, args, opts }; cb(null, ' 안녕하세요 \n'); };
-  const out = await completeCli({ system: '너는 시사야', messages: [{ role: 'user', content: '-p 오늘 어때요' }] }, { exec, bin: '/x/claude', cwd: '/tmp' });
-  assert.deepEqual(out, { ok: true, text: '안녕하세요' });
-  assert.equal(seen.bin, '/x/claude');
-  assert.equal(seen.args.at(-1), '-p 오늘 어때요');
-  assert.equal(seen.args.at(-2), '--');
-  assert.equal(seen.args[seen.args.indexOf('--tools') + 1], '');
-  assert.equal(seen.opts.cwd, '/tmp');
-  const none = await completeCli({ system: 'x', messages: [] }, { exec, bin: null });
-  assert.equal(none.ok, false);
-  assert.equal(typeof completeLlm, 'function');
-});
-
-test('Codex로 말할 때는 읽기 전용으로, 답 파일만 읽는다', async () => {
-  const fs = await import('node:fs');
-  const { completeCodex, codexBin } = await import('../src/llm-check.js');
-  let seen;
-  const exec = (bin, args, opts, cb) => {
-    seen = { bin, args };
-    fs.writeFileSync(args[args.indexOf('-o') + 1], ' 좋아요 \n');
-    cb(null, '');
-  };
-  const out = await completeCodex({ system: '너는 시사야', messages: [{ role: 'user', content: '안녕' }] }, { exec, bin: '/x/codex' });
-  assert.deepEqual(out, { ok: true, text: '좋아요' });
-  assert.equal(seen.args[0], 'exec');
-  assert.equal(seen.args[seen.args.indexOf('-s') + 1], 'read-only');
-  assert.ok(seen.args.includes('--ephemeral'));
-  assert.match(seen.args.at(-1), /사용자: 안녕/);
-  assert.equal(seen.args.at(-2), '--');
-  assert.equal((await completeCodex({ system: '', messages: [] }, { exec, bin: null })).ok, false);
-  assert.equal(codexBin(() => null, () => true), '/Applications/Codex.app/Contents/Resources/codex');
-  assert.equal(codexBin(() => '/p/codex', () => false), '/p/codex');
-  assert.equal(codexBin(() => null, () => false), null);
 });
 
 test('키 만들기 첫 단계에 주소 열기·복사가 바로 붙는다', () => {

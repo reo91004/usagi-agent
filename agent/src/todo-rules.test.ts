@@ -305,7 +305,7 @@ test("버스: GET /todo-rules, POST /todo-rules/:id(검증·404), /delete, apply
   const bus = new Bus();
   const h: BusHandlers = {
     approve: async () => {}, hold: async () => {}, briefing: async () => {}, dashboard: async () => ({}), todoDone: () => true,
-    chat: () => "c", chatHistory: () => [],
+    chat: () => "c",
     todoRules: () => [{ id: "rule:1", text: "t" }],
     todoRuleEdit: (id, p) => { calls.push(["edit", id, p]); return id === "rule:1" ? { id, ...p } : undefined; },
     todoRuleDelete: (id) => { calls.push(["del", id]); return id === "rule:1"; },

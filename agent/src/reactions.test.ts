@@ -245,7 +245,7 @@ test("bus: 머지 라우트 — 헤더 없으면 403, merge/decline-merge/ask, �
   const bus = new Bus();
   const calls: string[] = [];
   const h: BusHandlers = {
-    approve: async () => 0, hold: async () => 0, briefing: async () => 0, dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => 0, hold: async () => 0, briefing: async () => 0, dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     mergeDecide: async (id, d) => { calls.push(`${d}:${id}`); return id === "gone" ? { ok: false, status: 404, error: "x" } : { ok: true, state: d === "merge" ? "merged" : "declined" }; },
     mergeAsk: async (id, text) => { calls.push(`ask:${id}:${text}`); return { ok: true, reply: "응" }; },
   };
@@ -272,7 +272,7 @@ test("bus: 머지 라우트 — 헤더 없으면 403, merge/decline-merge/ask, �
 
 test("bus: 머지 핸들러가 없으면 503", async () => {
   const bus = new Bus();
-  await bus.listen(0, { approve: async () => 0, hold: async () => 0, briefing: async () => 0, dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bus.listen(0, { approve: async () => 0, hold: async () => 0, briefing: async () => 0, dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   try {
     assert.equal((await fetch(`${base}/proposals/p1/merge`, { method: "POST", headers: { "X-CY-Agent": "1" } })).status, 503);

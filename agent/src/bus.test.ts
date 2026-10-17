@@ -12,7 +12,6 @@ test("bus: SSE로 말풍선 전달, POST는 헤더 없으면 403", async () => {
     dashboard: async () => ({}),
     todoDone: () => true,
     chat: () => "c1",
-    chatHistory: () => [],
   });
   const port = (bus.server!.address() as any).port;
   const base = `http://127.0.0.1:${port}`;
@@ -46,7 +45,6 @@ async function serve(extra: Partial<BusHandlers> = {}) {
     dashboard: async () => ({ generatedAt: "t", projects: [] }),
     todoDone: (id) => { calls.push(["done", id]); return id !== "missing"; },
     chat: (text) => { calls.push(["chat", text]); return "chat-1"; },
-    chatHistory: () => [{ role: "user", text: "안녕", at: "t" }],
     ...extra,
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
@@ -59,7 +57,6 @@ test("bus: 대시보드·할 일·채팅 라우트, 잘못된 입력은 400", as
   const { bus, base, post, calls } = await serve();
   try {
     assert.deepEqual(await (await fetch(`${base}/dashboard`)).json(), { generatedAt: "t", projects: [] });
-    assert.deepEqual(await (await fetch(`${base}/chat/history`)).json(), [{ role: "user", text: "안녕", at: "t" }]);
 
     assert.equal((await post("/todos/mail%3A1/done", undefined, {})).status, 403); // CSRF 헤더 없음
     assert.equal((await post("/todos/mail%3A1/done")).status, 200);

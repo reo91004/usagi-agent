@@ -13,7 +13,7 @@ export function threadTitle(text, max = 30) {
   return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : plain;
 }
 
-// legacy: 예전 /chat/history 대본(있으면 "이전 대화"로). emit: SSE
+// legacy: 예전 대화 대본(있으면 "이전 대화"로). emit: SSE
 export function createFakeThreads(emit, { legacy = [], seed = true, actionsFor, agentsFor } = {}) {
   const threads = new Map(); // id → { id, title, kind, todoId?, created, updated, archived }
   const msgs = new Map(); // id → [{ n, role, text, at, todoId?, todoTitle? }]
@@ -98,10 +98,6 @@ export function createFakeThreads(emit, { legacy = [], seed = true, actionsFor, 
     create, add, todoThread, signal, view,
     findTodoThread: (todoId) => [...threads.values()].find((x) => x.kind === 'todo' && x.todoId === todoId), // 만들지 않고 찾기만
     byTitle: (title) => [...threads.values()].find((x) => x.title === title),
-    // /chat/history(예전 모양): 할 일 스레드·시스템 줄 빼고 최근 50
-    history: () => [...threads.values()].filter((t) => t.kind !== 'todo').flatMap((t) => msgs.get(t.id))
-      .filter((m) => m.role !== 'system').sort((a, b) => a.n - b.n).slice(-50).map(({ n: _n, ...m }) => m),
-
     // POST /chat 의 스레드 고르기 → { thread, fresh } | { status, error }
     resolve(body, findTodo) {
       const { threadId, todoId, kind } = body;

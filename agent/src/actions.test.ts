@@ -301,7 +301,7 @@ test("HTTP: /actions 목록·하나·confirm·cancel, CSRF 403, 404·409·400", 
   const { created: [a, b] } = await s.agent.actions.propose([NOTE("하나"), NOTE("둘")], { via: "chat", threadId: "t1" });
   const bus = new Bus();
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     actions: { list: (o) => s.agent.listActions(o), get: (id) => s.agent.getAction(id), confirm: (id) => s.agent.confirmAction(id), cancel: (id) => s.agent.cancelAction(id) },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
@@ -382,7 +382,7 @@ test("캐릭터 승인 말풍선(actionBubbleOf): 어디서 난 카드든 버튼
 
 test("버스: 기다리는 버튼 말풍선은 다시 붙은 오버레이에도(결정·걷힘 전까지), 최근 3개 밖이어도", async () => {
   const bus = new Bus();
-  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   const replay = async () => {
     const ac = new AbortController();

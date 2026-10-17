@@ -102,7 +102,7 @@ test("PUT /settings: 헤더 필수, 메모리 cfg 를 바로 바꾸고 GET 이 �
   const s = new Settings(cfg, { path: p, env: {} });
   const bus = new Bus();
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     settings: { get: () => s.view(), put: (b) => s.put(b) },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;

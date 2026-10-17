@@ -10,8 +10,6 @@ export function escapeHtml(s) {
 export const CALLOUTS = {
   NOTE: '📝 참고', TIP: '💡 팁', IMPORTANT: '📌 중요', WARNING: '⚠️ 주의', CAUTION: '🚨 위험',
 };
-// 글자색은 이 목록만 — `:red[글자]`
-export const COLORS = ['red', 'green', 'blue', 'orange', 'purple', 'gray'];
 
 export function createMarkdown(Marked) {
   const md = new Marked({ gfm: true, breaks: true, async: false });

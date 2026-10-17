@@ -288,7 +288,6 @@ await bus.listen(cfg.port, {
     messages: (id, o) => agent.threadMessages(id, o),
   },
   todoExists: (id) => !!agent.getTodo(id),
-  chatHistory: () => agent.chatHistory(50),
   attachments: {
     stage: (name, mime, bytes) => agent.stageAttachment(name, mime, bytes),
     file: (threadId, file) => agent.attachmentPath(threadId, file),

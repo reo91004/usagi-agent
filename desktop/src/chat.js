@@ -1,7 +1,6 @@
 // 채팅 상태 — 순수 리듀서. 오버레이(호버 입력)와 패널(채팅 탭)이 같이 쓴다.
 //
 // 액션:
-//   { type: 'history', items }            GET /chat/history 결과로 대화 교체
 //   { type: 'local', msg }                 내가 보낸 말(또는 전송 실패)을 바로 붙임
 //   { type: 'accepted', chatId, threadId?, queued?, position?, clientId?, text? }
 //                                          이 창에서 보낸 POST /chat 이 받아들여짐 → 답을 이 창이 보여줌.
@@ -59,10 +58,6 @@ const cap = (list, n) => (list.length > n ? list.slice(list.length - n) : list);
 
 export function chatReducer(state, action) {
   switch (action?.type) {
-    case 'history': {
-      const items = Array.isArray(action.items) ? action.items.map(normMsg).filter(Boolean) : [];
-      return { ...state, messages: cap(items, MAX_MESSAGES) };
-    }
     case 'local': {
       const m = normMsg(action.msg);
       return m ? { ...state, messages: cap([...state.messages, m], MAX_MESSAGES) } : state;

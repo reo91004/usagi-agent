@@ -27,7 +27,7 @@ test("HTTP MCP: 토큰이 맞으면 진짜 MCP 클라이언트가 도구 목록�
   const token = "a".repeat(64);
   let calls = 0;
   const tools = () => [tool("echo_twice", "두 번 말하기", { text: z.string() }, async (a) => { calls++; return { content: [{ type: "text" as const, text: `${a.text} ${a.text}` }] }; }, { annotations: { readOnlyHint: true } })];
-  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [], mcp: mcpHandler(token, tools) });
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", mcp: mcpHandler(token, tools) });
   const port = (bus.server!.address() as any).port as number;
   try {
     const client = new Client({ name: "test", version: "1" });

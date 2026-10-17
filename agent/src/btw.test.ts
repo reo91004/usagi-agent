@@ -107,7 +107,7 @@ async function serve(extra: Partial<BusHandlers>) {
   const bus = new Bus();
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({ generatedAt: "t", projects: [] }),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [], ...extra,
+    todoDone: () => true, chat: () => "c", ...extra,
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   const post = (path: string, body?: string, headers: Record<string, string> = { "x-cy-agent": "1" }) =>

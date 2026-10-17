@@ -65,7 +65,7 @@ test("HTTP: /chat/threads 목록·만들기·이름·보관·삭제·메시지, 
   s.store.upsertTodo({ id: "mail:1", title: "견적 회신", source: "mail", priority: 2 });
   await s.bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true,
-    chat: (text, o) => s.agent.chat(text, o ?? {}), todoExists: (id) => !!s.store.getTodo(id), chatHistory: () => s.store.chatHistory(),
+    chat: (text, o) => s.agent.chat(text, o ?? {}), todoExists: (id) => !!s.store.getTodo(id),
     chatThreads: {
       list: (o) => s.agent.threads(o), create: (t) => s.agent.createThread(t), edit: (id, p) => s.agent.editThread(id, p),
       remove: (id) => s.agent.deleteThread(id), messages: (id, o) => s.agent.threadMessages(id, o),

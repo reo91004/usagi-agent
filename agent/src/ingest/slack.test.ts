@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Store } from "../store.ts";
 import { loadConfig } from "../config.ts";
-import { SlackIngester, attentionSince, callKey, formatAttention, mentions, parseToolResponse, permalinkOf } from "./slack.ts";
+import { SlackIngester, attentionSince, callKey, formatAttention, mentions, permalinkOf } from "./slack.ts";
 
 const ME = "UME";
 const NOW = Date.parse("2026-10-08T12:00:00Z");
@@ -131,16 +131,12 @@ const baseWorld = (): World => ({
   },
 });
 
-test("mentions / permalink / parseToolResponse / callKey", () => {
+test("mentions / permalink / callKey", () => {
   assert.ok(mentions("hi <@UME> look", ME));
   assert.ok(mentions("hi <@UME|me>", ME));
   assert.ok(!mentions("hi <@UMEX>", ME));
   assert.equal(permalinkOf("https://a.slack.com/", "C1", "1.000200", "1.000100"),
     "https://a.slack.com/archives/C1/p1000200?thread_ts=1.000100&cid=C1");
-  assert.deepEqual(parseToolResponse('{"a":1}'), { a: 1 });
-  assert.deepEqual(parseToolResponse([{ type: "text", text: '{"a":2}' }]), { a: 2 });
-  assert.deepEqual(parseToolResponse({ content: [{ type: "text", text: '{"a":3}' }] }), { a: 3 });
-  assert.ok(parseToolResponse("Error: boom").error);
   assert.equal(callKey("t", { b: 1, a: null, c: { y: 2, x: 1 } }), callKey("t", { c: { x: 1, y: 2 }, b: 1 }));
 });
 

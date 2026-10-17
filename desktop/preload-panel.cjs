@@ -31,7 +31,6 @@ contextBridge.exposeInMainWorld('cy', {
   researchNoteOpen: (day) => ipcRenderer.invoke('research-note-open', String(day)), // 그날 연구 노트 파일 열기
   refreshSources: () => ipcRenderer.invoke('refresh-sources'), // ↻: 슬랙·메일 지금 다시 읽고 할 일 반영
   openSettings: () => ipcRenderer.send('open-settings'), // ⚙ 설정 창(모델·브리핑 출처·연결 상태)
-  getChatHistory: () => ipcRenderer.invoke('get-chat-history'),
   todoDone: (id) => ipcRenderer.invoke('todo-done', String(id)),
   todoAdd: (body) => ipcRenderer.invoke('todo-add', body),
   todoEdit: (id, patch) => ipcRenderer.invoke('todo-edit', String(id), patch),
@@ -86,7 +85,6 @@ contextBridge.exposeInMainWorld('cy', {
   // 도구 권한 규칙([항상 허용]): 목록 · 지우기
   permissions: () => ipcRenderer.invoke('permissions'),
   permissionDelete: (id) => ipcRenderer.invoke('permission-delete', String(id)),
-  actionsList: (threadId) => ipcRenderer.invoke('actions-list', threadId == null ? null : String(threadId)),
   openLink: (url) => ipcRenderer.send('open-link', String(url)),
   caps: () => ipcRenderer.invoke('caps-get'), // { claude, codex, agy } — 이 컴퓨터에 Claude Code·Codex·Antigravity 가 있나(코드 관련 버튼 숨기기)
   onCaps: on('caps'),

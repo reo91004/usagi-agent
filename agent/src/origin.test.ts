@@ -159,7 +159,7 @@ test("HTTP: GET /todos/:id/thread/last — 유효한 제안이면 ops·diff, 바
   s.store.upsertTodo({ id: "mail:2", title: "보고서", source: "mail", priority: 2 });
   await s.bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true,
-    chat: (text, o) => s.agent.chat(text, o ?? {}), chatHistory: () => [],
+    chat: (text, o) => s.agent.chat(text, o ?? {}),
     todoLastAsk: (id) => s.agent.lastAsk(id), todoDelete: (id) => s.agent.deleteTodo(id),
     todoEdit: (id, p) => s.agent.editTodo(id, p),
   });

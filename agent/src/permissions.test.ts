@@ -416,7 +416,7 @@ test("HTTP: GET /permissions · POST /permissions/:id/delete · confirm {always}
   const rule = s.agent.permissionRules.add({ tool: INV, scope: "docs.upload_document", label: "relay docs.upload_document" });
   const bus = new Bus();
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     actions: { list: (o) => s.agent.listActions(o), get: (id) => s.agent.getAction(id), confirm: (id, o) => s.agent.confirmAction(id, o ?? {}), cancel: (id) => s.agent.cancelAction(id) },
     permissions: { list: () => s.agent.listPermissions(), remove: (id) => s.agent.deletePermission(id) },
   });

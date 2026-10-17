@@ -644,7 +644,6 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, settings: fakeSettings(), applied: 'live', restartNeeded: false });
   }
   if (req.method === 'GET' && p === '/dashboard') return json(res, 200, dashboard());
-  if (req.method === 'GET' && p === '/chat/history') return json(res, 200, fakeThreads.history());
   if (req.method === 'GET' && p === '/chat/queue') return json(res, 200, { queue: [], running: [] }); // 가짜 데몬은 줄 세우지 않는다
   if (req.method === 'GET' && fakeThreads.handle(req, res, url, null, json, findTodo)) return;
   if (req.method === 'GET' && p === '/todo-rules') return json(res, 200, { rules: fakeRules.list() });

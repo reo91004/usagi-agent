@@ -94,17 +94,6 @@ export function permalinkOf(teamUrl: string | undefined, channel: string, ts: st
   return threadTs && threadTs !== ts ? `${base}?thread_ts=${threadTs}&cid=${channel}` : base;
 }
 
-// MCP/도구 결과(tool_response)를 객체로. 문자열 JSON · [{type:"text",text}] · {content:[…]} 모두 받는다
-export function parseToolResponse(r: unknown): any {
-  let v: any = r;
-  if (v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.content)) v = v.content;
-  if (Array.isArray(v)) v = v.filter((b) => b?.type === "text").map((b) => b.text).join("");
-  if (typeof v === "string") {
-    try { return JSON.parse(v); } catch { return { error: v.slice(0, 200) }; }
-  }
-  return v;
-}
-
 // 호출 동일성 판정용: null/undefined 인자는 빼고 키를 정렬해 직렬화
 export function callKey(tool: string, args: Record<string, unknown> = {}): string {
   const norm = (v: any): any => {

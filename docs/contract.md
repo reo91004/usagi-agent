@@ -262,7 +262,6 @@ type FocusView = {
 | `POST /chat/threads/:id/messages/:n/edit { text, stopAgents?, model? }` | 마지막 사용자 말 고쳐 그 턴을 다시 |
 | `POST /chat/threads/:id/sync` | 터미널 Claude Code에서 이어 간 대화 불러오기 |
 | `GET /chat/queue` | 대기·답하는 중인 말(패널을 다시 열어도 되살림) |
-| `GET /chat/history` | 예전 모양 기록(최근 50개) |
 | `POST /chat/attachments`(본문 = 파일 바이트, `x-file-name`) → 201 `{ attachment }` · `GET /chat/attachments/:thread/:file` · `POST …/open` | 첨부(크기·개수 상한 없음) |
 
 ## 확인 카드·머지

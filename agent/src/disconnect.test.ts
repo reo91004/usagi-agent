@@ -110,7 +110,7 @@ test("AI 연결 해제: PUT /settings brain 으로 키를 지우고 로컬로, �
 
 async function serve(extra: Partial<BusHandlers>) {
   const bus = new Bus();
-  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [], ...extra } as BusHandlers);
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", ...extra } as BusHandlers);
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   const post = (p: string, body: unknown, headers: Record<string, string> = { "x-cy-agent": "1" }) =>
     fetch(base + p, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body) });

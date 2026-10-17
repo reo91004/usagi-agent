@@ -199,7 +199,7 @@ test("bus: GET /todos/ledger?day= — 형식 틀리면 400, 핸들러 없으면 
   const days: (string | undefined)[] = [];
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    todoDone: () => true, chat: () => "c",
     todoLedger: (day) => { days.push(day); return { day: day ?? "2026-10-13", entries: [], days: [] }; },
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
@@ -210,6 +210,6 @@ test("bus: GET /todos/ledger?day= — 형식 틀리면 400, 핸들러 없으면 
     assert.deepEqual(days, [undefined, "2026-10-12"]);
   } finally { bus.close(); }
   const bare = new Bus();
-  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [] });
+  await bare.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c" });
   try { assert.equal((await fetch(`http://127.0.0.1:${(bare.server!.address() as any).port}/todos/ledger`)).status, 503); } finally { bare.close(); }
 });

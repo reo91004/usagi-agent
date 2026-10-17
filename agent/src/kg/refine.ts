@@ -548,8 +548,6 @@ export function issueProjects(store: Store): Map<string, string> {
   return map;
 }
 
-export type IssueItem = { id: string; name: string; status: string; lastAt: string; days: number };
-
 function lastEvidenceAt(store: Store, id: string, fallback: string): string {
   return (store.db.prepare("SELECT max(at) a FROM kg_evidence WHERE target = ?").get(id) as any)?.a ?? fallback;
 }

@@ -308,7 +308,7 @@ test("HTTP: GET/POST/PUT/DELETE /characters, 그림 올리기(바이트), 쓰기
   const bus = new Bus();
   store.onChange = () => bus.charactersChanged();
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     characters: store,
   });
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;

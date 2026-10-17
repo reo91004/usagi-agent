@@ -305,7 +305,7 @@ async function serve(extra: Partial<BusHandlers> = {}) {
   const bus = new Bus();
   await bus.listen(0, {
     approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}),
-    todoDone: () => true, chat: () => "c1", chatHistory: () => [], ...extra,
+    todoDone: () => true, chat: () => "c1", ...extra,
   });
   return { bus, base: `http://127.0.0.1:${(bus.server!.address() as any).port}` };
 }

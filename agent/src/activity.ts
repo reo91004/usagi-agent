@@ -11,7 +11,6 @@ export type Activity = "idle" | "studying" | "dancing";
 export type ActivityRun = { id: string; kind: string; title: string; startedAt: string };
 // 춤 영상 종류: plan = 일정 알림 · dance = 「춤」(채팅·춤춰 줘 칩) · cheer = 응원해 줘 칩. 앱이 캐릭터마다 맞는 영상을 고른다
 export type DanceClip = "plan" | "dance" | "cheer";
-export const DANCE_CLIPS: readonly DanceClip[] = ["plan", "dance", "cheer"];
 export type ActivitySnapshot = { activity: Activity; runs: ActivityRun[]; danceId?: string; danceClip?: DanceClip };
 
 // runs.ts RunRegistry 의 필요한 부분만(구조적 타입 — 순환 의존 없이)

@@ -75,7 +75,6 @@ export function setPhrases(o: Record<string, unknown> | undefined): void {
   overrides = next;
 }
 export const customPhrase = (key: PhraseKey): boolean => !!overrides[key];
-export const phraseOverrides = (): Record<string, string[]> => ({ ...overrides });
 
 // 글(여러 줄)·줄 배열 → 빈 줄 뺀 줄들
 export function phraseLines(v: unknown): string[] {

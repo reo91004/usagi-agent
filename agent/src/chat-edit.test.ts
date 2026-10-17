@@ -178,7 +178,7 @@ test("bus: POST /chat/threads/:id/messages/:n/edit · /chat/:chatId/edit — 202
     chatEdit: async (threadId, n, text, o) => { calls.push([threadId, n, text, o]); return threadId === "gone" ? { error: "no_thread" } : n === 1 ? { error: "not_latest" } : { chatId: "c", threadId, replaced: n }; },
     chatEditQueued: (chatId, text) => (chatId.startsWith("0") ? { ok: true, chatId, threadId: "t" } : { error: "not_queued", text }),
   };
-  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "x", chatHistory: () => [], ...handlers } as any);
+  await bus.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "x", ...handlers } as any);
   const base = `http://127.0.0.1:${(bus.server!.address() as any).port}`;
   const post = (path: string, body: unknown, headers: Record<string, string> = { "x-cy-agent": "1" }) => fetch(base + path, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body) });
   try {
@@ -196,7 +196,7 @@ test("bus: POST /chat/threads/:id/messages/:n/edit · /chat/:chatId/edit — 202
     assert.equal((await post("/chat/1b6c3a52-5d0e-4c8e-9a51-2f1f8c1e7a10/edit", { text: "새 글" })).status, 409);
   } finally { bus.close(); }
   const none = new Bus();
-  await none.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "x", chatHistory: () => [] } as any);
+  await none.listen(0, { approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "x" } as any);
   try {
     const r = await fetch(`http://127.0.0.1:${(none.server!.address() as any).port}/chat/threads/t1/messages/5/edit`, { method: "POST", headers: { "x-cy-agent": "1", "content-type": "application/json" }, body: JSON.stringify({ text: "a" }) });
     assert.equal(r.status, 503);

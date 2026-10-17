@@ -56,7 +56,7 @@ test("뇌 바꾸기는 데몬을 다시 켜지 않아도 바로: PUT /settings b
   const s = new Settings(cfg, { path: p, env: {}, onChange: (k) => changed.push(k) });
   const bus = new Bus();
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     settings: { get: () => s.view(), put: (b) => s.put(b) },
     status: () => statusOf(cfg, { env: { PATH: "" }, hasServer: noServer }),
   });

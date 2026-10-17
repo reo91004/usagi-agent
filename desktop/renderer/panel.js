@@ -2247,17 +2247,6 @@ async function openThread(id) {
   selectThread(id, { reload: true });
 }
 
-// 할 일 하나의 대화(할 일당 하나)를 연다 — 없으면 만든다. text 가 있으면 입력창에 옮겨 둔다
-async function openTodoThread(todoId, text) {
-  let r;
-  try { r = await cy.chatThreadCreate({ kind: 'todo', todoId }); } catch { r = { ok: false }; }
-  if (!r?.ok || !r.data?.thread) { todoMsg = { ok: false, text: `대화를 못 열었어요 — ${why(r)}` }; renderTodos(); return; }
-  threads = upsertThread(threads, r.data.thread);
-  await openThread(r.data.thread.id);
-  if (text) { chatInput.value = text; drafts.set(selectedId, text); autosize(); }
-  chatInput.focus();
-}
-
 function toggleArchived(on = !showArchived) {
   showArchived = on;
   thArchiveToggle.setAttribute('aria-pressed', String(on));

@@ -635,7 +635,7 @@ export class Store {
     this.db.prepare("UPDATE chat_threads SET updated = MAX(updated, ?) WHERE id = ?").run(at, threadId);
     return Number(r.lastInsertRowid);
   }
-  // 최근 limit개, 오래된 것 먼저 — 할 일 스레드·시스템 줄은 뺀다(예전 /chat/history 모양)
+  // 최근 limit개, 오래된 것 먼저 — 할 일 스레드·시스템 줄은 뺀다(테스트가 대화 기록을 확인할 때 쓴다)
   chatHistory(limit = 50): ChatTurn[] {
     return (this.db.prepare(`SELECT c.role, c.text, c.at, c.todo_id, c.todo_title, c.attachments, c.thread_id FROM chat c LEFT JOIN chat_threads t ON t.id = c.thread_id
       WHERE c.role != 'system' AND c.hidden_at IS NULL AND (t.kind IS NULL OR t.kind != 'todo') ORDER BY c.n DESC LIMIT ?`).all(limit) as any[])

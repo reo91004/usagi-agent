@@ -48,7 +48,7 @@ test("HTTP: /research/gpu·/research/note 는 헤더 필수, 노트 없으면 40
   const bus = new Bus();
   let gpu = 0;
   await bus.listen(0, {
-    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c", chatHistory: () => [],
+    approve: async () => "", hold: async () => "", briefing: async () => "", dashboard: async () => ({}), todoDone: () => true, chat: () => "c",
     researchGpu: async () => { gpu++; return { hosts: [] }; },
     researchNote: (day) => (day === "2026-10-17" ? "/g/pages/n.md" : null),
   });

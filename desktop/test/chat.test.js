@@ -62,11 +62,6 @@ test('중복 done·늦은 step 무시, error 는 show 없음', () => {
   assert.equal(chatReducer(s, ev({ status: 'done' })), s); // chatId 없음
 });
 
-test('history 는 대화를 교체하고 이상한 항목은 버린다', () => {
-  const s = run([{ type: 'history', items: [{ role: 'user', text: 'a', at: '1' }, { role: 'system', text: 'x' }, { role: 'assistant', text: '  ' }, { role: 'assistant', text: 'b', show: 'nope' }] }]);
-  assert.deepEqual(s.messages, [{ role: 'user', text: 'a', at: '1' }, { role: 'assistant', text: 'b', at: '' }]);
-});
-
 test('stepLabel', () => {
   assert.equal(stepLabel('slack.slack_search_messages'), 'Slack · search messages');
   assert.equal(stepLabel('ms365.list_events'), '메일·일정 · list events');
@@ -88,12 +83,13 @@ test('summarizeReply: 마크다운 걷어내고 자르기', () => {
   assert.deepEqual(summarizeReply(undefined), { text: '', truncated: false });
 });
 
-test('대화 기록: 할 일을 집어 든 사용자 말은 todoId·todoTitle 유지, 답·잘못된 값은 버린다', () => {
-  const s = run([{ type: 'history', items: [
-    { role: 'user', text: '이거 없애', at: 't', todoId: 'mail:1', todoTitle: '견적 회신' },
-    { role: 'user', text: '그냥', at: 't', todoId: 3 },
-    { role: 'assistant', text: '지웠어', at: 't', todoId: 'mail:1' },
-  ] }, { type: 'local', msg: { role: 'user', text: '끝났어', at: 'u', todoId: 'a' } }]);
+test('내 말: 할 일을 집어 든 사용자 말은 todoId·todoTitle 유지, 답·잘못된 값은 버린다', () => {
+  const s = run([
+    { type: 'local', msg: { role: 'user', text: '이거 없애', at: 't', todoId: 'mail:1', todoTitle: '견적 회신' } },
+    { type: 'local', msg: { role: 'user', text: '그냥', at: 't', todoId: 3 } },
+    { type: 'local', msg: { role: 'assistant', text: '지웠어', at: 't', todoId: 'mail:1' } },
+    { type: 'local', msg: { role: 'user', text: '끝났어', at: 'u', todoId: 'a' } },
+  ]);
   assert.deepEqual(s.messages, [
     { role: 'user', text: '이거 없애', at: 't', todoId: 'mail:1', todoTitle: '견적 회신' },
     { role: 'user', text: '그냥', at: 't' },
