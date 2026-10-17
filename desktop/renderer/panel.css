@@ -661,7 +661,9 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .proj .meta { display: flex; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .proj .meta b { color: var(--fg); font-weight: 650; font-variant-numeric: tabular-nums; }
 .proj .meta b.today { color: var(--accent); }
-.proj-actions { display: flex; gap: 4px; flex: none; }
+.proj-actions { display: grid; grid-template-columns: auto 56px auto; gap: 4px; flex: none; } /* Finder 가 없는 서버 줄도 단추 칸이 같은 자리에 */
+.proj-actions .hide-btn { grid-column: 3; }
+.proj-line .meta { flex-basis: 100%; } /* 이름이 짧아도 정보 줄은 늘 이름 아래 */
 .proj-actions .ghost { white-space: nowrap; padding: 2px 8px; font-size: 11.5px; }
 .proj-pick { display: flex; align-items: center; gap: 6px; padding: 0 4px 8px 22px; flex-wrap: wrap; }
 .proj-body { display: flex; flex-direction: column; gap: 8px; padding: 0 4px 12px 22px; }

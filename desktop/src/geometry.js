@@ -31,3 +31,10 @@ export function dropPlacement(y, flip, workArea, size) {
   const next = top - charOffset(false, size) < workArea.y;
   return { y: Math.round(top - charOffset(next, size)), flip: next };
 }
+
+// 창 안쪽 크기와 페이지가 그린 크기(CSS px × 확대 배율)가 2px 넘게 다르면 true — 오른쪽·아래에 빈 띠가 남은 것(#128)
+export function contentMismatch(inner, content, zoom = 1) {
+  if (!Array.isArray(inner) || !content) return false;
+  const z = Number(zoom) > 0 ? Number(zoom) : 1;
+  return Math.abs(inner[0] * z - content.width) > 2 || Math.abs(inner[1] * z - content.height) > 2;
+}

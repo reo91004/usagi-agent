@@ -11,7 +11,7 @@ import { ASSET_SCHEME, resolveAsset, parseRange, assetCandidates, userCharacterF
 import { cleanMergeQuestion, normalizeOpen } from './src/bubbles.js';
 import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
-import { defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
+import { contentMismatch, defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
 import { showOnCurrentSpace } from './src/spaces.js';
 import { normalizeSection, splitHost } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
@@ -604,6 +604,20 @@ function createPanel() {
   };
   panel.on('show', applyDock);
   panel.on('hide', applyDock);
+  // 창은 큰데 안쪽 화면이 옛 크기로 남아 오른쪽에 빈 띠가 보이는 경우(#128): 보일 때·크기 바꾸기를 마쳤을 때 맞춰 본다
+  const refit = async () => {
+    if (!panel || panel.isDestroyed() || !panel.isVisible()) return;
+    const inner = await panel.webContents.executeJavaScript('[innerWidth, innerHeight]', true).catch(() => null);
+    if (!panel || panel.isDestroyed()) return;
+    const c = panel.getContentBounds();
+    if (!contentMismatch(inner, c, panel.webContents.getZoomFactor())) return;
+    console.error(`[panel] 안쪽 화면 ${inner.join('x')} ≠ 창 ${c.width}x${c.height} — 다시 맞춤`);
+    panel.setContentSize(c.width + 1, c.height);
+    panel.setContentSize(c.width, c.height);
+    panel.webContents.invalidate();
+  };
+  panel.on('show', () => setTimeout(refit, 300));
+  panel.on('resized', refit);
   panel.on('resize', remember);
   panel.on('move', remember);
   // 닫기는 숨기기 — 편집 중인 내용 유지. 종료 때만 진짜 닫힘
