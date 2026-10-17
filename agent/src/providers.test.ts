@@ -474,7 +474,7 @@ test("API 키·Codex 연결도 첨부(글·그림·PDF)를 받는다 — 예전�
 });
 
 test("Claude Code 가 아닌 뇌는 contextMode tools 여도 맥락을 프롬프트에(도구를 못 부른다) · 못 붙인 첨부는 열어 보라고 하지 않는다", async () => {
-  assert.equal(inlineContext({ contextMode: "tools", brain: { provider: "gemini" } }), true);
+  assert.equal(inlineContext({ contextMode: "tools", brain: { provider: "genspark" } }), true);
   assert.equal(inlineContext({ contextMode: "tools", brain: { provider: "claude-code" } }), false);
   assert.equal(inlineContext({ contextMode: "tools" }), false);
   const store = new Store(":memory:");
@@ -486,7 +486,7 @@ test("Claude Code 가 아닌 뇌는 contextMode tools 여도 맥락을 프롬프
   let body = "";
   globalThis.fetch = (async (_u: any, init: any) => { body = String(init?.body); return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ reply_md: "ok", bubble: "ok", show: null }) }] } }] }), { status: 200 }); }) as any;
   try {
-    const cfg = { ...cfgOf("gemini"), brain: { provider: "gemini" as const, geminiApiKey: KEY }, contextMode: "tools" as const, repoRoots: [], claudeProjectsDir: "/none", codexSessionsDir: "/none" };
+    const cfg = { ...cfgOf("gemini"), brain: { provider: "gemini" as const, geminiApiKey: KEY }, contextMode: "inline" as const, repoRoots: [], claudeProjectsDir: "/none", codexSessionsDir: "/none" };
     await converse(cfg, store, [], "할 일 알려줘", () => {}, undefined, undefined, thread.id, undefined, undefined, undefined,
       [{ id: "a1", name: "report.docx", mime: "application/octet-stream", size: 7, kind: "file", file: "report.docx", path }]);
   } finally { globalThis.fetch = original; }

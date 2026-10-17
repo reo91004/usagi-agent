@@ -1,5 +1,5 @@
 // 브리핑·채팅용 JSON만 받는 뇌. Gemini·OpenAI·Genspark는 공식 HTTP, Codex·Antigravity(agy)는 CLI 한 번.
-// 도구·MCP·코드 수정 요청은 붙이지 않는다. 키는 로그와 오류 문장에 넣지 않는다.
+// 코드 수정 요청은 붙이지 않는다. API 뇌의 채팅은 읽기 전용 맥락 도구만 받는다(tools — Gemini·OpenAI·Claude API, 호출 횟수 상한). 키는 로그와 오류 문장에 넣지 않는다.
 // 키가 없거나 codex가 없으면 한국어로 실패한다. local로 조용히 넘어가지 않는다.
 //
 // Codex 는 codex exec 한 번으로 브리핑·채팅 JSON, 그리고 뒤에서 도는 정리(feature-brain.ts: 끝난 할 일 판정·진행 확인·지식그래프·프로필 학습).
@@ -41,6 +41,38 @@ export type ProviderDeps = {
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal; // 채팅 정지: 진행 중인 요청·자식 프로세스를 끊는다
 };
+
+// API 뇌의 채팅 읽기 도구(ctx-tools.ts ctxApiTools): 공급자별 도구 호출을 이 모양 하나로 받는다. 결과는 글(잘린 것)
+export type ApiTool = { name: string; description: string; schema: Record<string, unknown> };
+export type ApiToolRun = { tools: ApiTool[]; call: (name: string, args: unknown) => Promise<string>; onCall?: (name: string, args: unknown) => void };
+export type ApiUsage = { inTokens: number; outTokens: number };
+// tools: 채팅 읽기 도구(없으면 JSON 한 번). onUsage: 응답마다 API 가 알려 준 토큰(뒤에서 도는 기능의 금액 계산)
+export type ApiOpts = { tools?: ApiToolRun; onUsage?: (u: ApiUsage) => void };
+// Genspark 는 chat/completions 모양은 같지만 도구 호출을 받는지 확인하지 못해(키 없이 시험 불가) 뺀다
+export const API_TOOL_PROVIDERS: readonly string[] = ["gemini", "openai", "anthropic"];
+export const TOOL_MAX_ROUNDS = 4; // 도구를 부르는 차례 상한(다음 차례는 도구 없이 최종 JSON)
+export const TOOL_MAX_CALLS = 8; // 도구 호출 총 상한(넘는 호출은 실행하지 않고 그렇게 알린다)
+const TOOL_CAPPED = "도구 호출 상한(8번)을 넘어 실행하지 않았다. 지금까지 얻은 것으로 답해라";
+const jsonTail = (tools?: ApiToolRun) => (tools ? "JSON만 답하라. 읽기 도구는 꼭 필요할 때만 불러라. 코드 수정은 하지 마라." : "JSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.");
+
+type Turn = { text: string; calls: { id: string; name: string; args: unknown }[]; msgs: (results: string[]) => unknown[] };
+// 도구 호출 루프: step 이 공급자 형식으로 한 번 보내고(final = 도구 선택 끔), 도구를 부르면 결과를 이어 붙여 다시. 마지막 글을 돌려준다
+async function toolLoop(tr: ApiToolRun | undefined, step: (hist: unknown[], final: boolean) => Promise<Turn>): Promise<string> {
+  const hist: unknown[] = [];
+  for (let rounds = 0, used = 0; ; rounds++) {
+    const final = !tr || rounds >= TOOL_MAX_ROUNDS;
+    const turn = await step(hist, final);
+    if (final || !turn.calls.length) return turn.text;
+    const results: string[] = [];
+    for (const c of turn.calls) {
+      if (used++ >= TOOL_MAX_CALLS) { results.push(TOOL_CAPPED); continue; }
+      tr.onCall?.(c.name, c.args);
+      results.push(await tr.call(c.name, c.args));
+    }
+    hist.push(...turn.msgs(results));
+  }
+}
+const argsOf = (raw: unknown): unknown => { if (typeof raw !== "string") return raw ?? {}; try { return JSON.parse(raw || "{}"); } catch { return {}; } }; // 모델이 준 인자 글이 깨졌으면 빈 인자로(도구가 알려 준다)
 
 // 출처: https://ai.google.dev/gemini-api/docs/changelog — 새 프로젝트는 3.8 Flash 권장(2.5 는 예전에 쓰던 계정만 열려 새 사용자는 404)
 // 기본 모델이 404 면 키로 목록을 받아 가장 새 flash 로 한 번 더 보낸다(geminiJson)
@@ -315,10 +347,14 @@ function geminiFailText(f: { status: number; day?: boolean; limit?: number }): s
 // 하루 한도를 다 쓴 모델 — 키 지문:모델 → 다시 쓸 수 있는 때(ms). 그때까지는 그 모델을 건너뛰고 바로 flash-lite 로(헛걸음 요청을 줄인다)
 const geminiSpent = new Map<string, { until: number; limit?: number }>();
 
-export async function geminiJson(
-  cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; now?: () => number; signal?: AbortSignal } = {},
-): Promise<unknown> {
+type GeminiOpts = { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; now?: () => number; signal?: AbortSignal } & ApiOpts;
+export async function geminiJson(cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown, opts: GeminiOpts = {}): Promise<unknown> {
+  const text = await toolLoop(opts.tools, (hist, final) => geminiTurn(cfg, prompt, schema, opts, hist, final));
+  return parseModelJson(text, "Gemini 응답에서 JSON을 읽지 못했어요.");
+}
+
+// 요청 한 번(붐비면 쉬었다 다시·lite 로 넘어가기 포함). hist = 지금까지의 도구 호출·결과 대화
+async function geminiTurn(cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown, opts: GeminiOpts, hist: unknown[], final: boolean): Promise<Turn> {
   const env = opts.env ?? process.env;
   const key = geminiKey(cfg, env);
   if (!key) throw new Error(MISSING_GEMINI_KEY);
@@ -328,8 +364,9 @@ export async function geminiJson(
   const now = opts.now ?? Date.now;
   const body = JSON.stringify({
     ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-    contents: [{ role: "user", parts: [{ text: `${prompt}\n\nJSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.` }, ...(opts.blocks ?? []).map(geminiPart)] }],
+    contents: [{ role: "user", parts: [{ text: `${prompt}\n\n${jsonTail(opts.tools)}` }, ...(opts.blocks ?? []).map(geminiPart)] }, ...hist],
     generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema },
+    ...(opts.tools ? { tools: [{ functionDeclarations: opts.tools.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.schema })) }], ...(final ? { toolConfig: { functionCallingConfig: { mode: "NONE" } } } : {}) } : {}),
   });
   // 키는 헤더에만. URL 쿼리에 넣지 않는다(로그·에러에 남기 쉬움).
   const send = async (model: string) => {
@@ -417,9 +454,14 @@ export async function geminiJson(
   markAuth("gemini", key, false);
   const raw = await res.text();
   const data = asRecord(parseModelJson(raw, "Gemini 응답에서 JSON을 읽지 못했어요."));
-  const cand = (data?.candidates as { content?: { parts?: { text?: string }[] }; finishReason?: string }[] | undefined)?.[0];
+  const cand = (data?.candidates as { content?: { parts?: { text?: string; functionCall?: { id?: string; name?: string; args?: unknown } }[] }; finishReason?: string }[] | undefined)?.[0];
   const parts = cand?.content?.parts;
   const text = Array.isArray(parts) ? parts.map((p) => p?.text ?? "").join("") : "";
+  const um = asRecord(data?.usageMetadata);
+  opts.onUsage?.({ inTokens: Number(um?.promptTokenCount ?? 0), outTokens: Number(um?.candidatesTokenCount ?? 0) + Number(um?.thoughtsTokenCount ?? 0) });
+  const calls = (Array.isArray(parts) ? parts : []).flatMap((p) => (p?.functionCall?.name ? [{ id: p.functionCall.id ?? "", name: p.functionCall.name, args: p.functionCall.args ?? {} }] : []));
+  // 도구를 부르는 차례: 받은 content 를 그대로 되돌려 보낸다(thoughtSignature 가 들어 있다)
+  if (calls.length) return { text, calls, msgs: (rs) => [cand!.content, { role: "user", parts: calls.map((c, i) => ({ functionResponse: { ...(c.id ? { id: c.id } : {}), name: c.name, response: { result: rs[i] } } })) }] };
   // 빈 답: 안전 필터·길이 초과 등 이유를 알 수 있으면 알려 준다
   if (!text.trim()) {
     const block = String(asRecord(data?.promptFeedback)?.blockReason ?? "");
@@ -428,7 +470,7 @@ export async function geminiJson(
     if (why === "MAX_TOKENS") throw new Error("Gemini 답이 너무 길어 중간에 끊겼어요. 조금 더 짧게 물어봐 주세요");
     throw new Error("Gemini가 빈 답을 보냈어요. 잠시 뒤 다시 보내 주세요");
   }
-  return parseModelJson(text, "Gemini 응답에서 JSON을 읽지 못했어요.");
+  return { text, calls: [], msgs: () => [] };
 }
 
 // Gemini 오류 본문의 이유 한 줄(400 스키마 거절 등). 키는 본문에 없지만 혹시 몰라 키 모양은 지운다
@@ -495,59 +537,73 @@ type ChatSpec = {
   noRetry?: (status: number, body: string) => boolean;
   limit?: (status: number, body: string) => LimitKind | undefined; // 사용량·한도 실패면 BrainLimitError 로
 };
-type ChatOpts = { system?: string; blocks?: ContentBlock[]; fetch?: FetchLike; signal?: AbortSignal };
+type ChatOpts = { system?: string; blocks?: ContentBlock[]; fetch?: FetchLike; signal?: AbortSignal } & ApiOpts;
 async function chatCompletionsText(spec: ChatSpec, prompt: string, schema: unknown, opts: ChatOpts): Promise<string> {
   const fetchImpl = opts.fetch ?? fetch;
+  const tail = jsonTail(opts.tools);
   const messages = [
     ...(opts.system ? [{ role: "system", content: opts.system }] : []),
-    { role: "user", content: opts.blocks?.length ? [{ type: "text", text: `${prompt}\n\nJSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.` }, ...opts.blocks.map(openaiPart)] : `${prompt}\n\nJSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.` },
+    { role: "user", content: opts.blocks?.length ? [{ type: "text", text: `${prompt}\n\n${tail}` }, ...opts.blocks.map(openaiPart)] : `${prompt}\n\n${tail}` },
   ];
-  const body = JSON.stringify({
-    model: spec.model,
-    messages,
-    response_format: { type: "json_schema", json_schema: { name: "cy_brain", strict: true, schema: openaiStrict(schema) } },
+  const toolDefs = opts.tools?.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.schema } }));
+  return toolLoop(opts.tools, async (hist, final): Promise<Turn> => {
+    const body = JSON.stringify({
+      model: spec.model,
+      messages: [...messages, ...hist],
+      response_format: { type: "json_schema", json_schema: { name: "cy_brain", strict: true, schema: openaiStrict(schema) } },
+      ...(toolDefs ? { tools: toolDefs, ...(final ? { tool_choice: "none" } : {}) } : {}),
+    });
+    const send = async () => {
+      try {
+        return await fetchImpl(spec.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${spec.key}` },
+          body,
+          redirect: "error",
+          signal: opts.signal,
+        });
+      } catch {
+        throw new Error(`${spec.label} 요청을 보내지 못했어요.`);
+      }
+    };
+    let res = await send();
+    let failBody: string | undefined; // 재시도 판단에 이미 읽은 실패 본문(본문은 한 번만 읽힌다)
+    if (spec.retry) {
+      const sleep = spec.retry.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+      for (const wait of GEMINI_RETRY_MS) {
+        if (!BUSY.has(res.status)) break;
+        const after = Number(res.headers.get("retry-after"));
+        const text = await res.text().catch(() => "");
+        if (spec.noRetry?.(res.status, text)) { failBody = text; break; }
+        await sleep(after > 0 ? Math.min(after * 1000, 30_000) : wait);
+        res = await send();
+      }
+    }
+    if (!res.ok) {
+      if (spec.failText && res.status !== 401 && res.status !== 403) {
+        const text = failBody ?? await res.text().catch(() => "");
+        const msg = `${spec.failText(res.status, text) ?? `${spec.label} 요청이 실패했어요`} (HTTP ${res.status}).`;
+        const kind = spec.limit?.(res.status, text);
+        if (kind) throw new BrainLimitError(msg, spec.provider, kind, retryAfterAt(res));
+        throw new Error(msg);
+      }
+      return readError(res, `${spec.label} 요청이 실패했어요`, { provider: spec.provider, key: spec.key });
+    }
+    const data = asRecord(parseModelJson(await res.text(), `${spec.label} 응답에서 JSON을 읽지 못했어요.`));
+    const u = asRecord(data?.usage);
+    opts.onUsage?.({ inTokens: Number(u?.prompt_tokens ?? 0), outTokens: Number(u?.completion_tokens ?? 0) });
+    const msg = (data?.choices as { message?: { content?: unknown; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[] | undefined)?.[0]?.message;
+    const content = msg?.content;
+    const text = typeof content === "string"
+      ? content
+      : Array.isArray(content) ? content.map((p) => (asRecord(p)?.text as string) ?? "").join("") : "";
+    const tc = msg?.tool_calls ?? [];
+    return {
+      text,
+      calls: tc.map((c) => ({ id: c.id, name: c.function.name, args: argsOf(c.function.arguments) })),
+      msgs: (rs) => [{ role: "assistant", content: msg?.content ?? null, tool_calls: tc }, ...tc.map((c, i) => ({ role: "tool", tool_call_id: c.id, content: rs[i] }))],
+    };
   });
-  const send = async () => {
-    try {
-      return await fetchImpl(spec.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${spec.key}` },
-        body,
-        redirect: "error",
-        signal: opts.signal,
-      });
-    } catch {
-      throw new Error(`${spec.label} 요청을 보내지 못했어요.`);
-    }
-  };
-  let res = await send();
-  let failBody: string | undefined; // 재시도 판단에 이미 읽은 실패 본문(본문은 한 번만 읽힌다)
-  if (spec.retry) {
-    const sleep = spec.retry.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-    for (const wait of GEMINI_RETRY_MS) {
-      if (!BUSY.has(res.status)) break;
-      const after = Number(res.headers.get("retry-after"));
-      const text = await res.text().catch(() => "");
-      if (spec.noRetry?.(res.status, text)) { failBody = text; break; }
-      await sleep(after > 0 ? Math.min(after * 1000, 30_000) : wait);
-      res = await send();
-    }
-  }
-  if (!res.ok) {
-    if (spec.failText && res.status !== 401 && res.status !== 403) {
-      const text = failBody ?? await res.text().catch(() => "");
-      const msg = `${spec.failText(res.status, text) ?? `${spec.label} 요청이 실패했어요`} (HTTP ${res.status}).`;
-      const kind = spec.limit?.(res.status, text);
-      if (kind) throw new BrainLimitError(msg, spec.provider, kind, retryAfterAt(res));
-      throw new Error(msg);
-    }
-    return readError(res, `${spec.label} 요청이 실패했어요`, { provider: spec.provider, key: spec.key });
-  }
-  const data = asRecord(parseModelJson(await res.text(), `${spec.label} 응답에서 JSON을 읽지 못했어요.`));
-  const content = (data?.choices as { message?: { content?: unknown } }[] | undefined)?.[0]?.message?.content;
-  return typeof content === "string"
-    ? content
-    : Array.isArray(content) ? content.map((p) => (asRecord(p)?.text as string) ?? "").join("") : "";
 }
 
 // OpenAI 실패 본문 {"error":{"code","type","message"}} 의 code(없으면 type)
@@ -575,7 +631,7 @@ export function openaiFailText(status: number, body: string): string | undefined
 
 export async function openaiJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal } & ApiOpts = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = openaiKey(cfg, env);
@@ -641,7 +697,7 @@ const redactKeys = (s: string) => s.replace(/\bgsk-[\w-]+/g, "***");
 
 export async function gensparkJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; signal?: AbortSignal } & Pick<ApiOpts, "onUsage"> = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = gensparkKey(cfg, env);
@@ -667,37 +723,47 @@ export async function gensparkJson(
 
 export async function anthropicJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; signal?: AbortSignal } & ApiOpts = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = anthropicKey(cfg, env);
   if (!key) throw new Error(MISSING_ANTHROPIC_KEY);
   const model = resolveAnthropicModel(cfg.models?.general, opts.model);
   const fetchImpl = opts.fetch ?? fetch;
-  let res: Response;
-  try {
-    res = await fetchImpl(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
-      signal: opts.signal,
-      body: JSON.stringify({
-        model,
-        max_tokens: 16000,
-        ...(opts.system ? { system: opts.system } : {}),
-        messages: [{ role: "user", content: opts.blocks?.length ? [{ type: "text", text: `${prompt}\n\nJSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.` }, ...opts.blocks] : `${prompt}\n\nJSON만 답하라. 도구 호출이나 코드 수정은 하지 마라.` }],
-        output_config: { format: { type: "json_schema", schema } },
-      }),
-    });
-  } catch {
-    throw new Error("Claude API 요청을 보내지 못했어요.");
-  }
-  // 429 = 분당 한도, 400 "credit balance is too low" = 크레딧 소진
-  if (!res.ok) return readError(res, "Claude API 요청이 실패했어요", { provider: "anthropic", key }, undefined, (st, body) => st === 429 ? "rate" : st === 400 && /credit balance is too low/i.test(body) ? "exhausted" : undefined);
-  markAuth("anthropic", key, false);
-  const data = asRecord(parseModelJson(await res.text(), "Claude API 응답에서 JSON을 읽지 못했어요."));
-  if (data?.stop_reason === "refusal") throw new Error("Claude 가 이 요청에는 답하지 않았어요.");
-  const content = Array.isArray(data?.content) ? data!.content as unknown[] : [];
-  const text = content.map((b) => { const r = asRecord(b); return r?.type === "text" && typeof r.text === "string" ? r.text : ""; }).join("");
+  const tail = jsonTail(opts.tools);
+  const first = { role: "user", content: opts.blocks?.length ? [{ type: "text", text: `${prompt}\n\n${tail}` }, ...opts.blocks] : `${prompt}\n\n${tail}` };
+  const toolDefs = opts.tools?.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema }));
+  const text = await toolLoop(opts.tools, async (hist, final): Promise<Turn> => {
+    let res: Response;
+    try {
+      res = await fetchImpl(ANTHROPIC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
+        signal: opts.signal,
+        body: JSON.stringify({
+          model,
+          max_tokens: 16000,
+          ...(opts.system ? { system: opts.system } : {}),
+          messages: [first, ...hist],
+          output_config: { format: { type: "json_schema", schema } },
+          ...(toolDefs ? { tools: toolDefs, ...(final ? { tool_choice: { type: "none" } } : {}) } : {}),
+        }),
+      });
+    } catch {
+      throw new Error("Claude API 요청을 보내지 못했어요.");
+    }
+    // 429 = 분당 한도, 400 "credit balance is too low" = 크레딧 소진
+    if (!res.ok) return readError(res, "Claude API 요청이 실패했어요", { provider: "anthropic", key }, undefined, (st, body) => st === 429 ? "rate" : st === 400 && /credit balance is too low/i.test(body) ? "exhausted" : undefined);
+    markAuth("anthropic", key, false);
+    const data = asRecord(parseModelJson(await res.text(), "Claude API 응답에서 JSON을 읽지 못했어요."));
+    if (data?.stop_reason === "refusal") throw new Error("Claude 가 이 요청에는 답하지 않았어요.");
+    const u = asRecord(data?.usage);
+    opts.onUsage?.({ inTokens: Number(u?.input_tokens ?? 0) + Number(u?.cache_read_input_tokens ?? 0) + Number(u?.cache_creation_input_tokens ?? 0), outTokens: Number(u?.output_tokens ?? 0) });
+    const content = Array.isArray(data?.content) ? data!.content as unknown[] : [];
+    const text = content.map((b) => { const r = asRecord(b); return r?.type === "text" && typeof r.text === "string" ? r.text : ""; }).join("");
+    const calls = content.flatMap((b) => { const r = asRecord(b); return r?.type === "tool_use" ? [{ id: String(r.id), name: String(r.name), args: r.input ?? {} }] : []; });
+    return { text, calls, msgs: (rs) => [{ role: "assistant", content }, { role: "user", content: calls.map((c, i) => ({ type: "tool_result", tool_use_id: c.id, content: rs[i] })) }] };
+  });
   return parseModelJson(text, "Claude API 응답에서 JSON을 읽지 못했어요.");
 }
 
@@ -1033,7 +1099,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
 export async function remoteJson(
   provider: Extract<BrainProvider, "gemini" | "openai" | "anthropic" | "genspark" | "codex" | "agy">,
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; quick?: boolean; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide } & ProviderDeps = {},
+  opts: { system?: string; model?: string; quick?: boolean; blocks?: ContentBlock[]; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide } & ApiOpts & ProviderDeps = {},
 ): Promise<unknown> {
   if (provider === "gemini") return geminiJson(cfg, prompt, schema, opts);
   if (provider === "openai") return openaiJson(cfg, prompt, schema, opts);

@@ -33,6 +33,12 @@ Gemini·OpenAI·Claude API·Genspark 뇌는 도구를 쓰지 못하고 답만 �
 - 카드를 기다리는 동안에도 Codex 는 모델을 여러 번 다시 불러 기다리는 중이라고 적습니다. 오래 기다릴수록 Codex 사용량이 늘어납니다(Codex 0.163 시험에서 도구 하나를 75초 기다렸을 때 입력 토큰이 약 20만, 330초 기다렸을 때 약 84만이었고 그중 96%가 캐시였습니다). Codex 의 MCP 도구 기본 대기는 300초라서 서버마다 `tool_timeout_sec` 를 720초로 늘리고, 승인 카드가 붙는 채팅은 codex 실행 시간 상한도 2분에서 12분으로 늘립니다.
 - Antigravity 는 실행마다 MCP 를 넘길 수 없어서 전역 설정에 넣습니다. `~/.gemini/config/mcp_config.json` 에 `usagi-<이름>` 서버(`enabledTools` 는 읽기 도구만)를, `~/.gemini/antigravity-cli/settings.json` 의 `permissions.allow` 에 `mcp(usagi-<이름>/<도구>)` 를 하나씩 넣습니다. env·헤더에 비밀값이 있으면 `mcp_config.json` 권한을 600 으로 바꿉니다. 커넥터에서 빠진 `usagi-…` 항목은 다음 채팅 때 지웁니다. 전역 설정이라 터미널에서 agy 를 직접 쓸 때나 뒤에서 하는 정리 때도 이 읽기 도구가 묻지 않고 허용되고, 뇌를 다른 것으로 바꿔도 항목은 남습니다.
 
+## API 키 뇌(Gemini, OpenAI, Claude API)의 도구와 뒤에서 도는 기능
+
+- 채팅에서 서버(remote_ls 등), Slack, 할 일, 지식그래프 같은 읽기 전용 맥락 도구를 부를 수 있습니다. 한 번의 답에서 도구를 부르는 차례는 4번, 호출은 8번까지이고, 쓰기 도구는 없습니다. 캐릭터 말 걸기는 도구 없이 답합니다. Genspark 는 도구 호출을 받는지 확인하지 못해 맥락을 통째로 받습니다. `contextMode` 를 `inline` 으로 두면 모든 API 뇌가 예전처럼 맥락을 통째로 받습니다.
+- 끝난 할 일 판정, 할 일 진행 확인, 지식그래프 추출·다듬기, 프로필 학습은 구조화 JSON 호출 한 번으로 돕니다. 금액은 API 가 알려 준 토큰에 모델별 어림 단가를 곱해 예산에 셉니다(모르는 모델은 비싼 쪽으로 잡습니다. Genspark 는 크레딧제라 0으로 두고 호출 수 상한만 걸립니다). 증분 지식그래프·다듬기에는 Codex·agy 와 같은 호출 수 상한이 같이 걸립니다.
+- 코드 고치기, 작업 세션, 자동 머지, 워크트리는 API 뇌로 되지 않습니다.
+
 ## Antigravity(agy)
 
 키 없이 이 맥에 로그인된 Antigravity CLI를 씁니다. 시사는 `agy -p … --output-format json --sandbox`를 한 번씩 부르고(코드 수정 없음), 답은 한 번에 10~20초쯤 걸립니다. mcp 연결은 채팅에서만 읽고([위](#codexantigravity-뇌에서-mcp-연결-읽기)), 코드 고치기·이어 하기도 agy 로 합니다. 워크트리·백그라운드 에이전트는 Claude Code로 돌아갑니다.

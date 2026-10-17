@@ -24,7 +24,7 @@ function fakeStore() {
 async function sent(kind: "hover" | "chat", provider = "gemini") {
   const { store, hover, chat } = fakeStore();
   const base = loadConfig({});
-  const cfg = { ...base, brain: { provider } as any };
+  const cfg = { ...base, contextMode: "inline" as const, brain: { provider } as any }; // 큰 맥락을 붙이는 방식(되돌리기)과 hover 비교
   const threadId = kind === "hover" ? hover : chat;
   process.env.CY_AGENT_GEMINI_API_KEY = "unit-test-gemini-key";
   let body: any;

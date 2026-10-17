@@ -640,7 +640,9 @@ test("chat: Codex·agy 는 MCP 가 준비됐을 때만 작은 머리말, 아니�
     setCliMcpUrl("http://127.0.0.1:1/mcp");
     assert.equal(inlineContext(cfg), false);
     assert.equal(inlineContext({ ...cfg, contextMode: "inline" }), true);
-    assert.equal(inlineContext({ ...cfg, brain: { provider: "gemini" } }), true);
+    assert.equal(inlineContext({ ...cfg, brain: { provider: "gemini" } }), false, "API 뇌는 읽기 도구가 있어 작은 머리말");
+    assert.equal(inlineContext({ ...cfg, brain: { provider: "gemini" }, contextMode: "inline" }), true);
+    assert.equal(inlineContext({ ...cfg, brain: { provider: "genspark" } }), true, "Genspark 는 도구를 못 받아 inline");
     const after = chatPrompt(cfg, store, [], "안녕", undefined);
     console.log(`prompt chars inline=${before.length} mcp=${after.length}`);
     assert.ok(after.length < before.length / 2);
