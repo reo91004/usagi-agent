@@ -882,7 +882,7 @@ function calendarList() {
   }
   const add = el('button', 'small ghost', '캘린더 하나 더 추가');
   add.type = 'button';
-  add.title = '초기 설정 화면에서 같은 안내로 주소를 하나 더 붙여요';
+  add.title = '연결 도우미에서 같은 안내로 주소를 하나 더 붙여요';
   add.addEventListener('click', () => nav.setup());
   box.append(add);
   return box;
@@ -918,7 +918,7 @@ function rowEl(r) {
   if (action === 'connect') {
     const b = el('button', 'small primary', '연결하기');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '초기 설정 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '연결 도우미에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   } else if (action === 'disconnect') {
@@ -939,7 +939,7 @@ function rowEl(r) {
   if (needsSetupHint(r)) {
     const b = el('button', 'small primary', '연결 안내');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '초기 설정 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '연결 도우미에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   }
