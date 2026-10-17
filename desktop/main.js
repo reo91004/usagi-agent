@@ -1629,6 +1629,7 @@ function setupIPC() {
     if (!fromOurs(e) || !['calendar', 'reminders'].includes(kind)) return denied();
     return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${kind === 'calendar' ? 'Calendars' : 'Reminders'}`).then(() => ({ ok: true }), () => ({ ok: false }));
   });
+  ipcMain.handle('research-job-forget', (e, id) => (fromOurs(e) && typeof id === 'string' && /^job:[\w.:-]{1,200}$/.test(id) ? post('/research/jobs/forget', { id }) : denied()));
   ipcMain.handle('research-gpu', (e) => (fromOurs(e) ? request('GET', '/research/gpu', undefined, 45_000) : denied()));
   ipcMain.handle('research-note-open', async (e, day) => {
     if (!fromOurs(e) || typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return denied();

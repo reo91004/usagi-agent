@@ -324,6 +324,7 @@ function renderAll() {
   maybeOpenSetup();
   renderSetupView(false);
   renderOverview();
+  renderResearch();
   renderProjects();
   renderTodos(); // 할 일 탭과 오늘 할 일 탭(같은 줄·같은 묶음)
   renderBadges();
@@ -359,8 +360,7 @@ function renderOverview() {
       stat(stats.activeProjects, '진행 중 프로젝트', active.slice(0, 3).join(', ') || null),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
-    ...(researchSection() ?? []),
-    ...(directivesSection() ?? []),
+    researchSummaryCard(),
     h('h2', null, h('span', { text: '오늘 할 일 ' }),
       h('span.chip.click', { text: today?.items?.length ? `남은 ${(today.items.filter((it) => !it.done).length)}개` : '아직 없음', role: 'button', onclick: () => goto('today') })),
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
@@ -394,11 +394,11 @@ let gpu = { loading: false, at: '', hosts: null, err: '' };
 async function loadGpu() {
   if (gpu.loading) return;
   gpu = { ...gpu, loading: true, err: '' };
-  renderOverview();
+  renderResearch();
   let r;
   try { r = await cy.researchGpu(); } catch { r = { ok: false }; }
   gpu = r?.ok && Array.isArray(r.data?.hosts) ? { loading: false, at: str(r.data.at), hosts: shapeGpu(r.data.hosts), err: '' } : { ...gpu, loading: false, err: `가져오지 못했어요 — ${why(r)}` };
-  renderOverview();
+  renderResearch();
 }
 const str = (v) => (typeof v === 'string' ? v : '');
 // 실험 줄 [물어보기]: 새 대화에 질문을 채워 두고 보내기는 사용자가
@@ -434,30 +434,58 @@ function gpuBlock() {
     x.ok && !x.gpus.length ? h('div.muted.small', { text: 'GPU 가 보이지 않아요' }) : null));
   return h('div.gpu', null, head, gpu.err ? h('div.result.err.small', { role: 'status', text: gpu.err }) : null, ...rows);
 }
+const jobBusy = new Set();
+async function forgetJob(id) {
+  if (jobBusy.has(id)) return;
+  jobBusy.add(id);
+  renderResearch();
+  const r = await cy.researchJobForget(id).catch(() => ({ ok: false }));
+  jobBusy.delete(id);
+  if (r?.ok || r?.status === 404) vm.research.jobs = vm.research.jobs.filter((j) => j.id !== id);
+  renderResearch();
+}
+function tmuxBlock(t) {
+  return h('div.tmux-host', null,
+    h('div.gpu-hostname', null, h('span', { text: `${t.host} · tmux` }), h('span.muted', { text: ` · ${t.rel} 확인` })),
+    t.sessions.length
+      ? t.sessions.map((x) => h('div.job-row', null,
+        h(`span.chip${x.chip ? `.${x.chip}` : ''}`, { text: x.label }),
+        h('div.job-main', null,
+          h('div.job-name', { text: x.name, title: x.path }),
+          h('div.muted.small.job-sub', { text: [x.time, x.path].filter(Boolean).join(' · '), title: x.path }))))
+      : h('div.muted.small', { text: '내 tmux 세션이 없어요' }));
+}
+// 서버 실험: 서버별 tmux 세션 + usagi-run 기록 + GPU
 function researchSection() {
   const r = vm.research;
   if (!r) return null;
-  const out = [h('h2', null, h('span', { text: '연구 ' }), r.hosts.length ? h('span.muted.small', { text: `실험 서버 ${r.hosts.join(', ')}` }) : null)];
+  const out = [h('h2', null, h('span', { text: '서버 실험 ' }), r.hosts.length ? h('span.muted.small', { text: r.hosts.join(', ') }) : null)];
   if (r.hosts.length || r.jobs.length) {
     out.push(h('div.card.research-jobs', null,
+      h('div.muted.small.research-hint', { text: '끝·실패는 usagi-run 으로 돌린 작업의 종료 기록이에요. tmux 는 지금 돌고 있는지만 보여요. 여러 사람이 쓰는 서버(jobDirs 설정)는 내 폴더에서 연 세션만 보여요.' }),
+      ...r.tmux.map(tmuxBlock),
+      h('div.gpu-hostname', null, h('span', { text: 'usagi-run 기록' })),
       r.jobs.length
         ? r.jobs.map((j) => h('div.job-row', { dataset: { id: j.id } },
           h(`span.chip.${j.chip}`, { text: j.label }),
           h('div.job-main', null,
             h('div.job-name', { text: `${j.name}${j.host ? ` @${j.host}` : ''}`, title: j.detail || j.name }),
             h('div.muted.small.job-sub', { text: [j.time, j.files.length ? `바뀐 파일 ${j.files.join(', ')}` : ''].filter(Boolean).join(' · '), title: j.detail })),
-          h('button.ghost.small', { type: 'button', text: '물어보기', title: j.ask, onclick: () => askAbout(j.ask) })))
+          h('button.ghost.small', { type: 'button', text: '물어보기', title: j.ask, onclick: () => askAbout(j.ask) }),
+          j.forgettable ? h('button.ghost.small', { type: 'button', text: '기록 지우기', title: '이 기록만 우사기에서 지워요(서버 파일은 이미 정리됐어요)', disabled: jobBusy.has(j.id), onclick: () => forgetJob(j.id) }) : null))
         : h('div.muted.small', { text: '아직 usagi-run 으로 돌린 실험이 없어요. 서버에서 명령 앞에 usagi-run -- 을 붙이면 여기 보여요.' }),
       r.hosts.length ? gpuBlock() : null));
   }
   if (r.note) {
     const y = r.note.yesterday;
+    out.push(h('h2', null, h('span', { text: '오늘 연구 노트' })));
     out.push(h('div.card.research-note', null,
       h('div.row', null,
-        h('span', { text: `오늘 연구 노트 · ${r.note.day}` }), h('span.spacer'),
+        h('span', { text: r.note.day }), h('span.spacer'),
         r.note.exists
           ? h('button.ghost.small', { type: 'button', text: '열기', onclick: (ev) => openNote(r.note.day, ev.currentTarget) })
           : h('span.muted.small', { text: '오늘 한 일이 생기면 만들어져요' })),
+      h('div.muted.small', { text: `Tine 의 「우사기 연구 노트___${r.note.day}」 페이지에 쓰고, 그날 저널에서 이어져요.` }),
       y && (y.lines.length || y.next.length)
         ? h('div.note-sum', null,
           h('div.muted.small', { text: `어제(${y.day}) 요약` }),
@@ -466,6 +494,18 @@ function researchSection() {
   }
   return out;
 }
+function renderResearch() {
+  const kids = [...(researchSection() ?? []), ...(directivesSection() ?? [])];
+  $('sec-research').replaceChildren(...(kids.length ? kids : [h('div.card.empty', { text: '연결된 실험 서버(sshHosts·jobHosts)나 Slack 이 아직 없어요. 설정의 연결에서 켜면 여기 보여요.' })]));
+}
+// 개요의 연구 한 줄 요약 → 연구 탭
+function researchSummaryCard() {
+  const r = vm.research, d = vm.directives;
+  if (!r && !d) return null;
+  const running = (r?.jobs.filter((j) => j.state === 'running').length ?? 0) + (r?.tmux.reduce((n, t) => n + t.sessions.filter((x) => x.running).length, 0) ?? 0);
+  const parts = [r ? `도는 실험 ${running}` : '', d?.from.length ? `새 지시 ${d.open.length}` : '', r?.note ? '오늘 연구 노트' : ''].filter(Boolean);
+  return h('h2', null, h('span', { text: '연구 ' }), h('span.chip.click', { text: parts.join(' · '), role: 'button', onclick: () => goto('research') }));
+}
 
 // ---- Slack 지시사항(#41) — Slack 을 연결했을 때만. 지시자를 고르고, 지시마다 [할 일로]·[괜찮아요] ----
 let dirEdit = false; // 지시자 바꾸기 열림
@@ -473,11 +513,11 @@ const dirBusy = new Set();
 async function decideDirective(id, decision) {
   if (dirBusy.has(id)) return;
   dirBusy.add(id);
-  renderOverview();
+  renderResearch();
   const r = await cy.directiveDecide(id, decision).catch(() => ({ ok: false }));
   dirBusy.delete(id);
   if (r?.ok) { vm.directives.open = vm.directives.open.filter((x) => x.id !== id); loadSoon(); }
-  renderOverview();
+  renderResearch();
 }
 async function setDirectiveFrom(ids) {
   const r = await cy.directiveFrom(ids).catch(() => ({ ok: false }));
@@ -488,14 +528,14 @@ function directivesSection() {
   if (!d) return null;
   const picking = !d.from.length || dirEdit;
   const head = h('h2', null, h('span', { text: '지시사항 ' }),
-    d.from.length ? h('span.muted.small', { text: `${d.from.map((p) => p.name).join(', ')} · DM·멘션 ` }) : null,
-    d.from.length ? h('button.ghost.small', { type: 'button', text: dirEdit ? '닫기' : '바꾸기', onclick: () => { dirEdit = !dirEdit; renderOverview(); } }) : null);
+    d.from.length ? h('span.muted.small', { text: `${d.from.map((p) => p.name).join(', ')} · DM·멘션·채널 ` }) : null,
+    d.from.length ? h('button.ghost.small', { type: 'button', text: dirEdit ? '닫기' : '바꾸기', onclick: () => { dirEdit = !dirEdit; renderResearch(); } }) : null);
   const picker = picking ? h('div.card.dir-pick', null,
-    h('div.small', { text: d.from.length ? '지시를 줄 사람(누르면 빼거나 넣어요)' : '지시를 줄 사람을 골라 주세요. 그 사람이 나에게 보낸 DM과 나를 멘션한 글을 따로 모아요.' }),
+    h('div.small', { text: d.from.length ? '지시를 줄 사람(누르면 빼거나 넣어요)' : '지시를 줄 사람을 골라 주세요. 그 사람이 나에게 보낸 DM, 나를 멘션한 글, 내가 들어간 채널에 쓴 글을 따로 모아요.' }),
     h('div.row.dir-chips', null,
       ...d.from.map((p) => h('button.chip.accent.click', { type: 'button', text: `✓ ${p.name}`, onclick: () => setDirectiveFrom(d.from.filter((x) => x.id !== p.id).map((x) => x.id)) })),
-      ...d.candidates.map((p) => h('button.chip.click', { type: 'button', text: `+ ${p.name}${p.count ? ` · DM ${p.count}` : ''}`, onclick: () => setDirectiveFrom([...d.from.map((x) => x.id), p.id]) }))),
-    !d.candidates.length && !d.from.length ? h('div.muted.small', { text: '최근 30일 DM 이 아직 없어요. Slack 을 읽기 시작하면 여기 사람이 나와요.' }) : null) : null;
+      ...d.candidates.map((p) => h('button.chip.click', { type: 'button', text: `+ ${p.name} · DM ${p.count} · 채널 ${p.channel}`, onclick: () => setDirectiveFrom([...d.from.map((x) => x.id), p.id]) }))),
+    !d.candidates.length && !d.from.length ? h('div.muted.small', { text: '최근 30일 DM·채널 글이 아직 없어요. Slack 을 읽기 시작하면 여기 사람이 나와요.' }) : null) : null;
   const list = d.from.length ? (d.open.length
     ? h('div.card.dir-list', null, d.open.map((x) => h('div.dir-row', { dataset: { id: x.id } },
       h('span.chip.accent', { text: x.where }),

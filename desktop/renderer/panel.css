@@ -1402,6 +1402,9 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .job-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); min-width: 0; }
 .job-row:first-child { border-top: 0; }
 .job-main { flex: 1; min-width: 0; }
+.research-hint { margin-bottom: 4px; }
+.tmux-host { margin-bottom: 8px; }
+.tmux-host .gpu-hostname:first-child { margin-top: 2px; }
 .job-name, .job-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gpu { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .gpu-host { margin-top: 6px; }
