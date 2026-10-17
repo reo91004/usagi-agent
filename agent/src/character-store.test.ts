@@ -257,9 +257,6 @@ test("그림 올리기: 저장 이름은 새로 짓고, 예전 파일은 지우�
   const re = new CharacterStore(join(dir, "characters"));
   re.load();
   assert.deepEqual((re.view().characters.find((c: any) => c.id === id) as any).frames, { eyes_open: false, dance: true, cheer: true });
-  assert.equal(store.mediaPath(id, f2), join(dir, "characters", id, f2));
-  assert.equal(store.mediaPath(id, f1), undefined, "목록에 없는 파일은 안 준다");
-  assert.equal(store.mediaPath(id, "character.json"), undefined);
   assert.equal(store.removeMedia(id, "dance").status, 200);
   assert.equal(store.user(id)!.media.dance, undefined);
   assert.deepEqual(readdirSync(join(dir, "characters", id)).filter((f) => f.startsWith("dance")), []);

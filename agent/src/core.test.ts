@@ -276,8 +276,6 @@ test("DM '기억해줘'는 모델 없이 바로 개인 기억으로 저장한다
   const facts = listFacts(s.store);
   assert.equal(facts.length, 1);
   assert.equal(facts[0].text, "내 이름은 홍길동이야");
-  assert.equal(s.agent.remember("주말엔 슬랙 안 봐요").ok, true);
-  assert.equal(s.agent.memories().length, 2);
 });
 
 test("Slack 참조: 긴 id도 해시로 찾는다", () => {
@@ -286,78 +284,6 @@ test("Slack 참조: 긴 id도 해시로 찾는다", () => {
   s.store.upsertTodo({ id: long, title: "긴 메일", source: "mail", priority: 2 });
   assert.equal(s.agent.todoByRef(todoRef(long))?.id, long);
   assert.equal(s.agent.todoByRef("h:0000"), undefined);
-});
-
-test("할 일 팝오버: 묻기는 제안만(안 바뀜·기록 안 남김), 적용은 기존 경로로, 바뀌었으면 stale, 거절은 학습 신호", async () => {
-  const seen: any[] = [];
-  const s = setup({ ok: true }, {
-    askTodo: async (_c: unknown, _s: unknown, todo: any, text: string) => {
-      seen.push([todo.id, text]);
-      if (/없애/.test(text)) return { reply: "지울까?", todo_ops: [{ op: "delete", note: "안 하기로 함" }, { op: "edit", id: "mail:2", priority: 1 }] };
-      if (/나눠/.test(text)) return { reply: "둘로 나눌까?", todo_ops: [{ op: "add", title: "견적 계산" }, { op: "add", title: "회신 메일" }, { op: "delete" }] };
-      if (/미뤄/.test(text)) return { reply: "미룰까?", todo_ops: [{ op: "edit", note: "내일까지", priority: 3 }] };
-      return { reply: "메일로 왔어", todo_ops: [] };
-    },
-  });
-  s.store.upsertTodo({ id: "mail:1", title: "견적 회신", source: "mail", priority: 2 });
-  s.store.upsertTodo({ id: "mail:2", title: "보고서", source: "mail", priority: 2 });
-  assert.equal(await s.agent.askTodo("nope", "없애"), undefined);
-
-  const del = (await s.agent.askTodo("mail:1", "이거 안 할 거임 걍 없애셈"))!;
-  assert.deepEqual(del.ops, [{ op: "delete", id: "mail:1", note: "안 하기로 함" }]); // 다른 할 일 변경은 버림
-  assert.equal(del.preview[0].kind, "delete");
-  assert.equal(del.reply, "지울까?");
-  assert.ok(s.store.getTodo("mail:1"), "묻기만으로는 안 지운다");
-  assert.equal(s.store.getTodo("mail:2")!.priority, 2);
-  assert.equal(s.store.chatHistory().length, 0, "예전 /chat/history 에는 안 남는다");
-  // 그 할 일의 스레드에 문답 + 제안 요약이 쌓인다
-  const th = s.store.todoThread("mail:1")!;
-  assert.equal(del.threadId, th.id);
-  assert.deepEqual([th.kind, th.title], ["todo", "할 일: 견적 회신"]);
-  assert.deepEqual(s.store.threadMessages(th.id).map((t) => `${t.role}:${t.text}`), ["user:이거 안 할 거임 걍 없애셈", "assistant:지울까?", "system:제안: 삭제"]);
-
-  const q = (await s.agent.askTodo("mail:1", "누가 줬어?"))!;
-  assert.deepEqual([q.ops, q.preview], [[], []]);
-
-  // 미리보기 뒤에 바뀌면 적용 안 하고 새 미리보기
-  const later = (await s.agent.askTodo("mail:1", "내일로 미뤄"))!;
-  s.agent.editTodo("mail:1", { title: "견적 회신(수정)" });
-  const stale = s.agent.applyAsk("mail:1", later.ops, later.rev) as any;
-  assert.equal(stale.reason, "stale");
-  assert.equal(stale.preview[0].before.title, "견적 회신(수정)");
-  assert.equal(s.store.getTodo("mail:1")!.priority, 2);
-
-  const before = s.signals.length;
-  const ok = s.agent.applyAsk("mail:1", stale.ops, stale.rev) as any;
-  assert.equal(ok.ok, true);
-  assert.match(s.store.threadMessages(th.id).at(-1)!.text, /^✓ 적용: 수정/);
-  assert.deepEqual([ok.todo.note, ok.todo.priority], ["내일까지", 3]);
-  assert.ok(s.store.getTodo("mail:1")!.userEdited!.includes("note"));
-  assert.ok(s.signals.length > before, "패널·캔버스 갱신 신호");
-
-  assert.deepEqual(s.agent.applyAsk("mail:1", [{ op: "edit", id: "mail:2", priority: 1 }]), { ok: false, reason: "empty" });
-  assert.deepEqual(s.agent.applyAsk("nope", [{ op: "done" }]), { ok: false, reason: "missing" });
-
-  // 나누기 → 추가 둘 + 원래 것 삭제(묘비)
-  const split = (await s.agent.askTodo("mail:1", "나눠줘"))!;
-  assert.deepEqual(split.preview.map((p) => p.kind), ["delete", "add", "add"]);
-  const r = s.agent.applyAsk("mail:1", split.ops, split.rev) as any;
-  assert.deepEqual(r.added.map((t: any) => t.title), ["견적 계산", "회신 메일"]);
-  assert.equal(r.todo, null);
-  assert.ok(s.store.isTombstoned("mail:1"));
-
-  // 거절
-  assert.equal(s.agent.rejectAsk("nope", "x"), false);
-  assert.equal(s.agent.rejectAsk("mail:2", "우선순위 올려", [{ op: "edit", priority: 1 }]), true);
-  const fb = s.store.db.prepare("SELECT kind, ref, note FROM profile_feedback WHERE kind = 'todo_proposal_rejected'").all() as any[];
-  assert.equal(fb.length, 1);
-  assert.equal(fb[0].ref, "mail:2");
-  assert.match(fb[0].note, /우선순위 올려.*P1.*거절/);
-  assert.equal(s.store.getTodo("mail:2")!.priority, 2);
-  assert.deepEqual(s.store.threadMessages(s.store.todoThread("mail:2")!.id).map((t) => t.text), ["✗ 버림: 수정(P1)"]);
-  assert.deepEqual(seen[0], ["mail:1", "이거 안 할 거임 걍 없애셈"]);
-  // 같은 할 일의 스레드는 하나(다시 씀)
-  assert.equal(s.store.threads().filter((t) => t.todoId === "mail:1").length, 1);
 });
 
 test("프로젝트 숨기기: 아는 프로젝트만, 바뀌면 대시보드 신호", async () => {

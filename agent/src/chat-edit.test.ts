@@ -76,8 +76,9 @@ test("고치기: 답하는 중이면 멈추고, 그 말·뒤 줄은 숨기고(�
   assert.ok(now.edited, "「수정됨」 표시");
   assert.equal((now as any).original, undefined, "고치기 전 글은 API 로 안 나간다");
   // 기록(감사): 고치기 전 글·숨긴 줄은 store 에 남는다
-  assert.deepEqual(s.store.chatOriginal(now.n!), { text: "버튼 색 파랑으로 바꿔줘", original: "오래 걸리는 물음: 버튼 색", edited: now.edited });
-  assert.ok(s.store.chatOriginal(old.n!)!.hidden);
+  const audit = (n: number) => s.store.db.prepare("SELECT text, original_text, edited_at, hidden_at FROM chat WHERE n = ?").get(n) as any;
+  assert.deepEqual([audit(now.n!).text, audit(now.n!).original_text, audit(now.n!).edited_at], ["버튼 색 파랑으로 바꿔줘", "오래 걸리는 물음: 버튼 색", now.edited]);
+  assert.ok(audit(old.n!).hidden_at);
   assert.equal((s.store.db.prepare("SELECT COUNT(*) AS c FROM chat WHERE thread_id = ?").get(a.threadId) as any).c, 6);
   // 다시 돈 턴의 모델 맥락엔 숨긴 말이 없다
   assert.deepEqual(seen.at(-1)!.history.map((t) => t.text), ["README 봐줘", "답:README 봐줘"]);

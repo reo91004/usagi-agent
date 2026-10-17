@@ -115,13 +115,6 @@ export const TODO_OPS_SCHEMA = {
   },
 } as const;
 
-// add op의 설명·원본 참조(짧게 다듬기)
-export function addExtra(op: TodoOp): { description?: string; source_ref?: string } {
-  const d = typeof op.description === "string" ? op.description.replace(/\s+/g, " ").trim().slice(0, 500) : "";
-  const r = typeof op.source_ref === "string" ? op.source_ref.trim().slice(0, 300) : "";
-  return { ...(d ? { description: d } : {}), ...(r ? { source_ref: r } : {}) };
-}
-
 // 채팅·DM 답에 덧붙일 한 줄: 지우기는 휴지통으로 갔다는 것(답에 이미 '휴지통'이 있으면 생략)
 export function trashedNote(titles: string[] | undefined, reply = ""): string {
   if (!titles?.length || reply.includes("휴지통")) return "";

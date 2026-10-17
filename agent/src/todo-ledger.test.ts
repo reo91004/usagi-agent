@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { Agent, type SlackPort } from "./core.ts";
 import { Bus } from "./bus.ts";
 import { Store, kstDay } from "./store.ts";
@@ -189,5 +188,5 @@ test("Agent 브리핑: 지운 일을 새 key 로 올려도 안 생기고, 사용
   const blocked = store.ledger({ actions: ["blocked"] })[0];
   assert.deepEqual([blocked.todoId, blocked.by], ["session:ms365-jira-mcp-reconnect", "briefing"]);
   assert.match(blocked.detail!, /지운 일 other:ms365-jira-reconnect/);
-  assert.equal(store.ledger({ actions: ["merged"] }).some((e) => && e.todoId === "mail:report"), true);
+  assert.equal(store.ledger({ actions: ["merged"] }).some((e) => e.action === "merged" && e.todoId === "mail:report"), true);
 });

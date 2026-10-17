@@ -384,68 +384,13 @@ function fakeChat(text, focus, ports) {
 }
 
 
-// ---- 할 일 팝오버: 한 번 묻기(제안만) → 적용/거절 (docs/contract.md '할 일 팝오버') ----
-const snapOf = (t) => ({ title: t.title, priority: t.priority, note: t.note ?? null, link: t.link ?? null, status: todos.includes(t) ? 'open' : 'done' });
-const revOf = (t) => JSON.stringify(snapOf(t)).length.toString(36) + ':' + [...JSON.stringify(snapOf(t))].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16);
-// 팝오버 마지막 문답(할 일마다 하나) — GET /todos/:id/thread/last 용(agent/src/todo-ask.ts todo_asks 흉내)
-const lastAsks = new Map(); // todoId → { question, reply, ops, rule, rev, outcome, result?, replyN?, threadId, at }
+// GET /todos/:id/thread/last — 할 일 줄/대화로 보내기 위한 { todo, threadId } (agent/src/core.ts lastAsk)
 function lastAskView(id) {
   const cur = todos.find((x) => x.id === id) ?? doneTodos.find((x) => x.id === id);
   const th = fakeThreads.findTodoThread(id);
   if (!cur) return { status: 404, body: { error: 'no such todo', ...(th ? { threadId: th.id } : {}), trashed: trash.some((x) => x.id === id) } };
-  const rec = lastAsks.get(id);
-  let exchange = null;
-  // 그 뒤 그 할 일의 대화에서 더 말했으면 그게 마지막 문답
-  const lines = (rec?.threadId ?? th?.id) ? fakeThreads.messages(rec?.threadId ?? th.id) ?? [] : [];
-  let x = null;
-  for (let i = lines.length - 1; i > 0 && !x; i--) if (lines[i].role === 'assistant' && lines[i - 1].role === 'user') x = { question: lines[i - 1].text, reply: lines[i].text, replyN: lines[i].n, at: lines[i].at, result: lines.slice(i + 1).filter((l) => l.role === 'system').at(-1)?.text };
-  if (x && (!rec || x.replyN > (rec.replyN ?? 0))) {
-    const outcome = x.result?.startsWith('✓') ? 'applied' : x.result?.startsWith('✗') ? 'rejected' : 'answered';
-    exchange = { question: x.question, reply: x.reply, at: x.at, outcome, ops: [], preview: [], rule: null, ...(x.result ? { result: x.result } : {}), replyN: x.replyN };
-  } else if (rec) {
-    const live = rec.outcome === 'pending' && rec.rev === revOf(cur) && todos.includes(cur);
-    const outcome = rec.outcome === 'pending' && !live ? 'stale' : rec.outcome;
-    exchange = {
-      question: rec.question, reply: rec.reply, at: rec.at, outcome,
-      ...(live ? { ops: rec.ops, preview: fakePreview(cur, rec.ops), rev: rec.rev, rule: rec.rule } : { ops: [], preview: [], rule: null }),
-      ...(outcome === 'stale' ? { result: '그 뒤에 할 일이 바뀌어서 그때 제안은 지났어요 — 다시 물어보세요.' } : rec.result ? { result: rec.result } : {}),
-      ...(rec.replyN ? { replyN: rec.replyN } : {}),
-    };
-  }
-  const threadId = rec?.threadId ?? th?.id ?? null;
-  const actions = threadId && exchange?.replyN ? fakeActions.list({ threadId }).filter((a) => a.msgN === exchange.replyN) : [];
-  return { status: 200, body: { todo: { id: cur.id, title: cur.title, status: todos.includes(cur) ? 'open' : 'done', priority: cur.priority }, threadId, exchange, actions } };
+  return { status: 200, body: { todo: { id: cur.id, title: cur.title, status: todos.includes(cur) ? 'open' : 'done', priority: cur.priority }, threadId: th?.id ?? null } };
 }
-
-// 말 → 제안. "없애"→삭제, "미뤄"→메모+P3, "우선순위 올려"→P1, "나눠"→추가 둘, "끝났"→완료, 그 외엔 답만
-function fakeProposal(t, text) {
-  if (/없애|지워|삭제|안 ?할/.test(text)) return { reply: `"${t.title}" 지울까? 브리핑이 다시 안 올리게 기억할게.`, ops: [{ op: 'delete', id: t.id, note: '안 하기로 함' }] };
-  if (/미뤄|내일/.test(text)) return { reply: '내일까지로 미루고 P3으로 내릴까?', ops: [{ op: 'edit', id: t.id, note: [t.note, '내일까지'].filter(Boolean).join(' · '), priority: 3 }] };
-  if (/우선순위 ?올|급해|중요/.test(text)) return { reply: 'P1로 올릴까?', ops: t.priority === 1 ? [] : [{ op: 'edit', id: t.id, priority: 1 }] };
-  if (/나눠|쪼개/.test(text)) return { reply: '둘로 나눠서 새로 만들까?', ops: [{ op: 'add', title: `${t.title} — 준비`, priority: Math.min(3, t.priority) }, { op: 'add', title: `${t.title} — 마무리`, priority: Math.min(3, t.priority + 1), note: '준비 끝나고' }] };
-  if (/끝났|완료|다 ?했/.test(text)) return { reply: '끝난 걸로 할까?', ops: [{ op: 'done', id: t.id }] };
-  if (/제목/.test(text)) return { reply: '제목을 이렇게 바꿀까?', ops: [{ op: 'edit', id: t.id, title: `${t.title} (정리)` }] };
-  return { reply: `"${t.title}"은 ${t.source} 쪽에서 온 거야. 가짜 데몬이라 더는 몰라.`, ops: [] };
-}
-function fakePreview(t, ops) {
-  const before = snapOf(t);
-  const out = [];
-  let after = null, kind = 'edit';
-  for (const o of ops) {
-    if (o.op === 'add') out.push({ kind: 'add', after: { title: o.title, priority: o.priority ?? 2, note: o.note ?? null, link: o.link ?? null, status: 'open' } });
-    else if (o.op === 'delete') out.unshift({ id: t.id, kind: 'delete', before });
-    else {
-      after ??= { ...before };
-      if (o.op === 'edit') for (const k of ['title', 'priority', 'note', 'link']) { if (o[k] !== undefined) after[k] = o[k]; }
-      else { after.status = o.op === 'done' ? 'done' : 'open'; kind = o.op; }
-    }
-  }
-  if (after) out.unshift({ id: t.id, kind, before, after });
-  return out;
-}
-// 집어 든 할 일 + 추가만 남긴다(진짜 데몬의 focusOps 흉내, 간단히)
-const focusOnly = (t, ops) => (Array.isArray(ops) ? ops : []).filter((o) => o && (o.op === 'add' ? typeof o.title === 'string' && o.title.trim() : (o.id ?? t.id) === t.id)).map((o) => (o.op === 'add' ? o : { ...o, id: t.id }));
-const rejected = [];
 
 // ---- 데모 말풍선 ----
 const DEMO = [
@@ -820,98 +765,6 @@ const server = http.createServer(async (req, res) => {
         hiddenProjects.add(id);
       } else if (!hiddenProjects.delete(id)) return json(res, 404, { error: 'no such project' });
       json(res, 200, { ok: true });
-      emit('dashboard', {});
-    });
-  }
-  const ask = p.match(/^\/todos\/([^/]+)\/(ask|apply|reject)$/);
-  if (ask) {
-    const id = decodeURIComponent(ask[1]);
-    const cur = todos.find((x) => x.id === id);
-    if (ask[2] === 'ask') {
-      const text = typeof body.text === 'string' ? body.text.trim() : '';
-      if (!text || text.length > 2000) return json(res, 400, { error: 'text required' });
-      if (!cur) return json(res, 404, { error: 'no such todo' });
-      mood('thinking');
-      // 이 팝오버로 도는 run(데몬처럼 원래 화면 = 그 할 일 + 그 할 일의 대화)
-      const askThread = fakeThreads.todoThread(cur);
-      const askRun = startChatRun({ title: `할 일 묻기: ${text.slice(0, 60)}`, text, origin: { type: 'todo', todoId: id, threadId: askThread.id } });
-      const pk = permissionKindOf(text);
-      if (pk) { // 팝오버에서 쓰기: 승인 카드(via todo, todoId) → 결정 → 답
-        const { action, decision } = fakeActions.requestPermission(pk, { via: 'todo', todoId: id });
-        return decision.then((d) => {
-          mood('idle');
-          const reply = d.behavior === 'allow' ? '했어요(가짜). 끝난 걸로 할까요?' : '거부하셔서 안 했어요.';
-          fakeThreads.add(askThread.id, 'user', text);
-          const replyN = fakeThreads.add(askThread.id, 'assistant', reply);
-          fakeThreads.signal(askThread);
-          askRun.done(reply);
-          const a = action ? fakeActions.attach(action.id, replyN, askThread.id) : null;
-          json(res, 200, { reply, ops: [], preview: [], rev: revOf(cur), rule: null, threadId: askThread.id, actions: a ? [a] : [] });
-        });
-      }
-      return setTimeout(() => {
-        mood('idle');
-        if (FAIL.test(text)) { askRun.fail('가짜 실패'); return json(res, 500, { error: '가짜 실패 — 모델 응답 없음' }); }
-        const still = todos.find((x) => x.id === id);
-        if (!still) { askRun.fail('할 일 없음'); return json(res, 404, { error: 'no such todo' }); }
-        const proposal = fakeRules.proposal(text, still); // "앞으로 모든 X는 …" → 지속 규칙 + 이 할 일도 같이
-        const { reply, ops } = proposal
-          ? { reply: `앞으로 "${proposal.match.keywords[0]}" 들어간 건 ${proposal.effect.priority === 4 ? '백로그' : `P${proposal.effect.priority}`}로 보낼까?`, ops: still.priority === proposal.effect.priority ? [] : [{ op: 'edit', id: still.id, priority: proposal.effect.priority }] }
-          : fakeProposal(still, text);
-        const rule = proposal ? fakeRules.preview(proposal, todos, ops.length ? [still.id] : []) : null;
-        // 그 할 일의 대화에 문답 + 제안 요약
-        const th = fakeThreads.todoThread(still);
-        fakeThreads.add(th.id, 'user', text);
-        const replyN = fakeThreads.add(th.id, 'assistant', reply);
-        const actions = wantsAction(`${text} ${still.title}`) ? [fakeActions.propose(actionMeeting(`${text} ${still.title}`), actionResponse(text), { via: 'todo', threadId: th.id, msgN: replyN })] : [];
-        if (ops.length || rule) fakeThreads.add(th.id, 'system', `제안: ${[ops.map((o) => o.op).join(', '), rule ? `규칙 "${rule.proposal.text}"` : ''].filter(Boolean).join(' + ')}`);
-        fakeThreads.signal(th);
-        askRun.done(reply);
-        lastAsks.set(id, { question: text, reply, ops, rule, rev: revOf(still), outcome: ops.length || rule ? 'pending' : 'answered', replyN, threadId: th.id, at: new Date().toISOString() });
-        json(res, 200, { reply, ops, preview: fakePreview(still, ops), rev: revOf(still), rule, threadId: th.id, actions });
-      }, Number(process.env.FAKE_ASK_DELAY_MS) || 900);
-    }
-    if (ask[2] === 'reject') {
-      if (!cur) return json(res, 404, { error: 'no such todo' });
-      rejected.push({ id, text: body.text, ops: body.ops, ...(body.rule ? { rule: body.rule.text } : {}) });
-      console.log('  ✗ 제안 거절', JSON.stringify(rejected.at(-1)));
-      const th = fakeThreads.todoThread(cur);
-      fakeThreads.add(th.id, 'system', `✗ 버림: ${(body.ops ?? []).map((o) => o.op).join(', ') || '제안'}`);
-      if (lastAsks.get(id)?.outcome === 'pending') Object.assign(lastAsks.get(id), { outcome: 'rejected', result: `✗ 버림: ${(body.ops ?? []).map((o) => o.op).join(', ') || '제안'}` });
-      fakeThreads.signal(th);
-      return json(res, 200, { ok: true });
-    }
-    const rule = body.rule && typeof body.rule === 'object' && Array.isArray(body.rule.match?.keywords) ? body.rule : null;
-    if (!Array.isArray(body.ops) || (!body.ops.length && !rule)) return json(res, 400, { error: 'ops required' });
-    if (!cur) return json(res, 404, { error: 'no such todo' });
-    const ops = focusOnly(cur, body.ops);
-    if (!ops.length && !rule) return json(res, 400, { error: 'no applicable ops' });
-    if (body.rev && body.rev !== revOf(cur)) return json(res, 409, { error: 'todo changed since preview', ops, preview: fakePreview(cur, ops), rev: revOf(cur) });
-    return later(() => {
-      if (FAIL.test(cur.title)) return json(res, 500, { error: '가짜 실패' });
-      const added = [];
-      for (const o of ops) {
-        if (o.op === 'add') {
-          const t = { id: `user:${Date.now().toString(36)}${added.length}`, title: o.title.trim(), source: 'user', priority: o.priority ?? 2, ...(o.note ? { note: o.note } : {}), userEdited: false };
-          todos = [t, ...todos];
-          added.push(t);
-        } else if (o.op === 'delete') trashTodo(id);
-        else if (o.op === 'done') { todos = todos.filter((x) => x.id !== id); doneTodos = [cur, ...doneTodos.filter((x) => x.id !== id)]; }
-        else if (o.op === 'edit') {
-          for (const k of ['title', 'priority', 'link', 'note']) {
-            if (o[k] === undefined) continue;
-            if (o[k] === null || o[k] === '') delete cur[k]; else cur[k] = o[k];
-          }
-          cur.userEdited = true;
-        }
-      }
-      const r = rule ? fakeRules.add(rule, todos) : null; // 규칙 저장 + 맞는 다른 할 일도
-      todos.sort((a, b) => a.priority - b.priority);
-      json(res, 200, { ok: true, applied: ops.map((o) => o.op), errors: [], todo: todos.includes(cur) ? cur : null, added, ...(r ? { rule: r.rule, ruleChanged: r.changed } : {}) });
-      const th = fakeThreads.todoThread(cur);
-      fakeThreads.add(th.id, 'system', `✓ 적용: ${ops.map((o) => o.op).join(', ')}${r ? ` + 규칙` : ''}`);
-      if (lastAsks.get(id)?.outcome === 'pending') Object.assign(lastAsks.get(id), { outcome: 'applied', result: `✓ 적용: ${ops.map((o) => o.op).join(', ')}${r ? ` + 규칙` : ''}` });
-      fakeThreads.signal(th);
       emit('dashboard', {});
     });
   }

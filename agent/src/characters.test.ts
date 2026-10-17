@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { CHARACTERS, CHARACTER_IDS, LEGACY_SHISA_INTRO, SHISA_INTRO, SHISA_TONE, character, characterId, installCharacters, setCharacter, withCharacter } from "./characters.ts";
 import { SYSTEM, INTERACTIVE_SYSTEM, systemPrompt, ask } from "./brain.ts";
 import { CHAT_SYSTEM, CHAT_SYSTEM_INLINE, BG_AGENT_SYSTEM } from "./chat.ts";
-import { ASK_SYSTEM } from "./todo-ask.ts";
 import { PHRASES, phrase, phraseVoice, setPhrases, unknownVars, defaultLines } from "./phrases.ts";
 import { voice, TONE, tone } from "./voice.ts";
 import { localThought, quickAnswer, QUICK_ASKS } from "./local-mode.ts";
@@ -18,7 +17,7 @@ import type { FetchLike } from "./providers.ts";
 afterEach(() => { installCharacters({}); setCharacter("shisa"); setPhrases({}); });
 
 const OTHERS = CHARACTER_IDS.filter((id) => id !== "shisa");
-const SYSTEMS = { SYSTEM, INTERACTIVE_SYSTEM, CHAT_SYSTEM, CHAT_SYSTEM_INLINE, BG_AGENT_SYSTEM, ASK_SYSTEM, connectorsOff: systemPrompt() };
+const SYSTEMS = { SYSTEM, INTERACTIVE_SYSTEM, CHAT_SYSTEM, CHAT_SYSTEM_INLINE, BG_AGENT_SYSTEM, connectorsOff: systemPrompt() };
 
 test("캐릭터: 모르는 값은 시사, 고르면 바로 바뀐다", () => {
   for (const bad of [undefined, null, "", "nope", "__proto__", "Hachi", 1]) assert.equal(setCharacter(bad), "shisa", String(bad));
