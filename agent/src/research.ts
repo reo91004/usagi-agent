@@ -3,7 +3,7 @@
 import type { Config } from "./config.ts";
 import { dayStart, localDay } from "./focus.ts";
 import type { TmuxSession } from "./jobs.ts";
-import { expName, projectOf, type ResearchProject } from "./research-projects.ts";
+import { aiTool, expName, projectOf, type ResearchProject } from "./research-projects.ts";
 import { remoteHosts } from "./remote-fs.ts";
 import { hasAuto, notePath } from "./research-note.ts";
 import type { Store } from "./store.ts";
@@ -16,7 +16,7 @@ export type ResearchJob = {
 export type Research = {
   hosts: string[];
   jobs: ResearchJob[];
-  tmux: Record<string, { at: string; sessions: (TmuxSession & { label: string; project?: string })[] }>; // 서버별 마지막으로 읽은 tmux 세션(작업 확인 ssh 에 실려 옴)
+  tmux: Record<string, { at: string; sessions: (TmuxSession & { label: string; project?: string; ai?: string })[] }>; // 서버별 마지막으로 읽은 tmux 세션(작업 확인 ssh 에 실려 옴)
   note?: { day: string; exists: boolean; yesterday?: { day: string; lines: string[]; next: string[] } };
 };
 
@@ -42,7 +42,7 @@ export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tin
   const jobs = [...shaped.filter((j) => j.state === "running"), ...shaped.filter((j) => j.state !== "running").slice(0, RECENT)];
   const tmux: Research["tmux"] = Object.fromEntries(Object.entries(tmuxIn).map(([host, t]) => [host, {
     at: t.at,
-    sessions: t.sessions.map((s) => ({ ...s, label: expName({ tmuxName: s.name, cmd: s.running ?? undefined, cwd: s.path }), ...(projectOf(projects, host, s.path) ? { project: projectOf(projects, host, s.path) } : {}) })),
+    sessions: t.sessions.map((s) => ({ ...s, label: expName({ tmuxName: s.name, cmd: s.running ?? undefined, cwd: s.path }), ...(aiTool(s.running) ? { ai: aiTool(s.running) } : {}), ...(projectOf(projects, host, s.path) ? { project: projectOf(projects, host, s.path) } : {}) })),
   }]));
   let note: Research["note"];
   if (cfg.tineGraph) {

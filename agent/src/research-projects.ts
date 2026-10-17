@@ -12,6 +12,7 @@ export type Submission = { venue: string; stage: Stage; deadline?: string; at: s
 export type Experiment = {
   name: string; host: string; kind: "job" | "tmux"; cwd?: string; cmd?: string; start?: number;
   seconds?: number; code?: number | null; lost?: boolean; running: boolean;
+  ai?: string; // tmux 에서 도는 AI CLI(claude 등)면 도구 이름. 실험이 아니라 AI 작업이다
 };
 export type ResearchProject = {
   key: string; kind: "research" | "project" | null; name: string; folders: { path: string; onMac?: boolean }[];
@@ -23,6 +24,9 @@ export type ResearchProject = {
 const WINDOW = 30 * 864e5, MAX_CAND = 8;
 const LOST_AFTER = 14 * 864e5; // main.ts jobsRunning 이 표시 없는 job 을 lost 로 바꾸는 창과 같다
 const TMUX_FRESH = 15 * 60e3; // 이보다 오래 응답이 없던 서버의 tmux 메모리는 믿지 않는다
+const AI_TOOLS = new Set(["claude", "codex", "agy", "gemini", "aider", "cursor-agent", "opencode"]);
+// tmux 에서 도는 명령의 첫 단어(basename)가 AI CLI 면 그 이름
+export const aiTool = (running: string | null | undefined): string | undefined => { const w = baseName((running ?? "").trim().split(/\s+/)[0] ?? "").toLowerCase(); return AI_TOOLS.has(w) ? w : undefined; };
 const LIVE = new Set<string>(["prep", "submitted", "review", "rebuttal", "revision"]);
 
 // ---- 실험 이름: 보여 줄 때 계산하고 저장하지 않는다 ----
@@ -111,7 +115,7 @@ export function buildResearchProjects(store: Store, dash: DashProject[], now: Da
       if (!s.running || !s.path) continue; // 돌고 있는 명령이 있는 세션만 실험으로 본다
       const key = resolve(folderKey(host, s.path));
       if (noise(key)) continue;
-      const exp: Experiment = { name: expName({ tmuxName: s.name, cmd: s.running, cwd: s.path }), host, kind: "tmux", cwd: s.path, cmd: s.running, ...(s.created > 0 ? { start: s.created } : {}), running: true };
+      const exp: Experiment = { name: expName({ tmuxName: s.name, cmd: s.running, cwd: s.path }), host, kind: "tmux", cwd: s.path, cmd: s.running, ...(aiTool(s.running) ? { ai: aiTool(s.running) } : {}), ...(s.created > 0 ? { start: s.created } : {}), running: true };
       acc(key).items.push({ exp, at: new Date((s.activity > 0 ? s.activity : s.created) * 1000).toISOString(), state: "running" });
     }
   }
@@ -120,7 +124,7 @@ export function buildResearchProjects(store: Store, dash: DashProject[], now: Da
   for (const [rep, a] of accs) {
     const m = meta.get(rep);
     if (m?.kind === "none") continue;
-    if (!m?.kind && (noise(rep) || store.isHiddenPath(rep, hidden) || !(a.items.length || a.sessions.length >= 2))) continue;
+    if (!m?.kind && (noise(rep) || store.isHiddenPath(rep, hidden) || !(a.items.some((i) => !i.exp.ai) || a.sessions.length >= 2))) continue;
     const sessions = a.sessions.sort((x, y) => y.updated.localeCompare(x.updated));
     const done = a.items.filter((i) => i.state !== "running");
     const last = [...a.dashActive, ...a.sessions.map((s) => s.updated), ...a.items.map((i) => i.at)].sort().at(-1);

@@ -169,8 +169,8 @@ type Bubble = {
   - `todos[]`(아래), `recentDone[]`, `proposals[]`, `today{date,asked,items}`
   - `connectors[]{cap,label,mode,ready,detail,doc}`, `meetings[]{id,subject,start,end,link?}`, `todoRules[]`
   - `projects[]` 에는 연구 프로젝트에 속한 폴더에 `hiddenByResearch: true` 가 붙는다.
-  - `researchProjects[]`: 연구 탭 목록. `key`(대표 폴더 키: 이 Mac 은 레포 루트 절대 경로, 서버는 `서버:/경로`), `kind`(`research`|`project`|null=후보), `name`, `folders[]{path,onMac?}`, `subs[]{venue,stage,deadline?,at}`, `url?`, `lastActive`, `running[]`, `recent{done,failed,lost,items}`(30일), `sessions[]{title,tool,at}`(30일 중 최근 5개, 작업 기록을 읽을 때만). 후보는 30일 안의 job, 지금 도는 tmux, 30일 안의 세션 2개 이상 중 하나가 있는 폴더로 최대 8개, kind `none` 은 빠진다. 작업 폴더 `projects[]` 는 7일 창 그대로다.
-  - `research.jobs[]` 와 `research.tmux[host].sessions[]` 에는 `label`(실험 이름)과 `project?`(속한 key)가 붙는다.
+  - `researchProjects[]`: 연구 탭 목록. `key`(대표 폴더 키: 이 Mac 은 레포 루트 절대 경로, 서버는 `서버:/경로`), `kind`(`research`|`project`|null=후보), `name`, `folders[]{path,onMac?}`, `subs[]{venue,stage,deadline?,at}`, `url?`, `lastActive`, `running[]`(tmux 에서 도는 AI CLI 는 `ai`=도구 이름이 붙고 실험이 아니다), `recent{done,failed,lost,items}`(30일), `sessions[]{title,tool,at}`(30일 중 최근 5개, 작업 기록을 읽을 때만). 후보는 30일 안의 job, 지금 도는 tmux(AI CLI 제외), 30일 안의 세션 2개 이상 중 하나가 있는 폴더로 최대 8개, kind `none` 은 빠진다. 작업 폴더 `projects[]` 는 7일 창 그대로다.
+  - `research.jobs[]` 와 `research.tmux[host].sessions[]` 에는 `label`(실험 이름), `project?`(속한 key), `ai?`(첫 단어가 claude·codex·agy·gemini·aider·cursor-agent·opencode 일 때 도구 이름)가 붙는다.
 - `PUT /research/projects { key, kind?: research|project|none, name?: string|null, subs?: Submission[], url?: string|null, mergeInto?: string|null }` → 200 `{ok:true}` / 400 `{error}`. `x-cy-agent: 1` 헤더 필요. subs 는 통째로 바꾼다(at 없으면 지금). key ≤500자·name ≤80자·venue 1~60자 한 줄, stage 8종, deadline YYYY-MM-DD, subs ≤20, url http(s) ≤500자. 이미 합쳐진 폴더에는 합칠 수 없다.
 - `POST /briefing` → 202. 지금 브리핑(오래 걸리니 기다리지 않는다).
 - `POST /refresh` → 202. Slack 다시 훑기 → 새 할 일 → 브리핑.
