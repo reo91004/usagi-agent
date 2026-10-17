@@ -105,6 +105,15 @@ export function withCli(data, provider) {
   return { ...d, clis: { ...d.clis, [provider]: true }, provider };
 }
 
+// 「AI 더 연결하기」: 지금 쓰는 AI 는 그대로 두고 우선순위 맨 뒤에 붙인다(쓰는 AI 가 없으면 이게 지금 쓰는 AI)
+export function withCliAdded(data, provider) {
+  const d = normalizeSisa(data);
+  if (!CLI_PROVIDERS.includes(provider)) return d;
+  if (!activeProvider(d)) return withCli(d, provider);
+  const order = [...priorityList(d).filter((p) => p !== provider), provider];
+  return { ...d, clis: { ...d.clis, [provider]: true }, order };
+}
+
 // 연결 해제: 키면 지우고, Claude Code·Codex·Antigravity 면 「연결됨」 표시만 뗀다(그 CLI 로그인은 그대로). 지금 쓰던 AI 였으면 'none'(AI 없이 쓰기)
 export function withoutProvider(data, provider) {
   const d = normalizeSisa(data);

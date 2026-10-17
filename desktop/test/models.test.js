@@ -111,3 +111,16 @@ test('우선순위 카드 상태 줄: 쉬는 AI 가 있을 때만, 지금 쓰는
   const t = priorityStatus({ active: 'codex', cooling: [{ provider: 'claude-code', until: Date.UTC(2026, 9, 17, 3, 0) }] });
   assert.match(t, /^지금은 Codex로 하고 있어요\. Claude Code는 .+까지 쉬어요$/);
 });
+
+import { addableClis } from '../renderer/models-view.js';
+
+test('addableClis: 연결 안 된 CLI 만, 로그인 상태 글과 함께', () => {
+  const rows = addableClis(['agycli', 'gemini'], { claude: { installed: true, loggedIn: true }, codex: { installed: true, loggedIn: false } });
+  assert.deepEqual(rows, [
+    { provider: 'claudecode', agent: 'claude', state: '이 Mac 에서 찾았어요' },
+    { provider: 'codexcli', agent: 'codex', state: '로그인이 필요해요' },
+  ]);
+  assert.equal(addableClis([], { agy: { installed: false, loggedIn: false } })[2].state, '설치되어 있지 않아요');
+  assert.equal(addableClis([])[0].state, '');
+  assert.deepEqual(addableClis(['claudecode', 'codexcli', 'agycli']), []);
+});

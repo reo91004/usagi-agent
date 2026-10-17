@@ -1,7 +1,7 @@
 // 설치·모델 탭에서 고른 AI → 시사 데몬 설정(brain·models.general)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { daemonBrainPatch, withDaemonBrain, settingsBrainBody, withOrder, priorityList, publicView, withoutProvider, normalizeSisa } from '../src/sisa-store.js';
+import { daemonBrainPatch, withDaemonBrain, settingsBrainBody, withOrder, priorityList, publicView, withoutProvider, normalizeSisa, withCliAdded } from '../src/sisa-store.js';
 
 const KEY = 'k'.repeat(20);
 
@@ -56,4 +56,21 @@ test('우선순위: 맨 앞이 지금 쓰는 AI, 나머지는 저장한 순서. 
   const file = withDaemonBrain({ brain: { provider: 'gemini', fallback: [{ provider: 'codex' }] } }, daemonBrainPatch(withoutProvider(withoutProvider(o, 'gemini'), 'openai')));
   assert.equal(file.brain.fallback, undefined, '남은 AI 가 하나면 데몬의 옛 순서를 지운다');
   assert.deepEqual(normalizeSisa(withoutProvider(o, 'gemini')).order, ['codexcli', 'openai']);
+});
+
+test('withCliAdded: 쓰는 AI 는 그대로, 우선순위 맨 뒤에 붙고 중복·비 CLI 는 무시', () => {
+  const base = { provider: 'gemini', keys: { gemini: KEY }, clis: { agycli: true }, order: ['gemini', 'agycli'] };
+  const a = withCliAdded(base, 'codexcli');
+  assert.equal(a.provider, 'gemini');
+  assert.deepEqual(priorityList(a), ['gemini', 'agycli', 'codexcli']);
+  assert.deepEqual(priorityList(withCliAdded(a, 'codexcli')), ['gemini', 'agycli', 'codexcli'], '두 번 눌러도 한 번만');
+  assert.deepEqual(priorityList(withCliAdded(base, 'agycli')), ['gemini', 'agycli'], '이미 연결된 건 자리 그대로');
+  assert.deepEqual(priorityList(withCliAdded(base, 'openai')), priorityList(base), 'CLI 가 아니면 그대로');
+  assert.deepEqual(daemonBrainPatch(a).brain.fallback, [{ provider: 'agy' }, { provider: 'codex' }]);
+});
+
+test('withCliAdded: 쓰는 AI 가 없으면(none) 이 CLI 가 지금 쓰는 AI', () => {
+  const a = withCliAdded({ provider: 'none' }, 'claudecode');
+  assert.equal(a.provider, 'claudecode');
+  assert.deepEqual(priorityList(a), ['claudecode']);
 });
