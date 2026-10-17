@@ -12,6 +12,7 @@ import { mountGuidelines } from '../src/guidelines.js';
 import { CHARACTERS, CHARACTER_IDS, characterAssets, characterName, okCharacterId, USER_CHAR_DIR, defaultFrame, START_CHARACTER } from '../src/character.js';
 import { applyCharacters, effectiveLines, defaultsOf } from '../src/character-registry.js';
 import { editorSections, flattenLines, unflattenLines, fieldText, fieldProblem, linesFromTexts, diffLines, slotRows, okMediaName, previewKind, missingRequired, sourceOptions, ACCEPT } from '../src/character-edit.js';
+import { navIcon } from './nav-icons.js';
 import { who, setWho, onWho } from './who.js';
 const cy = window.cy.settings;
 const $ = (id) => document.getElementById(id);
@@ -303,7 +304,8 @@ function renderCharacter() {
     lab.append(rb, pic, el('span', 'char-name', nm));
     if (c.custom) lab.append(el('span', 'char-tag', '만든 것'));
     else if (c.override) lab.append(el('span', 'char-tag', '대사 고침'));
-    const edit = el('button', 'char-edit', '✎');
+    const edit = el('button', 'char-edit');
+    edit.append(navIcon('edit'));
     edit.type = 'button';
     edit.title = c.custom ? `${nm} 고치기(이름·그림·대사)` : `${nm} 대사 고치기`;
     edit.setAttribute('aria-label', edit.title);

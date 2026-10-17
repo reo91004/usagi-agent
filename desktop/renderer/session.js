@@ -1,4 +1,5 @@
 // 작업 세션 창 — 왼쪽 run 목록, 오른쪽 Claude Code 같은 기록 + 입력창. 네트워크는 전부 메인을 거친다.
+import { navIcon } from './nav-icons.js';
 import { who, setWho } from './who.js';
 import { applyCharacters } from '../src/character-registry.js';
 import { START_CHARACTER } from '../src/character.js';
@@ -599,6 +600,7 @@ const tray = createAttachTray({
   upload: (name, mime, bytes) => (cy.chatAttach ? cy.chatAttach(name, mime, bytes) : Promise.resolve({ ok: false })),
   onError: (msg) => { $('compose-err').textContent = msg; },
 });
+$('attach').replaceChildren(navIcon('clip'));
 if (!cy.chatAttach) $('attach').hidden = true;
 // 첨부를 다 올렸으면 id 들, 못 올린 게 있으면 null(보내지 않는다)
 async function readyAttachments() {

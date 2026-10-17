@@ -54,20 +54,20 @@
           <div id="th-scrim" hidden></div>
           <div id="th-main">
             <div id="th-head">
-              <button id="th-toggle" type="button" class="ghost" title="대화 목록" aria-label="대화 목록" aria-expanded="false">☰</button>
+              <button id="th-toggle" type="button" class="ghost" data-tip="대화 목록" aria-label="대화 목록" aria-expanded="false"></button>
               <span id="th-kind" aria-hidden="true"></span>
               <button id="th-title" type="button" class="th-title" title="눌러서 이름 바꾸기">새 대화</button>
               <input id="th-title-input" type="text" aria-label="대화 이름" hidden>
               <button id="th-todo" type="button" class="th-todo" hidden></button>
-              <button id="th-sync" type="button" class="ghost th-sync" hidden title="터미널 Claude Code 에서 이어 간 대화(서브에이전트 포함)를 불러와요" aria-label="새로고침 — 터미널에서 이어 간 대화 불러오기">↻</button>
+              <button id="th-sync" type="button" class="ghost th-sync" hidden data-tip="터미널에서 이어 간 대화 불러오기" aria-label="새로고침 — 터미널에서 이어 간 대화 불러오기"></button>
             </div>
             <div id="chat-log" aria-live="polite"></div>
             <div id="chat-agents" role="region" aria-label="돌고 있는 에이전트" hidden></div>
             <div id="chat-att-err" class="att-err" role="alert" hidden></div>
             <div id="chat-tray" class="att-tray" aria-label="붙인 파일" hidden></div>
             <div id="chat-compose">
-              <button id="chat-canned-btn" type="button" class="ghost att-pick" title="정해진 답 고르기 — 오늘 할 일·응원·춤(AI 없이 바로)" aria-label="정해진 답 고르기">＋</button>
-              <button id="chat-attach" type="button" class="ghost att-pick" title="파일 붙이기 — 이미지·PDF·문서·아무 파일(끌어다 놓거나 ⌘V 로 붙여도 돼요)" aria-label="파일 붙이기">📎</button>
+              <button id="chat-canned-btn" type="button" class="ghost att-pick" data-tip="정해진 답 고르기 — 오늘 할 일·응원·춤(AI 없이 바로)" aria-label="정해진 답 고르기"></button>
+              <button id="chat-attach" type="button" class="ghost att-pick" data-tip="파일 붙이기" aria-label="파일 붙이기"></button>
               <textarea id="chat-input" rows="1" placeholder="물어보세요 — 예: 오늘 할 일 뭐 있어? (Shift+Enter 줄바꿈)" aria-label="메시지"></textarea>
               <select id="chat-model" aria-label="모델" title="이번에 보낼 때 쓸 모델" hidden></select>
               <button id="chat-send" type="button" class="primary">보내기</button>

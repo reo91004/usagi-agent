@@ -17,7 +17,7 @@ import { SETUP_FLOW_VERSION, isSetupPhase, phaseAfterBrain, backPhase, restorePh
 import { brainView, connectCard, chatLock } from '../src/brain-state.js';
 import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, sendButton, stopTargets, localState, queuedChats, queuedLabel, sentLabel } from '../src/chat.js';
 import { stamp, withDayDividers } from '../src/chat-time.js';
-import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
+import { KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
 import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, descriptionPatch, isDoing, patchToday, isToday } from '../src/todos.js';
 import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
@@ -1443,10 +1443,10 @@ const TRASH_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden=
 function doingButton(t) {
   const on = isDoing(t);
   return h(`button.ghost.row-doing${on ? '.on' : ''}`, {
-    type: 'button', text: on ? '⏸' : '▶', disabled: t.pending, 'aria-pressed': String(on),
+    type: 'button', disabled: t.pending, 'aria-pressed': String(on),
     title: on ? '진행중 표시 끄기' : '진행중으로 표시', 'aria-label': `${on ? '진행중 끄기' : '진행중으로'}: ${t.title}`,
     onclick: () => mutate({ kind: 'edit', id: t.id, patch: { doing: !on }, rule: true }, () => cy.todoEdit(t.id, { doing: !on }), '진행중 표시 실패'),
-  });
+  }, navIcon(on ? 'pause' : 'play'));
 }
 
 // 「안 해도 됨」: 할 필요가 없어서 닫는다(끝난 칸에 「안 함」 표시)
@@ -2426,11 +2426,14 @@ function renderThreadList() {
   else if (focused) thList.querySelector(`.th-row[data-id="${CSS.escape(focused)}"]`)?.focus();
 }
 
+// 대화 종류 표시: 이모지 대신 선 아이콘(대화·할 일 대화·캐릭터에게 한 말)
+const kindIcon = (kind) => navIcon({ todo: 'todos', hover: 'smile' }[kind] ?? 'chat');
+
 function threadRow(t, busy) {
   const sel = t.id === selectedId;
   const unread = isUnread(seen, t, selectedId);
   const mode = rowMode?.id === t.id ? rowMode.mode : null;
-  const icon = h('span.th-icon', { text: KIND_ICONS[t.kind] ?? '💬', title: KIND_LABELS[t.kind] ?? '' });
+  const icon = h('span.th-icon', { title: KIND_LABELS[t.kind] ?? '' }, kindIcon(t.kind));
   if (mode === 'delete' || mode === 'archive') {
     const del = mode === 'delete';
     return h('div.th-row.confirm', { dataset: { id: t.id }, role: 'option', 'aria-selected': String(sel) },
@@ -2459,7 +2462,7 @@ function threadRow(t, busy) {
     requestAnimationFrame(() => { if (input.isConnected && document.activeElement !== input) { input.focus(); input.select(); } });
     return h('div.th-row', { dataset: { id: t.id }, role: 'option', 'aria-selected': String(sel) }, icon, input);
   }
-  const act = (label, text, fn) => h('button', { type: 'button', text, title: label, 'aria-label': label, onclick: (e) => { e.stopPropagation(); fn(); } });
+  const act = (label, icon, fn) => h('button', { type: 'button', title: label, 'aria-label': label, onclick: (e) => { e.stopPropagation(); fn(); } }, navIcon(icon));
   return h(`div.th-row${unread ? '.unread' : ''}`, {
     dataset: { id: t.id }, role: 'option', tabindex: '0', 'aria-selected': String(sel), title: t.title,
     onclick: () => selectThread(t.id),
@@ -2469,9 +2472,9 @@ function threadRow(t, busy) {
   h('span.th-text', null, h('span.th-name', { text: t.title }), t.preview ? h('span.th-prev', { text: t.preview.replace(/[*_`#>~]/g, '') }) : null),
   busy.has(t.id) ? h('span.spin.th-busy', { title: '답하는 중' }) : unread ? h('span.th-dot', { title: '새 답', 'aria-label': '새 답' }) : null,
   h('span.th-acts', null,
-    act('이름 바꾸기', '✎', () => { rowMode = { id: t.id, mode: 'rename' }; renderThreadList(); }),
-    showArchived ? act('꺼내기', '↩︎', () => archiveThread(t.id, false)) : act('보관', '🗄', () => { rowMode = { id: t.id, mode: 'archive' }; renderThreadList(); }),
-    act('삭제', '🗑', () => { rowMode = { id: t.id, mode: 'delete' }; renderThreadList(); })));
+    act('이름 바꾸기', 'edit', () => { rowMode = { id: t.id, mode: 'rename' }; renderThreadList(); }),
+    showArchived ? act('꺼내기', 'undo', () => archiveThread(t.id, false)) : act('보관', 'archive', () => { rowMode = { id: t.id, mode: 'archive' }; renderThreadList(); }),
+    act('삭제', 'trash', () => { rowMode = { id: t.id, mode: 'delete' }; renderThreadList(); })));
 }
 
 async function renameThread(id, title) {
@@ -2519,7 +2522,7 @@ async function deleteThread(id) {
 // 머리말: 종류 아이콘 · 제목(눌러서 이름 바꾸기) · 할 일 대화면 그 할 일 칩
 function renderThreadHead() {
   const t = currentThread();
-  $('th-kind').textContent = t ? KIND_ICONS[t.kind] ?? '' : '💬';
+  $('th-kind').replaceChildren(kindIcon(t?.kind));
   if (thTitleInput.hidden) {
     thTitle.textContent = t ? t.title : '새 대화';
     thTitle.disabled = !t;
@@ -2663,7 +2666,7 @@ function queuedAtts(p) {
 // ---- 말 고치기(✏️) — 이 대화의 마지막 내 말만. 저장하면: 답하는 중이면 멈추고, 그 뒤 답은 걷히고, 고친 글로 다시 답한다(데몬 Chat.edit).
 // 줄 선 말이면 글만 바뀐다(차례 그대로). Enter 저장 · Shift+Enter 줄바꿈 · Esc 취소
 function editButton(onclick) {
-  return h('button.msg-edit', { type: 'button', text: '✏️', title: '이 말 고치기 — 고친 글로 다시 답해요', 'aria-label': '이 말 고치기', onclick });
+  return h('button.msg-edit', { type: 'button', title: '이 말 고치기 — 고친 글로 다시 답해요', 'aria-label': '이 말 고치기', onclick }, navIcon('edit'));
 }
 function startEdit(e) {
   if (!cy.chatEdit && e.kind === 'sent') return;
@@ -3394,6 +3397,8 @@ $('close').addEventListener('click', () => cy.close());
 // 항상 위 고정(#171): 켜짐은 앱이 state.json 에 기억(설정과 같은 cy.settings 의 settings-app-get/set)
 const pinBtn = $('panel-pin');
 pinBtn.append(navIcon('pin'));
+// 아이콘만 있는 단추는 글자 대신 선 그림(CSS 이름표는 data-tip)
+for (const [id, icon] of [['th-toggle', 'menu'], ['th-sync', 'refresh'], ['chat-attach', 'clip'], ['chat-canned-btn', 'plus']]) $(id).replaceChildren(navIcon(icon));
 function showPin(on) {
   pinBtn.classList.toggle('on', on);
   pinBtn.setAttribute('aria-pressed', String(on));
