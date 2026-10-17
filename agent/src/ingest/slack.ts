@@ -157,6 +157,7 @@ export class SlackIngester {
     };
     store.db.exec(META);
     try { store.db.exec("ALTER TABLE slack_threads ADD COLUMN polled TEXT"); } catch { /* 이미 있음 */ }
+    try { store.db.exec("ALTER TABLE slack_threads ADD COLUMN read_ts TEXT"); } catch { /* 이미 있음 */ }
   }
 
   // 다른 프로세스가 남긴 레이트리밋 쿨다운(실제 시각 ms). 꺼져 있으면 0
@@ -184,6 +185,13 @@ export class SlackIngester {
   }
   thread(channel: string, threadTs: string): string | undefined {
     return (this.store.db.prepare("SELECT last_ts FROM slack_threads WHERE channel = ? AND thread_ts = ?").get(channel, threadTs) as any)?.last_ts;
+  }
+  // replies 를 앞에서부터 이어 읽은 마지막 ts. last_ts 는 검색에서 본 답글로도 앞서므로 읽은 지점으로 쓸 수 없다
+  threadRead(channel: string, threadTs: string): string | undefined {
+    return (this.store.db.prepare("SELECT read_ts FROM slack_threads WHERE channel = ? AND thread_ts = ?").get(channel, threadTs) as any)?.read_ts ?? undefined;
+  }
+  setThreadRead(channel: string, threadTs: string, ts: string) {
+    this.store.db.prepare("UPDATE slack_threads SET read_ts = ? WHERE channel = ? AND thread_ts = ?").run(ts, channel, threadTs);
   }
   trackThread(channel: string, threadTs: string, lastTs?: string, polled?: string) {
     const prev = this.thread(channel, threadTs);
@@ -393,7 +401,7 @@ export class SlackRun {
     if (!this.me) { this.counts.errors++; return; }
     this.searched = true;
     this.searchSweep(DM_KEY, "is:dm", true, 8);
-    this.searchSweep(MENTION_KEY, `<@${this.me}>`, false, 4);
+    this.searchSweep(MENTION_KEY, `<@${this.me}>`, true, 4);
     this.searchSweep(MINE_KEY, `from:<@${this.me}>`, true, 4);
   }
 
@@ -475,8 +483,10 @@ export class SlackRun {
     for (const c of convs) this.history(c.id);
   }
 
+  // 읽은 지점(read_ts, 미포함)부터 받는다. 답글은 오름차순이라 3페이지에서 끊겨도 읽은 앞부분까지만 전진해 건너뛰지 않는다
   protected replies(channel: string, threadTs: string, cursor?: string, pages = 1, last?: string) {
-    this.push("slack_get_thread_replies", { channel_id: channel, thread_ts: threadTs, limit: 200, include_user_names: true, ...(cursor ? { cursor } : {}) }, (d) => {
+    const oldest = this.ing.threadRead(channel, threadTs);
+    this.push("slack_get_thread_replies", { channel_id: channel, thread_ts: threadTs, limit: 200, include_user_names: true, ...(oldest ? { oldest } : {}), ...(cursor ? { cursor } : {}) }, (d) => {
       for (const m of d?.messages ?? []) {
         if (!m?.ts) continue;
         last = maxTs(last, m.ts);
@@ -486,7 +496,10 @@ export class SlackRun {
       else {
         this.counts.threads++;
         const polled = new Date(this.ing.deps.now()).toISOString();
-        this.effects.push(() => this.ing.trackThread(channel, threadTs, last ?? threadTs, polled));
+        this.effects.push(() => {
+          this.ing.trackThread(channel, threadTs, last ?? threadTs, polled);
+          if (last && last !== threadTs) this.ing.setThreadRead(channel, threadTs, last);
+        });
       }
     }, pages > 1);
   }
