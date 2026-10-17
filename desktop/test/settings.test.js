@@ -120,10 +120,9 @@ test('설정 창 IPC: 이 창에서 온 것만, 저장 본문은 걸러서 PUT, 
   assert.deepEqual(await handlers['settings-caps'](other), { ok: false, status: 400, error: 'bad args', data: { error: '앱이 이 요청을 받지 않았어요(보낸 값이 맞지 않아요)' } });
 });
 
-test('캐릭터 한 번 클릭 → 패널, 더블클릭 → 말 걸기(뇌가 없으면 춤 + 연결 안내), 보내면 hover 스레드(chat-send 가 kind hover)', () => {
+test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더블클릭 → 입력창 닫고 패널, 보내면 hover 스레드(chat-send 가 kind hover)', () => {
   const r = readFileSync(new URL('../renderer/renderer.js', import.meta.url), 'utf8');
-  assert.match(r, /clickTimer = setTimeout\(\(\) => \{\s*clickTimer = null;\s*hideAsk\(\);\s*cy\.togglePanel\(\);/);
-  assert.match(r, /function onCharacterClick\(\) \{\s*if \(clickTimer\) \{\s*clearTimeout\(clickTimer\);\s*clickTimer = null;\s*talk\(\);/);
+  assert.match(r, /function onCharacterClick\(\) \{\s*if \(clickTimer\) \{\s*clearTimeout\(clickTimer\);\s*clickTimer = null;\s*hideAsk\(\);[^}]*cy\.togglePanel\(\);\s*return;\s*\}\s*clickTimer = setTimeout\(\(\) => \{ clickTimer = null; \}, DOUBLE_CLICK_MS\);\s*if \(askOpen\) hideAsk\(\);\s*else talk\(\);/);
   assert.match(r, /function talk\(\) \{\s*if \(brain\.ready === false\) return noBrain\(\);\s*showAsk\(\);/);
   assert.match(r, /dispatchActivity\(\{ type: 'localDance', on: true, clip \}\)/); // 칩 춤·응원은 고른 영상(clip)
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
