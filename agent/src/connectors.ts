@@ -73,7 +73,7 @@ export const PRESETS: Partial<Record<Capability, Record<string, Preset>>> = {
 export type OffConn = { cap: Capability; mode: "off"; reason?: string };
 export type McpConn = { cap: Capability; mode: "mcp"; server: string; preset?: string; tools: Record<string, string> };
 export type SlackApiConn = { cap: "slack"; mode: "api"; userToken?: string };
-export type CalendarApiConn = { cap: "calendar"; mode: "api"; icsUrls: string[]; timeZone: string; email?: string };
+export type CalendarApiConn = { cap: "calendar"; mode: "api"; icsUrls: string[]; timeZone: string; email?: string; local?: boolean }; // local: 이 Mac 의 캘린더(EventKit, eventkit.ts)
 export type Conn = OffConn | McpConn | SlackApiConn | CalendarApiConn;
 type Common = OffConn | McpConn;
 export type Connectors = { slack: Common | SlackApiConn; calendar: Common | CalendarApiConn; mail: Common; issues: Common };
@@ -113,6 +113,7 @@ export function resolveConnectors(env: NodeJS.ProcessEnv = process.env, file: Fi
       icsUrls: env.CY_AGENT_CALENDAR_ICS_URL ? strs(env.CY_AGENT_CALENDAR_ICS_URL.split(/\s+/)) : [...strs(c?.icsUrl), ...strs(c?.icsUrls)].filter((u) => secret(u)),
       timeZone: str(c?.timeZone) ?? "Asia/Seoul",
       ...(str(c?.email) ? { email: str(c?.email)!.toLowerCase() } : {}),
+      ...(c?.local === true ? { local: true } : {}),
     };
   };
   return {
@@ -172,7 +173,10 @@ export function connectorStatus(c: Connectors = CONNECTORS, has: (server: string
       case "mcp": return has(x.server) ? { ...base, server: x.server, ready: true, detail: `MCP ${x.server}${x.preset ? ` (${x.preset})` : ""}` } : { ...base, server: x.server, ready: false, detail: `MCP 서버 "${x.server}"가 Claude Code에 등록돼 있지 않아요` };
       case "api":
         if (x.cap === "slack") return x.userToken ? { ...base, ready: true, detail: "Slack Web API (사용자 토큰)" } : { ...base, ready: false, detail: "userToken(xoxp-…)이 없어요" };
-        return x.icsUrls.length ? { ...base, ready: true, detail: `ICS ${x.icsUrls.length}개` } : { ...base, ready: false, detail: "icsUrl이 없어요" };
+        {
+          const parts = [x.local ? "이 Mac 캘린더" : "", x.icsUrls.length ? `ICS ${x.icsUrls.length}개` : ""].filter(Boolean);
+          return parts.length ? { ...base, ready: true, detail: parts.join(" · ") } : { ...base, ready: false, detail: "icsUrl이 없어요" };
+        }
     }
   });
 }

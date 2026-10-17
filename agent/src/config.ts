@@ -67,6 +67,8 @@ export type Config = {
   onboarded?: boolean;
   // 이 맥의 Claude Code·Codex 작업 기록(claudeProjectsDir·codexSessionsDir)과 sessionHosts 서버 기록을 읽나. 새 설치는 끔(마법사·설정에서 켠다)
   readSessions?: boolean;
+  // 이 Mac 의 미리알림을 할 일로(eventkit.ts). 설치 마법사 「이 Mac 의 캘린더·미리알림」에서 macOS 권한을 받은 뒤 켠다
+  appleReminders?: boolean;
   // 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(~/.claude.json 에 등록한 것, 예: notion). 없으면 커넥터 서버·gh·cy 만(guard.ts)
   allowMcp?: string[];
   // 내 커밋을 알아보고(대시보드), 자동 수정 커밋에 쓰는 작성자. 기본: CY_AGENT_GIT_NAME/EMAIL > config.gitAuthor > `git config --global user.*`
@@ -334,6 +336,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     repoRoots: repoRootsOf(f.repoRoots, notes) ?? (isNewStyle(f) ? [] : [join(homedir(), "code")]),
     onboarded: onboardedOf(f),
     readSessions: readSessionsOf(f),
+    appleReminders: f.appleReminders === true,
     allowMcp: Array.isArray(f.allowMcp) ? (f.allowMcp as unknown[]).filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()) : [],
     github: githubConfig(env, f.github ?? (f.connectors as any)?.github),
     contextMode: contextModeOf(env.CY_AGENT_CONTEXT_MODE ?? f.contextMode),

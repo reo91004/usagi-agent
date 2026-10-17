@@ -88,6 +88,11 @@ const BIN = path.join(STAGE, 'bin');
 fs.mkdirSync(BIN, { recursive: true });
 fs.copyFileSync(path.join(REPO, 'ops', 'usagi-run'), path.join(BIN, 'usagi-run'));
 fs.chmodSync(path.join(BIN, 'usagi-run'), 0o755);
+// 이 Mac 의 캘린더·미리알림 도우미(native/usagi-eventkit.swift, #53). Command Line Tools 의 swiftc 로 이 아키텍처만.
+// 호환 라이브러리를 빼야 인텔(x86_64) 링크가 된다 — Swift 동시성은 macOS 12 부터 OS 에 들어 있다
+step('캘린더·미리알림 도우미 빌드');
+run('xcrun', ['swiftc', '-O', '-swift-version', '5', '-runtime-compatibility-version', 'none', '-target', `${ARCH === 'x64' ? 'x86_64' : 'arm64'}-apple-macos12`,
+  '-o', path.join(BIN, 'usagi-eventkit'), path.join(ROOT, 'native', 'usagi-eventkit.swift')]);
 
 // 3) 아이콘: 개인 그림(~/.cy-agent/assets)이 아니라 레포 그림으로
 step('아이콘 만들기');
@@ -124,11 +129,16 @@ const paths = await packager({
     CFBundleName: APP_NAME,
     LSUIElement: true, // Dock 아이콘 없이 켠다(설정에서 켜면 app.dock.show)
     LSMinimumSystemVersion: '12.0',
+    // 이 Mac 의 캘린더·미리알림(EventKit, 데몬이 bin/usagi-eventkit 으로 읽기만). 14 이상은 FullAccess 문구를 본다
+    NSCalendarsUsageDescription: '우사기가 오늘 일정과 회의를 알려 드리려고 캘린더를 읽습니다. 일정을 바꾸지는 않습니다.',
+    NSCalendarsFullAccessUsageDescription: '우사기가 오늘 일정과 회의를 알려 드리려고 캘린더를 읽습니다. 일정을 바꾸지는 않습니다.',
+    NSRemindersUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 미리알림을 바꾸지는 않습니다.',
+    NSRemindersFullAccessUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 미리알림을 바꾸지는 않습니다.',
   },
   quiet: true,
 });
 const APP = path.join(paths[0], `${APP_NAME}.app`);
-for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run']) {
+for (const need of ['Contents/Resources/agent/src/main.ts', 'Contents/Resources/assets/character/eyes_open.png', 'Contents/Resources/bin/usagi-run', 'Contents/Resources/bin/usagi-eventkit']) {
   if (!fs.existsSync(path.join(APP, need))) throw new Error(`앱 번들에 ${need} 가 없어요`);
 }
 
