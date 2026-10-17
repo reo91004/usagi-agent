@@ -25,7 +25,7 @@ esc() { printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\t\r\n' '   
 start=$(date +%s)
 ID="$(date +%Y%m%d-%H%M%S)-$$"
 # 공용 계정이면 개인 폴더에 둔다: 이 파일 위 폴더에 .usagi-agent 가 있으면 거기에 남긴다(~/reo/bin/usagi-run → ~/reo/.usagi-agent/jobs).
-# 맥의 config.json "jobDirs" 에 그 서버의 폴더를 적어 둔다(README 「공용 계정 서버」)
+# 맥의 config.json "jobDirs" 에 그 서버의 폴더를 적어 둔다(README 「혼자 쓰는 서버와 공용 계정 서버」)
 TOP=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd -P)
 if [ -n "$TOP" ] && [ -d "$TOP/.usagi-agent" ]; then DIR=$TOP/.usagi-agent/jobs; else DIR=$HOME/.usagi-agent/jobs; fi
 CWD=$(pwd -P 2>/dev/null || pwd)
