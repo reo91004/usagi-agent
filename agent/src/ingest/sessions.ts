@@ -183,9 +183,10 @@ export function ingestSessions(
       try { mtime = statSync(path).mtimeMs; } catch { continue; }
       if (mtime < cutoff) continue;
       const sshId = !opts.host && tool === "claude" ? /^ssh-(.+)$/.exec(basename(dirname(path)))?.[1] : undefined;
-      const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
-      const hostMark = sshId && host ? `ssh-host:${path}` : "";
+      const hostMark = sshId ? `ssh-host:${path}` : "";
+      // 바뀌지 않았고 서버도 이미 찾아본 파일은 앱 세션 정보를 읽지 않고 건너뛴다(못 찾은 것도 0 으로 남겨 매번 다시 읽지 않는다)
       if (store.markOf(path) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
+      const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
       const id = basename(path, ".jsonl");
       let s: SessionDigest | undefined;
       try { s = tool === "claude" ? parseClaudeSession(readLines(path), id) : parseCodexSession(readLines(path), id); } catch { continue; }
@@ -195,7 +196,7 @@ export function ingestSessions(
         n++;
       }
       store.setMark(path, mtime);
-      if (hostMark) store.setMark(hostMark, 1);
+      if (hostMark) store.setMark(hostMark, host ? 1 : 0);
     }
   }
   return n;
