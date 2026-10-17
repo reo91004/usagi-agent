@@ -72,7 +72,7 @@ test('navGroups: 위쪽은 자주 쓰는 화면, 설정은 맨 아래, 설치는
   const g = navGroups(SECTIONS);
   assert.deepEqual(g.bottom, ['settings']);
   assert.ok(!g.main.includes('setup') && !g.main.includes('models') && !g.main.includes('settings'));
-  assert.deepEqual(g.main, ['overview', 'todos', 'chat', 'research']);
+  assert.deepEqual(g.main, ['overview', 'todos', 'chat', 'research', 'projects']);
   assert.ok(SECTIONS.includes('setup'), '설치 화면은 머리 단추로 열린다');
 });
 
@@ -92,7 +92,7 @@ test('shapeMeetings: 오늘 시작하는 일정만, 시작 순, 끝난 건 past,
 });
 
 test('normalizeSection', () => {
-  assert.equal(normalizeSection('projects'), 'research', '작업 폴더 탭은 연구 탭으로');
+  assert.equal(normalizeSection('projects'), 'projects');
   assert.equal(normalizeSection('today'), 'todos'); // 예전 저장 상태
   assert.equal(normalizeSection('scrum'), 'todos');
   assert.equal(normalizeSection('settings'), 'settings');

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Store } from "./store.ts";
 import { loadConfig } from "./config.ts";
 import { buildDashboard } from "./dashboard.ts";
-import { expName, putResearchProject } from "./research-projects.ts";
+import { aiTool, expName, putResearchProject } from "./research-projects.ts";
 import { researchSummary } from "./research.ts";
 
 const now = new Date("2026-10-08T05:00:00Z");
@@ -26,6 +26,17 @@ test("실험 이름: -n, 스크립트+설정, tmux 세션 이름, 폴더+명령 
   assert.equal(expName({ tmuxName: "ablation", cmd: "python", cwd: "s:/w/dp" }), "ablation");
   assert.equal(expName({ tmuxName: "0", cmd: "make all", cwd: "s:/w/dp" }), "dp make all");
   assert.equal(expName({ name: "make all", cmd: "make all", cwd: "/w/dp" }), "dp make all");
+});
+
+test("tmux 첫 단어가 AI CLI 면 AI 작업이고, 그것만 있는 폴더는 후보가 되지 않는다", async () => {
+  assert.equal(aiTool("claude"), "claude");
+  assert.equal(aiTool("/usr/bin/codex --yolo"), "codex");
+  assert.equal(aiTool("python train.py"), undefined);
+  assert.equal(aiTool(null), undefined);
+  const store = new Store(":memory:");
+  const only = { srv: { at: ago(0), sessions: [{ name: "c", created: 1, activity: 1_791_000_000, running: "claude", path: "/work/dp" }] } };
+  assert.equal((await build(store, only)).researchProjects.length, 0);
+  assert.equal(researchSummary({ sshHosts: ["srv"], jobHosts: [], tineGraph: undefined } as any, store, now, only)!.tmux.srv.sessions[0].ai, "claude");
 });
 
 test("서버 job·tmux 가 서버 세션 폴더와 같은 키로 묶이고 후보·종류·합치기가 동작한다", async () => {

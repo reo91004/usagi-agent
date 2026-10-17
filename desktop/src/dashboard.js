@@ -3,10 +3,10 @@ import { isSafeLink } from './bubbles.js';
 import { ellipsize } from './tool-view.js';
 import { shapeRules } from './todo-rules.js';
 import { PRIORITIES, TODAY_GROUP } from './todos.js';
-import { shapeResearchProjects } from './research-projects.js';
+import { shapeResearchProjects, AI_LABEL } from './research-projects.js';
 
-export const SECTIONS = ['overview', 'todos', 'chat', 'research', 'setup', 'settings'];
-export const SECTION_LABELS = { setup: '연결 도우미', overview: '개요', todos: '할 일', chat: '채팅', research: '연구', settings: '설정' };
+export const SECTIONS = ['overview', 'todos', 'chat', 'research', 'projects', 'setup', 'settings'];
+export const SECTION_LABELS = { setup: '연결 도우미', overview: '개요', todos: '할 일', chat: '채팅', research: '연구', projects: '작업 폴더', settings: '설정' };
 
 // 사이드바 두 묶음: 자주 쓰는 화면(위) · 설정(맨 아래). 연결 도우미는 위쪽 단추로 연다
 export const NAV_BOTTOM = ['settings'];
@@ -19,7 +19,6 @@ export function navGroups(sections) {
 export function normalizeSection(s) {
   if (s === 'scrum' || s === 'today') return 'todos';
   if (s === 'models') return 'settings';
-  if (s === 'projects') return 'research'; // 작업 폴더 탭은 연구 탭의 「묶지 않은 폴더」로 접었다
   return SECTIONS.includes(s) ? s : null;
 }
 
@@ -205,6 +204,7 @@ export function durationText(sec) {
   const s = Math.max(0, Math.round(num(sec)));
   if (s < 60) return `${s}초`;
   const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (h >= 48) return `${Math.floor(h / 24)}일`;
   return h ? `${h}시간${m % 60 ? ` ${m % 60}분` : ''}` : `${m}분`;
 }
 export function shapeResearch(r, now = Date.now()) {
@@ -229,7 +229,7 @@ export function shapeResearch(r, now = Date.now()) {
   const tmux = arr(r.hosts).filter((h) => str(h) && tm[h]).map((host) => ({
     host, rel: relativeTime(tm[host].at, now),
     sessions: arr(tm[host].sessions).filter((x) => x && str(x.name)).map((x) => ({
-      name: x.name, title: str(x.label) || x.name, project: str(x.project), running: str(x.running), label: str(x.running) ? `도는 중 (${x.running})` : '쉬는 중', chip: str(x.running) ? 'warn' : '',
+      name: x.name, title: str(x.label) || x.name, project: str(x.project), running: str(x.running), ai: str(x.ai), label: AI_LABEL[x.ai] ?? (str(x.running) ? `도는 중 (${x.running})` : '쉬는 중'), chip: AI_LABEL[x.ai] ? 'info' : str(x.running) ? 'warn' : '',
       path: str(x.path), time: `${num(x.created) ? `${relativeTime(new Date(num(x.created) * 1000).toISOString(), now)} 만듦` : ''}${num(x.activity) ? ` · 마지막 활동 ${relativeTime(new Date(num(x.activity) * 1000).toISOString(), now)}` : ''}`.replace(/^ · /, ''),
     })),
   }));

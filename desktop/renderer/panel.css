@@ -598,10 +598,11 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row .check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--ok); }
 .todo .chip.mine { flex: none; }
 .todo .chip { flex: none; }
-#sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select {
+#sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select,
+:is(#sec-research, #sec-projects) :is(input[type="text"], input[type="url"], input[type="date"], select) {
   padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); outline: none;
 }
-#sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus { border-color: var(--accent); }
+#sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus, :is(#sec-research, #sec-projects) :is(input, select):focus { border-color: var(--accent); }
 #sec-todos select.prio { padding: 3px 4px; font-size: 12px; flex: none; }
 .todo-add { display: flex; gap: 8px; align-items: center; margin: 4px 0 6px; }
 .todo-add input { flex: 1; min-width: 0; }
@@ -1592,24 +1593,37 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 
 /* 연구 탭: 연구·프로젝트 목록과 상세 */
 .rp-list { padding: 2px 10px; }
-.rp-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 4px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; font: inherit; cursor: pointer; border-radius: 8px; min-width: 0; }
+.rp-row { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 10px 6px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; font: inherit; cursor: pointer; border-radius: 8px; min-width: 0; }
 .rp-row:first-child { border-top: 0; }
 .rp-row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
-.rp-row .name, .rp-cand .name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rp-l1 .chip { flex: none; }
+.rp-l2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-row .name, .rp-cand .name { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-cand { display: flex; align-items: center; gap: 6px; padding: 8px 4px; border-top: 1px solid var(--line); }
 .rp-cand:first-child { border-top: 0; }
+.rp-cand .rp-path { flex-basis: 100%; }
 .rp-cand-main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-.rp-path { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-cand .rp-path, .rp-folder .rp-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-head { gap: 8px; margin-top: 4px; }
-.rp-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; }
+.rp-title { font-size: 18px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-head input { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; }
 .rp-kinds { display: flex; gap: 4px; flex: none; }
+.rp-fchips { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0 2px; }
+.rp-fchip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-sec { margin-top: 14px; }
-.rp-edit { flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-.rp-hist { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.rp-sec > .card { display: flex; flex-direction: column; gap: 8px; }
+.rp-edit { flex-wrap: wrap; gap: 8px; }
+.rp-now { flex-wrap: wrap; gap: 8px; align-items: center; }
+.rp-venue { font-size: 16px; font-weight: 700; }
+.rp-timeline { display: flex; flex-direction: column; gap: 6px; padding-left: 4px; border-left: 2px solid var(--line); margin-left: 4px; }
+.rp-tl { display: flex; align-items: center; gap: 8px; margin-left: -9px; font-size: 12.5px; }
+.rp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.rp-link { gap: 8px; flex-wrap: wrap; }
 .rp-folder { display: flex; align-items: center; gap: 6px; padding: 4px 0; min-width: 0; }
-.rp-folder button, .rp-kinds button { white-space: nowrap; flex: none; }
-.rp-sec input[type=url] { width: min(100%, 420px); }
-.rp-sess { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; min-width: 0; }
+.rp-folder button, .rp-kinds button, .rp-head button { white-space: nowrap; flex: none; }
+.rp-link input { flex: 1; min-width: 200px; }
+.rp-sess { display: flex; align-items: center; gap: 8px; padding: 3px 0; min-width: 0; }
 .rp-sess .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-chip { margin-left: 6px; }
-.unbound-folders { margin-top: 18px; }
+.rp-more { margin: 4px 0 2px; }
