@@ -11,7 +11,7 @@ export const SECTIONS = [
   ['local', 'AI 없이 하는 말'],
   ['cheer', '응원해 줘 칩'],
   ['canned', '패널 정해진 답'],
-  ['setup', '설치 화면'],
+  ['setup', '초기 설정 화면'],
   ['overlay', '캐릭터가 스스로 하는 짧은 말'],
   ['tour', '사용법 둘러보기'],
 ];

@@ -260,7 +260,7 @@ function nameView({ name, onName, onSkipSetup }) {
     identity: '부를 이름을 적어 주세요. 브리핑이나 대화에서 이 이름으로 불러요.',
     extra: h('div.setup-fields', null, h('label', null, h('span', { text: '이름' }), input)),
     nav: h('div.setup-bar', null,
-      onSkipSetup ? h('button.ghost', { type: 'button', text: '설치는 나중에 할게요', title: '아무것도 연결하거나 읽지 않고 시작해요. 이 탭에서 언제든 이어서 할 수 있어요', onclick: onSkipSetup }) : null,
+      onSkipSetup ? h('button.ghost', { type: 'button', text: '초기 설정은 나중에 할게요', title: '아무것도 연결하거나 읽지 않고 시작해요. 이 탭에서 언제든 이어서 할 수 있어요', onclick: onSkipSetup }) : null,
       h('span.spacer'),
       h('button.ghost', { type: 'button', text: '건너뛰기', onclick: () => onName('') }),
       h('button.primary', { type: 'button', text: '다음', onclick: () => onName(value()) })),
@@ -404,7 +404,7 @@ function doneView({ brain, repos, name, readSessions, connectors, apple, researc
   return screen({
     say: sayFor(whoId()).done,
     title: name ? `${name} 님, 준비됐어요` : '준비됐어요',
-    identity: '안 한 건 언제든 설정(⚙)이나 이 「설치」 탭에서 다시 할 수 있어요.',
+    identity: '안 한 건 언제든 위쪽 [초기 설정]이나 설정 › 연결에서 다시 할 수 있어요.',
     extra: h('ul.setup-summary', null, rows.map((r) => h(`li${r.ok ? '.ok' : ''}`, null,
       h('span.sum-mark', { text: r.ok ? '✓' : '·' }), h('span.sum-label', { text: r.label }), h('span.muted', { text: r.text })))),
     nav: h('div.setup-bar', null,
