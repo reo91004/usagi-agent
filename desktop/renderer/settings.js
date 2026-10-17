@@ -882,7 +882,7 @@ function calendarList() {
   }
   const add = el('button', 'small ghost', '캘린더 하나 더 추가');
   add.type = 'button';
-  add.title = '설치 화면에서 같은 안내로 주소를 하나 더 붙여요';
+  add.title = '초기 설정 화면에서 같은 안내로 주소를 하나 더 붙여요';
   add.addEventListener('click', () => nav.setup());
   box.append(add);
   return box;
@@ -918,7 +918,7 @@ function rowEl(r) {
   if (action === 'connect') {
     const b = el('button', 'small primary', '연결하기');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '설치 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '초기 설정 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   } else if (action === 'disconnect') {
@@ -937,9 +937,9 @@ function rowEl(r) {
     if (cap === 'calendar') main.append(calendarList());
   }
   if (needsSetupHint(r)) {
-    const b = el('button', 'small primary', '설치 안내');
+    const b = el('button', 'small primary', '연결 안내');
     b.type = 'button';
-    b.title = hasSetupStep(r) ? '설치 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
+    b.title = hasSetupStep(r) ? '초기 설정 화면에서 연결 방법을 차근차근 보여 줘요' : '연결 안내 문서를 열어요';
     b.addEventListener('click', () => howToConnect(r));
     acts.append(b);
   }
@@ -1007,7 +1007,7 @@ const guidelines = mountGuidelines(document, cy, flash); // 행동 지침(src/gu
 guidelines.load();
 $('check-all').addEventListener('click', checkAll);
 $('open-repos')?.addEventListener('click', () => nav.setup());
-$('open-setup')?.addEventListener('click', () => nav.setup());
+$('set-open-setup')?.addEventListener('click', () => nav.setup()); // 머리의 #open-setup 과 다른 단추
 $('start-tour')?.addEventListener('click', () => cy.startTour?.());
 
 // 설정 화면으로 돌아왔을 때(탭을 다시 열거나 창에 포커스가 돌아올 때) 다른 곳에서 바뀐 것만 싸게 다시 읽는다

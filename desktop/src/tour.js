@@ -17,7 +17,7 @@ export const SISA_TOUR = {
   today: '**오늘 할 일** 표예요. 아침마다 적어 달라고 물어볼게요.{cal}',
   today_cal: ' 일정 10분 전엔 춤추며 알려 드려요(설정에서 바꿀 수 있어요).',
   today_nocal: ' 캘린더를 연결하면 일정 전에도 알려 드려요.',
-  settings: '설정(⚙)에서 연결·문구·모델을 바꿀 수 있어요.{slack_off} 이 안내는 메뉴 「사용법 다시 보기」로 다시 볼 수 있어요.',
+  settings: '사이드바 맨 아래 「설정」에서 연결·문구·AI를 바꿀 수 있어요.{slack_off} 이 안내는 메뉴 「사용법 다시 보기」로 다시 볼 수 있어요.',
   settings_noslack: ' 슬랙을 연결하면 DM·멘션도 바로 할 일로 만들어요.',
 };
 const SISA_TOUR_SAY = tourOf(SISA_TOUR);

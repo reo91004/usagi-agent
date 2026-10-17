@@ -27,7 +27,7 @@
         <h1 id="title">개요</h1>
         <span id="updated"></span>
         <span id="focus-slot" class="nodrag"></span>
-        <button id="open-setup" type="button" class="ghost nodrag" title="이름·AI·캘린더·Slack 연결 (처음 한 번, 이후엔 다시 연결할 때)">설치<span id="setup-badge" class="badge"></span></button>
+        <button id="open-setup" type="button" class="ghost nodrag" title="이름·AI·캘린더·Slack 연결 (처음 한 번, 이후엔 다시 연결할 때)">초기 설정<span id="setup-badge" class="badge"></span></button>
         <button id="open-session" type="button" class="ghost nodrag" title="코드를 고치는 작업(새 작업·이어 하기) 보기">작업 세션</button>
         <button id="refresh" type="button" class="ghost nodrag" title="새로고침 — Slack·메일을 지금 다시 읽어 할 일에 넣어요">새로고침</button>
         <button id="close" type="button" class="ghost nodrag close" title="닫기 (Esc)" aria-label="닫기">✕</button>
@@ -154,7 +154,7 @@
           <span id="conn-at" class="faint"></span>
           <button id="check-all" type="button" class="ghost small">모두 다시 확인</button>
         </div>
-        <p class="hint">안 되는 게 있으면 [설치 안내], 꺼져 있으면 [연결하기]를 눌러 설치 화면(메일·이슈는 안내 문서)에서 차근차근 연결해요. 비밀번호·토큰은 여기서 받지 않아요. [연결 해제]는 <span class="who">시사</span> 설정에서 그 연결과 저장된 토큰·주소를 지워요. Claude Code에 등록한 MCP 서버(claude mcp add)는 그대로 남아요.</p>
+        <p class="hint">안 되는 게 있으면 [연결 안내], 꺼져 있으면 [연결하기]를 눌러 초기 설정 화면(메일·이슈는 안내 문서)에서 차근차근 연결해요. 비밀번호·토큰은 여기서 받지 않아요. [연결 해제]는 <span class="who">시사</span> 설정에서 그 연결과 저장된 토큰·주소를 지워요. Claude Code에 등록한 MCP 서버(claude mcp add)는 그대로 남아요.</p>
         <div id="conn-core" class="conn-list"></div>
         <h3>연결한 서비스</h3>
         <div id="conn-used" class="conn-list"></div>
@@ -164,7 +164,7 @@
         </details>
         <h3>이 컴퓨터</h3>
         <div id="conn-local" class="conn-list"></div>
-        <p class="hint"><button id="open-setup" type="button" class="small ghost" title="이름·AI·캘린더·Slack·레포 폴더를 다시 연결해요">설치 다시 하기</button></p>
+        <p class="hint"><button id="set-open-setup" type="button" class="small ghost" title="이름·AI·캘린더·Slack·레포 폴더를 다시 연결해요">초기 설정 다시 하기</button></p>
       </section>
       <div id="set-connectors"></div>
       <section class="card" aria-labelledby="h-brief">
@@ -184,7 +184,7 @@
       <section id="am-card" class="card" aria-labelledby="h-am">
         <h2 id="h-am">자동 머지</h2>
         <p class="hint">여기 있는 레포는 ✓ 없이 머지까지 해요 — 채팅에서 시킨 머지, <span class="who">시사</span>가 고친 코드로 올린 PR 이 검사(실패·대기 중 검사·충돌·초안)를 통과하면 바로 머지해요. 채팅에서 「이 레포는 알아서 머지까지 해」·「X는 이제 머지 묻고 해」로도 바꿀 수 있어요.</p>
-        <p id="am-hint" class="hint" hidden>코드 고치기·머지는 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 설치 탭에서 연결하면 여기서 고를 수 있어요.</p>
+        <p id="am-hint" class="hint" hidden>코드 고치기·머지는 Claude Code·Codex·Antigravity 중 하나가 있어야 해요. 초기 설정에서 연결하면 여기서 고를 수 있어요.</p>
         <div id="am-list" class="gl-list"></div>
         <div class="gl-add">
           <input id="am-add-text" type="text" placeholder="owner/name (예: my-name/my-app)" aria-label="자동 머지할 레포">

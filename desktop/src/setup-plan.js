@@ -61,7 +61,7 @@ export function setupSummary({ brain = {}, repos = [], name = '', readSessions =
     { id: 'repos', label: '레포 폴더', ok: repos.length > 0, text: repos.length ? repos.join(', ') : '나중에' },
     { id: 'sessions', label: '작업 기록', ok: readSessions === true, text: readSessions === true ? 'Claude Code·Codex 작업 기록을 읽어요' : '읽지 않아요 (설정에서 켤 수 있어요)' },
     ...(research?.hosts?.length ? [{ id: 'ssh', label: '실험 서버', ok: true, text: research.hosts.join(', ') }] : []),
-    ...(research?.note ? [{ id: 'note', label: '연구 노트', ok: true, text: 'Tine 일지에 「우사기 기록」 블록으로 그날 한 일을 써요' }] : []),
+    ...(research?.note ? [{ id: 'note', label: '연구 노트', ok: true, text: '그날 한 일을 Tine 일지에 「오늘 한 일」로 써요' }] : []),
   ];
 }
 
