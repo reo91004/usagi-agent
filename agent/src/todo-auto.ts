@@ -11,6 +11,7 @@ import { permalinkOf } from "./ingest/slack.ts";
 import { trackQuery, withRun } from "./runs.ts";
 import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
 import type { AutoEvidence, Store, Todo } from "./store.ts";
+import { clip, oneLine } from "./text.ts";
 
 export type Completion = { id: string; reason: string; evidence: AutoEvidence; confidence: number; rule: "reply" | "model"; target?: string };
 export type AutoApplier = { autoCompleteTodos(items: Completion[]): Promise<Todo[]> };
@@ -41,8 +42,6 @@ function cmpTs(a: string, b: string): number {
   return Number(as) - Number(bs) || Number(af.padEnd(6, "0")) - Number(bf.padEnd(6, "0"));
 }
 const tsIso = (ts: string) => new Date(Number(ts.split(".")[0]) * 1000).toISOString();
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const isReply = (p: Record<string, any>) => !!p.thread_ts && p.thread_ts !== p.ts;
 
 // 할 일이 가리키는 Slack 메시지: id `slack:<ch>:<ts>` 우선, 아니면 링크(…/archives/<ch>/p<digits>[?thread_ts=…])
@@ -176,7 +175,7 @@ export type DetectResult = {
   costUsd?: number;
 };
 
-const fmtTime = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(5, 16);
+export const fmtTime = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(5, 16);
 
 // 관련 메시지: 내가 쓴 것, DM, 나를 멘션, 내가 참여한(쓴 적 있는) 스레드
 function relevant(store: Store, msgs: Msg[], floorIso: string): Msg[] {

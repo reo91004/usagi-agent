@@ -7,14 +7,11 @@ import type { Store, Todo, TodoSource } from "./store.ts";
 import { ask } from "./brain.ts";
 import { permalinkOf } from "./ingest/slack.ts";
 import { isAbsPath } from "./plat.ts";
+import { clipText as clip } from "./text.ts";
 
 export type GitShow = (repo: string, sha: string) => { sha: string; author: string; at: string; subject: string } | undefined;
 export type Describe = (cfg: Config, todo: Todo, origin: TodoSource | undefined) => Promise<string>;
 
-const clip = (s: unknown, n: number) => {
-  const t = String(s ?? "").replace(/\s+/g, " ").trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
 const safeLink = (v: unknown) => (typeof v === "string" && /^(https?|slack):\/\/\S+$/i.test(v) ? v : undefined);
 
 const realGitShow: GitShow = (repo, sha) => {

@@ -17,6 +17,7 @@ import { featureBrain, skipQuietly, usesCli, type CodexDeps } from "../feature-b
 import type { Store } from "../store.ts";
 import { batchBy, run, type CallStat } from "./extract.ts";
 import { canonical, ensureMergeTables, meId, normKey, readEntity, type EntityProps, type StatusEntry } from "./merge.ts";
+import { clip, oneLine } from "../text.ts";
 
 export const REFINE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS kg_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -43,8 +44,6 @@ const MAX_CLUSTER = 14;
 
 export type RefineDeps = { query?: typeof sdkQuery; codex?: CodexDeps; cwd?: string; now?: () => number; parallel?: number; log?: (s: string) => void; shouldStop?: () => boolean };
 
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const day = (iso?: string) => (iso ? iso.slice(0, 10) : "?");
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const hash = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 12);

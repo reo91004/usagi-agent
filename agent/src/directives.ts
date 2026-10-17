@@ -7,6 +7,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { NOT_MUTED, mutedJson, permalinkOf } from "./ingest/slack.ts";
 import type { Store } from "./store.ts";
+import { oneLine } from "./text.ts";
 
 export type DirectiveState = "open" | "todo" | "dismissed";
 export type Directive = {
@@ -20,7 +21,6 @@ export function ensureDirectiveTables(db: DatabaseSync) {
   db.exec("CREATE TABLE IF NOT EXISTS directive_state (id TEXT PRIMARY KEY, state TEXT NOT NULL, todo_id TEXT, at TEXT NOT NULL)");
 }
 
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 // Slack 원문 표기 → 읽는 글: <@U…> → @이름, <#C…|이름> → #이름, <url|글> → 글, &lt; 등
 export function slackPlain(t: string, nameOf: (id: string) => string): string {
   return t

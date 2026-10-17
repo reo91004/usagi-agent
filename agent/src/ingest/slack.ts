@@ -15,6 +15,7 @@ import { CONNECTORS } from "../connectors.ts";
 import { SlackApiTransport, slackWebClient, type SlackDirect } from "./slack-api.ts";
 import { runs } from "../runs.ts";
 import type { Store } from "../store.ts";
+import { clip, oneLine } from "../text.ts";
 
 export type SlackIngestDeps = {
   direct?: SlackDirect | null; // api 전송(모델 없이 직접). 없으면 커넥터 설정으로 정한다. null 이면 강제로 끔
@@ -109,8 +110,6 @@ const CHANNELS_TTL_MS = 6 * 3600e3;
 const SEARCH_OVERLAP_S = 600; // 검색 색인 지연 대비 — 커서보다 10분 앞까지 겹쳐 본다(중복은 노드 존재로 거른다)
 const QUIET_BASE_MS = 5 * 60e3, QUIET_MAX_MS = 2 * 3600e3;
 
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const tsIso = (ts: string) => new Date(Math.round(Number(ts) * 1000)).toISOString();
 const tsGt = (a: string, b: string) => Number(a) > Number(b);
 const maxTs = (a: string | undefined, b: string) => (a === undefined || tsGt(b, a) ? b : a);

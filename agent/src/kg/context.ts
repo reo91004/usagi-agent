@@ -1,10 +1,10 @@
 // 프롬프트용 업무 지식그래프 요약(한국어 마크다운, ~2000자 이내)과 검색. 맥락 도구(ctx-tools.ts kg_*)도 이걸 쓴다.
 import type { Store } from "../store.ts";
 import { canonical, ensureMergeTables, meId, normKey, type EntityProps } from "./merge.ts";
+import { clip } from "../text.ts";
 
 type Row = { id: string; kind: string; name: string; props: EntityProps; first_seen: string; last_seen: string; evidence: number };
 
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const d = (iso?: string) => (iso ? iso.slice(0, 10) : "?");
 const STATUS_KO: Record<string, string> = { open: "열림", in_progress: "진행 중", blocked: "막힘", resolved: "해결", stale: "묵음", duplicate: "중복", unknown: "?" };
 const PROJECT_STATUS_KO: Record<string, string> = { active: "진행", paused: "멈춤", done: "끝남" };
