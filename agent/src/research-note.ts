@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { dayStart, focusDuration, localDay, nextDayStart, type Focus } from "./focus.ts";
-import { isNoisePath } from "./dashboard.ts";
+import { cutHidden, gitRootOf, isNoisePath, splitHost } from "./dashboard.ts";
 import { gitActivity, type RepoActivity } from "./git.ts";
 import { modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 import { cliStructured, featureBrain, usesCli, type CodexDeps } from "./feature-brain.ts";
@@ -57,16 +57,17 @@ export type DaySummary = { lines: string[]; next: string[] };
 export type DayNote = {
   day: string;
   focus: { seconds: number; longest: number };
-  sessions: { project: string; items: { title: string; tool: string; turns: number; files: number }[] }[];
+  sessions: { project: string; items: { title: string; tool: string; turns: number; files: number }[] }[]; // project = 레포 단위 폴더(워크트리·하위 폴더는 레포로)
   jobs: NoteJob[];
   meetings: { time: string; title: string }[];
   done: string[];
   skipped: string[]; // 안 해도 돼서 닫은 일 — 한 일(done)과 따로
   added: string[];
-  commits: { repo: string; sha: string; subject: string }[];
+  commits: { repo: string; path: string; sha: string; subject: string }[];
   summary?: DaySummary;
 };
 
+const NO_DIR = "(폴더 모름)";
 const inDay = (iso: string, day: string) => localDay(Date.parse(iso)) === day;
 const hm = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 const strs = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, n) : []);
@@ -80,14 +81,17 @@ export async function collectDay(
     .all(kind, from, to) as any[]).map((r): Node => ({ ...r, props: JSON.parse(r.props) }));
 
   const hidden = store.hiddenProjects();
+  // 레포 단위로: 숨은 폴더(.claude/worktrees …) 아래는 그 위로, 이 맥의 하위 폴더는 가장 가까운 git 루트로(대시보드와 같은 규칙)
+  const repoOf = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return host ? p : gitRootOf(dir); };
   const byProject = new Map<string, DayNote["sessions"][number]["items"]>();
   for (const s of sessionsAllowed(cfg) ? nodes("session") : []) {
     const cwd = String(s.props.cwd ?? "");
     if (cwd && (store.isHiddenPath(cwd, hidden) || isNoisePath(cwd))) continue; // 임시·스크래치 폴더·홈 자체는 대시보드처럼 뺀다
     if (!(Number(s.props.turns) > 0)) continue; // 0턴은 사람이 말한 적 없는 앱 안 세션(하위 에이전트 등) — 수집은 0턴을 안 남긴다
-    const items = byProject.get(cwd || "(폴더 모름)") ?? [];
+    const key = cwd ? repoOf(cwd) : NO_DIR;
+    const items = byProject.get(key) ?? [];
     items.push({ title: s.label, tool: s.props.tool === "codex" ? "Codex" : "Claude Code", turns: Number(s.props.turns) || 0, files: Array.isArray(s.props.files) ? s.props.files.length : 0 });
-    byProject.set(cwd || "(폴더 모름)", items);
+    byProject.set(key, items);
   }
 
   // 할 일 일지는 최신 먼저 — 오래된 것부터 따라가 그날 마지막 상태로. 그날 생겼다 그날 끝낸 일은 「끝냄」에만
@@ -128,7 +132,7 @@ export async function collectDay(
     done: [...done.values()],
     skipped: [...skipped.values()],
     added: [...added.values()],
-    commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, sha: c.sha, subject: c.subject }))),
+    commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, path: r.path, sha: c.sha, subject: c.subject }))),
     ...(sum ? { summary: { lines: strs(sum.props.lines, 3), next: strs(sum.props.next, 3) } } : {}),
   };
 }
@@ -150,44 +154,87 @@ const isMark = (l: string | undefined) => !!l && (l.trim().startsWith(`id:: ${ID
 const QUICK_JOB_SECONDS = 10;
 const code = (s: string) => `\`${s.replace(/`/g, "'")}\``;
 
-// 세션 한 줄: 제목 (도구, 턴 수, 고친 파일 수). 요청 원문은 싣지 않는다. 같은 제목·도구는 한 줄로 합친다
+// 줄 맨 앞에 오는 기록 글이 Tine 작업(TODO …)·제목(#)·인용(>)으로 바뀌지 않게 보이지 않는 글자를 앞에 둔다
+const MARKUP_HEAD = /^(?:(?:TODO|DOING|DONE|NOW|LATER|WAITING|WAIT|STARTED|IN-PROGRESS|CANCELED|CANCELLED)(?:\s|$)|[#>])/;
+const lead = (s: string) => (MARKUP_HEAD.test(s) ? `\u200b${s}` : s);
+
+// 세션 한 줄: 제목 · 도구 · 턴 수 · 고친 파일 수. 요청 원문은 싣지 않는다. 같은 제목·도구는 한 줄로 합친다
 function sessionLines(items: DayNote["sessions"][number]["items"]): string[] {
   const by = new Map<string, { title: string; tool: string; n: number; turns: number; files: number }>();
   for (const s of items) {
-    const title = plain(s.title, 50), k = `${s.tool}\0${title}`;
+    const title = lead(plain(String(s.title).trim().replace(/^[-*+•]\s+/, ""), 50)), k = `${s.tool}\0${title}`; // 「- 요청…」 제목은 글머리표가 겹쳐 보인다
     const g = by.get(k) ?? { title, tool: s.tool, n: 0, turns: 0, files: 0 };
     g.n++; g.turns += s.turns; g.files += s.files;
     by.set(k, g);
   }
-  return [...by.values()].map((g) => `\t\t\t- ${g.title} (${[g.tool, g.n > 1 ? `${g.n}개 세션` : "", `${g.turns}턴`, g.files ? `파일 ${g.files}개 고침` : ""].filter(Boolean).join(", ")})`);
+  return [...by.values()].map((g) => `\t\t\t- ${[g.title, g.tool, g.n > 1 ? `세션 ${g.n}개` : "", `${g.turns}턴`, g.files ? `파일 ${g.files}개` : ""].filter(Boolean).join(" · ")}`);
 }
 
-// 우사기 블록(Logseq: 블록 속성은 두 칸, 자식은 탭). 사용자 블록과 섞이지 않게 한 블록 아래에 다 넣는다
+// 레포 이름을 Tine 페이지 링크로: 그 페이지의 「연결된 참조」에 날마다 그 레포에서 한 일이 모인다
+function repoLink(key: string): string {
+  if (key === NO_DIR) return "폴더 모름";
+  const name = (splitHost(key).dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/[[\]#(){}]/g, "").trim();
+  return name ? `[[${name}]]` : code(plain(key, 200));
+}
+
+// 코드: 레포마다 커밋 먼저, 세션 뒤. 많이 한 레포가 위로
+function repoLines(n: DayNote): string[] {
+  const repos = new Map<string, { commits: DayNote["commits"]; items: DayNote["sessions"][number]["items"] }>();
+  const get = (k: string) => repos.get(k) ?? repos.set(k, { commits: [], items: [] }).get(k)!;
+  for (const c of n.commits) get(c.path).commits.push(c);
+  for (const p of n.sessions) get(p.project).items.push(...p.items);
+  const weight = (r: { commits: unknown[]; items: { turns: number }[] }) => r.commits.length + r.items.reduce((k, s) => k + s.turns, 0);
+  return [...repos].sort(([, a], [, b]) => weight(b) - weight(a)).flatMap(([key, r]) => {
+    const { host } = splitHost(key);
+    return [
+      `\t\t- ${repoLink(key)}${host ? ` ${code(plain(host, 40))}` : ""}`,
+      ...r.commits.map((c) => `\t\t\t- ${code(c.sha)} ${plain(c.subject, 100)}`),
+      ...sessionLines(r.items),
+    ];
+  });
+}
+
+// 우사기 블록(Logseq: 블록 속성은 두 칸, 자식은 탭). 사용자 블록과 섞이지 않게 한 블록 아래에 다 넣는다.
+// ## 제목 → 한눈 줄 → ### 구역(요약·실험·회의·코드·할 일). 접기·블록 속성은 쓰지 않는다(Tine 에서 펼치거나 고치면 파일이 바뀌어 그날 블록을 더는 못 고친다)
 export function autoBlock(n: DayNote): string {
-  const out = ["- 오늘 한 일", `  id:: ${autoId(n.day)}`];
-  const sec = (title: string, lines: string[]) => { if (lines.length) out.push(`\t- ${title}`, ...lines); };
-  if (n.summary && (n.summary.lines.length || n.summary.next.length)) {
-    sec("요약", [...n.summary.lines.map((l) => `\t\t- ${plain(l, 200)}`), ...n.summary.next.map((l) => `\t\t- 다음: ${plain(l, 160)}`)]);
-  }
+  const out = ["- ## 오늘 한 일", `  id:: ${autoId(n.day)}`];
+  const sec = (title: string, lines: string[]) => { if (lines.length) out.push(`\t- ### ${title}`, ...lines); };
   // 성공한 10초 미만 작업(usagi-run 동작 확인 등)은 한 줄로 접는다. 실패·끊김은 짧아도 그대로 적는다
   const quick = (j: NoteJob) => !j.lost && (j.code === null || j.code === 0) && j.seconds < QUICK_JOB_SECONDS;
-  const quickN = n.jobs.filter(quick).length;
-  sec("실험", [...n.jobs.filter((j) => !quick(j)).flatMap((j) => {
-    const state = j.lost ? "끊김(끝 기록 없이 사라짐)" : j.code === null || j.code === 0 ? "끝" : `실패(종료 코드 ${j.code})`;
+  const jobs = n.jobs.filter((j) => !quick(j)), quickN = n.jobs.length - jobs.length;
+  // 할 일: 같은 제목은 한 번, 끝낸 일은 안 함·새로 생김에서 뺀다
+  const done = [...new Set(n.done)];
+  const skipped = [...new Set(n.skipped)].filter((t) => !done.includes(t));
+  const added = [...new Set(n.added)].filter((t) => !done.includes(t) && !skipped.includes(t));
+  const sessions = n.sessions.reduce((k, p) => k + p.items.length, 0);
+  const glance = [
+    n.focus.seconds ? `집중 **${focusDuration(n.focus.seconds)}**${n.focus.longest ? `(가장 길게 ${focusDuration(n.focus.longest)})` : ""}` : "",
+    sessions ? `작업 세션 **${sessions}**` : "", jobs.length ? `실험 **${jobs.length}**` : "",
+    n.commits.length ? `커밋 **${n.commits.length}**` : "", done.length ? `끝낸 일 **${done.length}**` : "",
+  ].filter(Boolean).join(" · ");
+  if (glance) out.push(`\t- ${glance}`);
+  if (n.summary && (n.summary.lines.length || n.summary.next.length)) {
+    sec("요약", [
+      ...n.summary.lines.map((l) => `\t\t- ${lead(plain(l, 200))}`),
+      ...(n.summary.next.length ? ["\t\t- **다음**", ...n.summary.next.map((l) => `\t\t\t- ${lead(plain(l, 160))}`)] : []),
+    ]);
+  }
+  sec("실험", [...jobs.flatMap((j) => {
+    const state = j.lost ? "==끊김(끝 기록 없이 사라짐)==" : j.code === null || j.code === 0 ? "끝" : `==실패(종료 코드 ${j.code})==`;
     const where = [j.cwd ? `폴더 ${code(plain(j.cwd, 200))}` : "", j.cmd ? `명령 ${code(plain(j.cmd, 200))}` : ""].filter(Boolean).join(" · ");
     return [
-      `\t\t- ${plain(j.name, 80)}${j.host ? ` @${plain(j.host, 40)}` : ""} · ${j.lost ? "" : `${focusDuration(j.seconds)} · `}${state}`,
+      `\t\t- **${plain(j.name, 80)}**${j.host ? ` ${code(plain(j.host, 40))}` : ""} · ${j.lost ? "" : `${focusDuration(j.seconds)} · `}${state}`,
       ...(where ? [`\t\t\t- ${where}`] : []),
-      ...(j.files?.length ? [`\t\t\t- 바뀐 파일: ${j.files.map((f) => code(plain(f, 120))).join(", ")}`] : []),
+      ...(j.files?.length ? [`\t\t\t- 바뀐 파일 ${j.files.map((f) => code(plain(f, 120))).join(", ")}`] : []),
     ];
   }), ...(quickN ? [`\t\t- 짧은 작업 ${quickN}건(${QUICK_JOB_SECONDS}초 미만, 모두 끝)`] : [])]);
-  sec("회의", n.meetings.map((m) => `\t\t- ${m.time} ${plain(m.title, 100)}`));
-  sec("코드", [
-    ...n.commits.map((c) => `\t\t- ${plain(c.repo, 40)} ${code(c.sha)} ${plain(c.subject, 100)}`),
-    ...n.sessions.flatMap((p) => [`\t\t- 작업 세션 ${code(plain(p.project, 200))}`, ...sessionLines(p.items)]),
+  sec("회의", n.meetings.map((m) => `\t\t- **${m.time}** ${plain(m.title, 100)}`));
+  sec("코드", repoLines(n));
+  sec("할 일", [
+    ...done.map((t) => `\t\t- DONE ${plain(t, 100)}`),
+    ...skipped.map((t) => `\t\t- CANCELED ${plain(t, 100)}`),
+    ...(added.length ? ["\t\t- 새로 생김", ...added.map((t) => `\t\t\t- ${lead(plain(t, 100))}`)] : []),
   ]);
-  sec("할 일", [...n.done.map((t) => `\t\t- 끝냄: ${plain(t, 100)}`), ...n.skipped.map((t) => `\t\t- 안 함: ${plain(t, 100)}`), ...n.added.map((t) => `\t\t- 새로 생김: ${plain(t, 100)}`)]);
-  if (n.focus.seconds) out.push(`\t- 집중 ${focusDuration(n.focus.seconds)}${n.focus.longest ? ` (가장 길게 이어서 ${focusDuration(n.focus.longest)})` : ""}`);
   return out.join("\n");
 }
 
