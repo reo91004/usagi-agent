@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Store } from "../store.ts";
 import { scanSessions } from "../kg/chunks.ts";
 import { ingestSessions } from "./sessions.ts";
-import { parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchTail } from "./remote-sessions.ts";
+import { parseList, remoteSessionDirs, sessionDirs, syncRemoteSessions, type FetchBatch } from "./remote-sessions.ts";
 
 test("parseList: 정해진 두 폴더 아래 셸에 안전한 .jsonl 만, wc 의 total 줄은 뺀다", () => {
   const out = [
@@ -39,18 +39,23 @@ test("syncRemoteSessions: 늘어난 만큼만 받고, 줄었으면 처음부터,
   const root = mkdtempSync(join(tmpdir(), "cy-remote-"));
   const remote = new Map<string, string>([[".claude/projects/p/a.jsonl", "a1\n"], [".codex/sessions/2026/b.jsonl", "b1\n"]]);
   const calls: [string, number][] = [];
+  let ssh = 0;
   const run = async () => [...remote].map(([rel, s]) => `${Buffer.byteLength(s)} ${rel}`).join("\n");
-  const fetch: FetchTail = async (host, rel, from, to) => {
+  const fetch: FetchBatch = async (host, items) => {
     assert.equal(host, "gpu1");
-    calls.push([rel, from]);
-    const bytes = Buffer.from(remote.get(rel)!).subarray(from);
-    if (from) appendFileSync(to, bytes); else writeFileSync(to, bytes);
+    ssh++;
+    for (const { rel, from, to } of items) {
+      calls.push([rel, from]);
+      const bytes = Buffer.from(remote.get(rel)!).subarray(from);
+      if (from) appendFileSync(to, bytes); else writeFileSync(to, bytes);
+    }
   };
   const local = (rel: string) => join(root, "gpu1", rel);
   const sync = () => syncRemoteSessions("gpu1", { run, fetch, root });
 
   assert.equal(await sync(), 2);
   assert.deepEqual(calls.splice(0), [[".claude/projects/p/a.jsonl", 0], [".codex/sessions/2026/b.jsonl", 0]]);
+  assert.equal(ssh, 1); // 바뀐 파일이 둘이어도 받기는 한 번
 
   remote.set(".claude/projects/p/a.jsonl", "a1\na2\n");
   assert.equal(await sync(), 1);
@@ -92,6 +97,10 @@ test("syncRemoteSessions: 실제 find·wc·tail 명령(가짜 ssh 가 서버 홈
   try {
     const root = join(base, "local");
     assert.equal(await syncRemoteSessions("gpu1", { root }), 1);
+    put(".codex/sessions/2026/c.jsonl", line({ type: "x" }) + line({ type: "y" }));
+    appendFileSync(join(home, s1), line({ type: "user", sessionId: "rs1", message: { content: "셋째" } }));
+    assert.equal(await syncRemoteSessions("gpu1", { root }), 2); // c 새로 + s1 이어서 — 한 ssh 로 섞어 받아도 각자 맞다
+    for (const rel of [".codex/sessions/2026/c.jsonl", s1]) assert.equal(readFileSync(join(root, "gpu1", rel), "utf8"), readFileSync(join(home, rel), "utf8"));
     const got = join(root, "gpu1", s1);
     assert.equal(readFileSync(got, "utf8"), readFileSync(join(home, s1), "utf8"));
     assert.equal(existsSync(join(root, "gpu1", ".claude/projects/-home-me-exp/old.jsonl")), false); // 14일 넘음
@@ -106,7 +115,7 @@ test("syncRemoteSessions: 실제 find·wc·tail 명령(가짜 ssh 가 서버 홈
     assert.equal(ingestSessions(store, remoteSessionDirs("gpu1", root), { host: "gpu1" }), 1);
     const node = store.node("session:rs1")!;
     assert.equal(node.props.cwd, "gpu1:/home/me/exp");
-    assert.equal(node.props.turns, 2);
+    assert.equal(node.props.turns, 3);
     assert.deepEqual(store.neighbors("session:rs1", "in"), ["project:gpu1:/home/me/exp"]);
     await scanSessions(store, remoteSessionDirs("gpu1", root), { host: "gpu1" });
     const chunk = store.db.prepare("SELECT label, meta FROM kg_chunks WHERE source = 'sessions'").get() as any;

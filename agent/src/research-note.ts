@@ -130,6 +130,13 @@ export async function collectDay(
   };
 }
 
+// 여러 날(firstDay 이후)의 커밋을 레포마다 git 한 번으로 모은다: firstDay 낮을 기준으로 한 번 부르고 결과를 나눠 쓴다.
+// 반환한 함수는 collectDay 의 deps.git 자리에 넣는다(요청한 날짜는 무시 — 날짜별로 거르는 건 collectDay 의 inDay)
+export const sharedGit = (cfg: Config, firstDay: string, fetch: typeof gitActivity = gitActivity) => {
+  let once: Promise<RepoActivity[]> | undefined;
+  return () => (once ??= fetch(cfg, { now: new Date(dayStart(firstDay) + 12 * 3600e3) }));
+};
+
 // 요약은 재료가 아니다(재료가 없으면 페이지도 없다)
 export const isEmpty = (n: DayNote) => !n.focus.seconds && !n.sessions.length && !n.jobs.length && !n.meetings.length && !n.done.length && !n.added.length && !n.commits.length;
 

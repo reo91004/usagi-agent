@@ -5,6 +5,7 @@
 // 무엇이 "공부 중"인가: 실행 기록(runs.ts)의 돌고 있는 run 중 사용자가 직접 부른 대화(chat)를 뺀 것 +
 // 아직 runs 로 감싸지 않은 일을 begin() 으로 직접 알린 것. 주기 중계(슬랙·캘린더·자동 완료·프로필)는
 // grace 안에 끝나면 아예 안 보인다(몇 초짜리 정기 작업마다 영상이 깜빡이지 않게).
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 export type Activity = "idle" | "studying" | "dancing";
@@ -123,4 +124,28 @@ export class ActivityTracker {
     if (this.recheck) this.deps.clearTimer(this.recheck);
     if (this.dance) this.deps.clearTimer(this.dance.timer);
   }
+}
+
+// 마지막 키보드·마우스 입력 뒤 지난 초(macOS ioreg 의 HIDIdleTime, 나노초). 부를 때만 ioreg 를 한 번 띄운다(수 ms).
+// 다른 OS 이거나 못 읽으면 0(= 자리에 있음) — 브리핑을 미루지 않는 쪽으로
+export const parseHidIdle = (out: string) => { const m = /"HIDIdleTime" = (\d+)/.exec(out); return m ? Number(m[1]) / 1e9 : 0; };
+export const hidIdleSec = (): Promise<number> => process.platform !== "darwin" ? Promise.resolve(0) : new Promise((ok) => {
+  execFile("ioreg", ["-c", "IOHIDSystem"], { timeout: 5e3, maxBuffer: 1 << 22 }, (err, out) => ok(err ? 0 : parseHidIdle(String(out))));
+});
+
+// 정기 브리핑: 입력이 awayMs 넘게 없으면(자리 비움) 미루고, 돌아올 때까지 recheckMs 마다 입력만 확인하다 돌아오면 한 번 돈다.
+// 미루는 동안 들어온 매시간 신호는 무시(돌아와서 한 번이면 충분). 업무시간이 끝나면 미룬 것도 버린다. 반환: 매시간 부를 함수
+export function awayAwareBriefing(o: {
+  idleSec: () => Promise<number>; inHours: () => boolean; run: () => unknown;
+  awayMs?: number; recheckMs?: number; later?: (fn: () => void, ms: number) => void;
+}) {
+  const { awayMs = 60 * 60e3, recheckMs = 5 * 60e3, later = (fn, ms) => { setTimeout(fn, ms).unref(); } } = o;
+  let waiting = false;
+  const check = async () => {
+    if (!o.inHours()) { waiting = false; return; }
+    if ((await o.idleSec()) * 1000 >= awayMs) { waiting = true; later(check, recheckMs); return; }
+    waiting = false;
+    o.run();
+  };
+  return () => { if (!waiting) return check(); };
 }

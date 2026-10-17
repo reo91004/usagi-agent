@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { Store } from "./store.ts";
-import { autoBlock, autoId, collectDay, formatDay, notePath, plain, summarizeDay, summaryPrompt, writeNote, type DayNote } from "./research-note.ts";
+import { autoBlock, autoId, collectDay, formatDay, notePath, plain, sharedGit, summarizeDay, summaryPrompt, writeNote, type DayNote } from "./research-note.ts";
 import type { ExecFileLike } from "./providers.ts";
 
 const cfg = { repoRoots: [], gitAuthor: { name: "me", email: "me@x" }, onboarded: true, readSessions: true };
@@ -200,4 +200,20 @@ test("summarizeDay: 끝난 날 한 번만, 뇌 답을 3줄로 잘라 저장하�
   assert.deepEqual(day.summary, { lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] });
   const md = autoBlock({ ...n, summary: day.summary });
   assert.match(md, /- 오늘 한 일\n  id:: 75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\n\t- 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- 다음: 결과 파일 확인\n\t- 실험\n/);
+});
+
+test("sharedGit: 어제·오늘 노트가 git 을 한 번만 부르고 날짜로 나눈다", async () => {
+  const store = new Store(":memory:");
+  let calls = 0;
+  const commit = (sha: string, time: string) => ({ sha, subject: sha, time });
+  const fetch = (async () => {
+    calls++;
+    return [{ path: "/r/app", name: "app", commitsToday: [commit("old", "2026-10-16T03:00:00Z"), commit("new", "2026-10-17T03:00:00Z")], recentCommits: [] }];
+  }) as any;
+  const git = sharedGit(cfg as any, "2026-10-16", fetch);
+  const a = await collectDay(cfg as any, store, "2026-10-16", { git });
+  const b = await collectDay(cfg as any, store, "2026-10-17", { git });
+  assert.equal(calls, 1);
+  assert.deepEqual(a.commits.map((c) => c.sha), ["old"]);
+  assert.deepEqual(b.commits.map((c) => c.sha), ["new"]);
 });

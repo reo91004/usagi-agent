@@ -6,6 +6,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpa
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostBackoff } from "./jobs.ts";
 import { parseJobDone, parseRunning, jobBubble, jobNodeId, jobProps, okJobHost, parseTmux, mineOnly, pullJobs, type RunSsh } from "./jobs.ts";
 import { setCharacter } from "./characters.ts";
 import { loadConfig } from "./config.ts";
@@ -253,4 +254,21 @@ test("parseTmux·mineOnly: 세션별로 합치고 셸만 있으면 쉬는 중, �
   assert.deepEqual(r.tmux, [{ name: "claude", created: 1791532244, activity: 1792224999, running: "claude", path: "/home/user/reo/dp" }]);
   assert.equal(calls.length, 1);
   assert.match(calls[0][2], /tmux list-panes -a -F/);
+});
+
+test("hostBackoff: 실패마다 간격이 두 배(상한 30분), 성공하면 처음으로", () => {
+  let t = 0;
+  const b = hostBackoff(120e3, 30 * 60e3, () => t);
+  assert.ok(b.due("h"));
+  const waits: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    b.fail("h");
+    let w = 0;
+    while (!b.due("h")) { t += 120e3; w += 120e3; } // 2분 타이머가 도는 모양
+    waits.push(w / 60e3);
+  }
+  assert.deepEqual(waits, [4, 8, 16, 30, 30, 30]);
+  assert.ok(b.due("other"));
+  b.fail("h"); b.ok("h");
+  assert.ok(b.due("h"));
 });

@@ -40,7 +40,7 @@ import { worktreeRecords } from "./agent-worktrees.ts";
 import { Settings } from "./settings.ts";
 import { CharacterStore } from "./character-store.ts";
 import { START_CHARACTER } from "./characters.ts";
-import { jobBubble, jobNodeId, jobProps, pullJobs, tmuxSeen, type JobDone, type RunningJob } from "./jobs.ts";
+import { hostBackoff, jobBubble, jobNodeId, jobProps, pullJobs, tmuxSeen, type JobDone, type RunningJob } from "./jobs.ts";
 import { syncRemoteSessions } from "./ingest/remote-sessions.ts";
 import { disconnectConnector } from "./disconnect.ts";
 import { CHECK_IDS, Connections, lastRunOf, type CheckId } from "./connections.ts";
@@ -50,7 +50,8 @@ import { cliMcpServers } from "./cli-mcp.ts";
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
-import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
+import { collectDay, sharedGit, summarizeDay, writeDay } from "./research-note.ts";
+import { awayAwareBriefing, hidIdleSec } from "./activity.ts";
 import { notePathFor, researchSummary } from "./research.ts";
 import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
@@ -412,7 +413,10 @@ if (slack) {
 }
 
 // ── 주기 작업
-const ingest = safe("ingest", () => { const n = agent.ingest(); if (n) console.log(`[cy-agent] 세션 ${n}개 반영`); });
+// 세션 폴더 훑기는 한 주기로: 진행 확인(progressTick)이 막 훑었으면 정기 수집은 건너뛴다
+let lastIngestAt = 0;
+const ingest = safe("ingest", () => { lastIngestAt = Date.now(); const n = agent.ingest(); if (n) console.log(`[cy-agent] 세션 ${n}개 반영`); });
+const ingestUnlessFresh = () => { if (Date.now() - lastIngestAt >= cfg.ingestIntervalMin * 60e3 * 0.6) return ingest(); };
 
 // 커넥터 MCP 서버(주소가 있는 http 서버만) 도달 상태 — 끊기면 말풍선으로 알리고, 다시 붙으면 바로 훑어본다
 const health = new McpHealth({ urls: () => connectorServerUrls(cfg.connectors) });
@@ -494,7 +498,7 @@ const learn = (rounds = 1) => asRoutine(safe("profile", async () => {
 // 새 세션·run 이 없으면 모델을 안 부른다. 시작 3분 뒤 한 번, 그다음 progressCheckMin 마다(0 이면 끔)
 const progressTick = asRoutine(safe("todo-progress", async () => {
   if (!modelWorkAllowed(cfg)) return;
-  agent.ingest(); // 방금 끝난 세션까지
+  await ingest(); // 방금 끝난 세션까지
   await checkProgress(cfg, store, agent);
 }));
 if ((cfg.progressCheckMin ?? 5) > 0) {
@@ -512,7 +516,7 @@ setInterval(purgeTrash, 24 * 60 * 60e3).unref();
 
 await ingest();
 bus.bubble({ text: phraseVoice("hello", {}, `hello:${new Date().toISOString().slice(0, 10)}`, { mood: "excited" }), kind: "info", ttlMs: 8e3 });
-setInterval(ingest, cfg.ingestIntervalMin * 60e3);
+setInterval(ingestUnlessFresh, cfg.ingestIntervalMin * 60e3);
 await health.check().catch(() => {}); // 첫 Slack 수집 전에 연결 상태부터
 slackTick();
 setInterval(slackTick, cfg.slackIngestIntervalMin * 60e3);
@@ -544,13 +548,14 @@ const writeNotes = safe("research-note", async () => {
   if (!cfg.tineGraph) return;
   const today = localDay(Date.now());
   const yesterday = localDay(dayStart(today) - 12 * 3600e3); // 어제 낮 = 어제 날짜
+  const git = sharedGit(cfg, yesterday); // 어제·오늘 커밋을 한 번에 모아 날짜로 나눈다
   if (!summaryTried.has(yesterday)) {
     summaryTried.add(yesterday);
-    try { if (await summarizeDay(cfg, store, await collectDay(cfg, store, yesterday, { focus }))) console.log(`[research-note] ${yesterday} 요약을 붙여요`); }
+    try { if (await summarizeDay(cfg, store, await collectDay(cfg, store, yesterday, { focus, git }))) console.log(`[research-note] ${yesterday} 요약을 붙여요`); }
     catch (e: any) { console.warn(`[research-note] ${yesterday} 요약 못 함: ${e?.message ?? e}`); }
   }
   for (const day of [yesterday, today]) {
-    const { path, result } = await writeDay(cfg, store, day, { focus });
+    const { path, result } = await writeDay(cfg, store, day, { focus, git });
     if (result === "written") console.log(`[research-note] ${day} 썼어요`);
     if ((result === "edited" || result === "removed") && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 우사기 블록을 누가 ${result === "edited" ? "고쳐서" : "지워서"} 그대로 둬요: ${path}`); }
   }
@@ -582,19 +587,23 @@ function jobsRunning(host: string, running: RunningJob[]) {
   }
 }
 const jobHostDown = new Set<string>(); // 끊긴 서버는 상태가 바뀔 때만 로그
+const jobBackoff = hostBackoff(2 * 60e3); // 끊긴 서버는 4·8·16·30분 간격으로(성공하면 2분)
 let jobsBusy = false;
 async function pollJobHosts() {
   if (jobsBusy) return;
   jobsBusy = true;
   try {
     for (const host of cfg.jobHosts) {
+      if (!jobBackoff.due(host)) continue;
       try {
         const { done, running, tmux } = await pullJobs(host, undefined, cfg.jobDirs[host]);
         tmuxSeen[host] = { at: new Date().toISOString(), sessions: tmux };
         jobsRunning(host, running);
         for (const j of done) jobDone(j);
+        jobBackoff.ok(host);
         if (jobHostDown.delete(host)) console.log(`[jobs] ${host} 다시 연결됨`);
       } catch (e: any) {
+        jobBackoff.fail(host);
         if (!jobHostDown.has(host)) console.warn(`[jobs] ${host} 확인 못 함: ${e?.message ?? e}`);
         jobHostDown.add(host);
       }
@@ -605,6 +614,7 @@ if (cfg.jobHosts.length) { setTimeout(pollJobHosts, 15e3).unref(); setInterval(p
 
 // ssh 서버의 작업 기록(ingest/remote-sessions.ts): sessionHosts 에서 늘어난 만큼 받아 와 이 맥 기록과 같이 읽는다
 const sessionHostDown = new Set<string>();
+const sessionBackoff = hostBackoff(10 * 60e3); // 끊긴 서버는 20·30분 간격으로(성공하면 10분)
 let remoteBusy = false;
 async function pollSessionHosts() {
   if (remoteBusy || !sessionsAllowed(cfg)) return;
@@ -612,10 +622,13 @@ async function pollSessionHosts() {
   try {
     let got = 0;
     for (const host of cfg.sessionHosts) {
+      if (!sessionBackoff.due(host)) continue;
       try {
         got += await syncRemoteSessions(host);
+        sessionBackoff.ok(host);
         if (sessionHostDown.delete(host)) console.log(`[sessions] ${host} 다시 연결됨`);
       } catch (e: any) {
+        sessionBackoff.fail(host);
         if (!sessionHostDown.has(host)) console.warn(`[sessions] ${host} 작업 기록을 못 받음: ${e?.message ?? e}`);
         sessionHostDown.add(host);
       }
@@ -645,7 +658,8 @@ const healthTick = asRoutine(safe("mcp-health", async () => {
 healthTick();
 setInterval(healthTick, 2 * 60e3);
 // 평일 업무시간(이 맥의 시간대로 9~19시)에만 정기 브리핑
-setInterval(() => { if (briefingHours(new Date())) brief(); }, cfg.briefingIntervalMin * 60e3);
+// 입력이 1시간 넘게 없으면(자리 비움) 미루고, 돌아오면 한 번(activity.ts awayAwareBriefing). 「지금 브리핑」은 그대로
+setInterval(awayAwareBriefing({ idleSec: hidIdleSec, inHours: () => briefingHours(new Date()), run: brief }), cfg.briefingIntervalMin * 60e3);
 setTimeout(() => briefIfDue("시작"), 5e3);
 // 일정 N분 전(설정 calendarAlert): 춤 + 말풍선(회의실·온라인 여부, 링크 버튼은 회의 링크, 없으면 캘린더 일정). 일정·분마다 한 번(DB에 남김)
 const stopCalendar = asRoutine(calendar.schedule.bind(calendar))((m, text, mins) => {

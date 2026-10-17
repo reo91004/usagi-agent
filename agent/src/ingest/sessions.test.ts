@@ -74,3 +74,15 @@ test("readLines: 1MB 경계를 넘는 줄도 한 줄로, 마지막 줄바꿈이 
   assert.equal([...readLines(p)][1], long);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("ingestSessions: subagents 폴더는 들어가지 않는다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cy-sub-"));
+  const line = (id: string) => JSON.stringify({ type: "user", sessionId: id, cwd: "/w", message: { content: "안녕" } }) + "\n";
+  mkdirSync(join(dir, "p", "s1", "subagents"), { recursive: true });
+  writeFileSync(join(dir, "p", "s1.jsonl"), line("s1"));
+  writeFileSync(join(dir, "p", "s1", "subagents", "agent-a.jsonl"), line("sub"));
+  const store = new Store(":memory:");
+  assert.equal(ingestSessions(store, { claude: dir, codex: join(dir, "none") }), 1);
+  assert.ok(store.node("session:s1"));
+  assert.equal(store.node("session:sub"), undefined);
+});
