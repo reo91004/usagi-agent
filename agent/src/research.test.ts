@@ -31,11 +31,13 @@ test("researchSummary: 연구 연결이 없으면 없음. 도는 작업은 다, 
 
 test("researchSummary·notePathFor: 오늘 노트가 있나, 어제 요약, 열 수 있는 경로만", () => {
   const graph = mkdtempSync(join(tmpdir(), "cy-tine-"));
-  mkdirSync(join(graph, "pages"));
+  mkdirSync(join(graph, "journals"));
   const store = new Store(":memory:");
   const cfg = { sshHosts: [], jobHosts: [], tineGraph: graph };
   assert.deepEqual(researchSummary(cfg, store, NOW)!.note, { day: "2026-10-17", exists: false });
-  writeFileSync(notePath(graph, "2026-10-17"), "x");
+  writeFileSync(notePath(graph, "2026-10-17"), "- 내 블록\n"); // 우사기 블록 없음
+  assert.equal(researchSummary(cfg, store, NOW)!.note!.exists, false);
+  writeFileSync(notePath(graph, "2026-10-17"), "- 우사기 기록\n  usagi-auto:: true\n");
   store.upsertNode("note-summary:2026-10-16", "note-summary", "2026-10-16", { lines: ["a"], next: ["b"] });
   assert.deepEqual(researchSummary(cfg, store, NOW)!.note, { day: "2026-10-17", exists: true, yesterday: { day: "2026-10-16", lines: ["a"], next: ["b"] } });
   assert.equal(notePathFor(cfg, "2026-10-17"), notePath(graph, "2026-10-17"));

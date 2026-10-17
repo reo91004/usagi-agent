@@ -1,15 +1,15 @@
-// 연구 노트: 그날 한 일을 Tine(Logseq 형식) 그래프에 날마다 한 페이지로 남긴다(#30, 2판 #39).
-//   config tineGraph = 그래프 폴더(logseq/config.edn 이 있어야). 페이지 「우사기 연구 노트/2026-10-17」 →
-//   pages/우사기 연구 노트___2026-10-17.md(:file/name-format :triple-lowbar).
+// 연구 노트: 그날 한 일을 Tine(Logseq 형식) 그래프의 그날 저널에 「우사기 기록」 블록 하나로 남긴다(#30, #39, 저널로 #129).
+//   config tineGraph = 그래프 폴더(logseq/config.edn 이 있어야). 파일은 config.edn 의 :journals-directory·:journal/file-name-format 대로
+//   (기본 journals/yyyy_MM_dd.md).
 // 재료: 실험(usagi-run: 서버·폴더·명령·바뀐 파일)·회의·코드(커밋·작업 세션)·할 일(끝냄·새로 생김)·집중 시간.
-//   하루가 끝난 페이지에는 다음 날 한 번 뇌(어떤 뇌든)로 세 줄 요약과 다음 할 일을 붙인다(summarizeDay — 하루에 모델 호출 한 번).
-// 페이지는 사용자와 같이 쓴다: 우사기는 「usagi-auto:: true」 블록 하나만 다시 쓰고 그 밖의 블록(맨 위 「메모」 등)은 건드리지 않는다.
+//   하루가 끝난 날에는 다음 날 한 번 뇌(어떤 뇌든)로 세 줄 요약과 다음 할 일을 붙인다(summarizeDay — 하루에 모델 호출 한 번).
+// 저널은 사용자 것: 「usagi-auto:: true」 블록의 줄만 바꾸고 나머지는 한 바이트도 건드리지 않는다(없으면 끝에 덧붙이고, 파일이 없으면 만든다).
 //   우사기 블록 안을 사용자가 고쳤거나 블록을 지웠으면 그 뒤로는 덮지도 다시 넣지도 않는다(마지막으로 쓴 블록의 해시로 안다).
-// 사용자 저널은 건드리지 않는다. 대신 페이지에 그날 저널 링크를 달아 저널의 「연결된 참조」에 뜨게 한다.
+//   예전 pages/우사기 연구 노트___*.md 페이지는 더 만들지도 지우지도 않는다.
 import { query as sdkQuery } from "./claude-sdk.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { dayStart, focusDuration, localDay, nextDayStart, type Focus } from "./focus.ts";
 import { isNoisePath } from "./dashboard.ts";
@@ -19,13 +19,15 @@ import { cliStructured, featureBrain, usesCli, type CodexDeps } from "./feature-
 import { trackQuery, withRun } from "./runs.ts";
 import type { Node, Store } from "./store.ts";
 
-export const NOTE_NS = "우사기 연구 노트";
+// config.edn 의 문자열 값. 없으면 Logseq 기본
+const ednString = (graph: string, key: string, dflt: string) => {
+  try { return new RegExp(`:${key.replace("/", "\\/")}\\s+"([^"]+)"`).exec(readFileSync(join(graph, "logseq", "config.edn"), "utf8"))?.[1] ?? dflt; }
+  catch { return dflt; }
+};
 
-// 그래프의 저널 제목 형식(config.edn :journal/page-title-format, date-fns 꼴). 없으면 Logseq 기본
-export function journalFormat(graph: string): string {
-  try { return /:journal\/page-title-format\s+"([^"]+)"/.exec(readFileSync(join(graph, "logseq", "config.edn"), "utf8"))?.[1] ?? "MMM do, yyyy"; }
-  catch { return "MMM do, yyyy"; }
-}
+// 그날 저널 파일: <:journals-directory>/<:journal/file-name-format>.md (기본 journals/yyyy_MM_dd.md)
+export const notePath = (graph: string, day: string) =>
+  join(graph, ednString(graph, "journals-directory", "journals"), `${formatDay(day, ednString(graph, "journal/file-name-format", "yyyy_MM_dd"))}.md`);
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -159,53 +161,43 @@ export function autoBlock(n: DayNote): string {
   return out.join("\n");
 }
 
-// 새 페이지: 페이지 속성, 사용자가 쓸 「메모」, 우사기 블록
-export function noteMarkdown(n: DayNote, journalTitle: string): string {
-  return `tags:: ${NOTE_NS}\ndate:: [[${journalTitle}]]\n\n- 메모\n${autoBlock(n)}\n`;
+const AUTO_HEAD = /^-( |$)/; // 맨 위 블록은 0칸에서 「-」로 시작한다
+
+// 우사기 블록의 줄 범위 [시작, 끝): 맨 위 「- 」줄 바로 다음이 usagi-auto 속성인 블록, 다음 맨 위 블록(또는 끝)까지. 뒤따르는 빈 줄은 사용자 몫
+export function findAuto(lines: string[]): [number, number] | null {
+  const i = lines.findIndex((l, k) => AUTO_HEAD.test(l) && lines[k + 1]?.trim() === AUTO_PROP);
+  if (i < 0) return null;
+  let end = lines.findIndex((l, k) => k > i && AUTO_HEAD.test(l));
+  if (end < 0) end = lines.length;
+  while (end > i + 1 && lines[end - 1].trim() === "") end--;
+  return [i, end];
 }
 
-// 페이지를 머리(속성)와 맨 위 블록들로 나눈다. 맨 위 블록은 0칸에서 「-」로 시작한다
-export function splitBlocks(md: string): { head: string[]; blocks: string[][] } {
-  const head: string[] = [], blocks: string[][] = [];
-  for (const line of md.replace(/\n$/, "").split("\n")) {
-    if (/^-( |$)/.test(line)) blocks.push([line]);
-    else if (blocks.length) blocks[blocks.length - 1].push(line);
-    else head.push(line);
-  }
-  return { head, blocks };
-}
-const isAuto = (b: string[]) => b.slice(1).some((l) => l.trim() === AUTO_PROP);
+export const hasAuto = (path: string) => existsSync(path) && findAuto(readFileSync(path, "utf8").split("\n")) !== null;
 
-export const notePath = (graph: string, day: string) => join(graph, "pages", `${NOTE_NS}___${day}.md`);
 const hashMark = (s: string) => parseInt(createHash("sha1").update(s).digest("hex").slice(0, 13), 16); // 52비트: ingest_marks(REAL)에 정확히 들어간다
 const blockKey = (path: string) => `tine-note-auto:${path}`;
-const pageKeyV1 = (path: string) => `tine-note:${path}`; // 1판: 페이지 전체 해시
 
-// written: 썼음 · same: 그대로 · empty: 재료 없어 안 만듦 · edited: 우사기 블록(1판은 페이지)을 사용자가 고쳐 그대로 둠 · removed: 사용자가 우사기 블록을 지워 다시 넣지 않음
+// written: 썼음 · same: 그대로 · empty: 재료 없어 안 만듦 · edited: 우사기 블록을 사용자가 고쳐 그대로 둠 · removed: 사용자가 우사기 블록(또는 저널)을 지워 다시 넣지 않음
 export type WriteResult = "written" | "same" | "empty" | "edited" | "removed";
 export function writeNote(store: Store, graph: string, n: DayNote): WriteResult {
   const path = notePath(graph, n.day);
-  const exists = existsSync(path);
-  if (isEmpty(n) && !exists) return "empty";
   const block = autoBlock(n);
+  const cur = existsSync(path) ? readFileSync(path, "utf8") : null; // 쓰기 직전에 읽는다
+  const lines = (cur ?? "").split("\n");
+  const at = cur === null ? null : findAuto(lines);
   let md: string;
-  if (!exists) md = noteMarkdown(n, formatDay(n.day, journalFormat(graph)));
-  else {
-    const cur = readFileSync(path, "utf8");
-    const { head, blocks } = splitBlocks(cur);
-    const i = blocks.findIndex(isAuto);
-    if (i < 0) {
-      // 1판 페이지: 사용자가 안 고쳤으면 2판으로 새로 쓰고, 고쳤으면 그대로. 우사기 블록을 지운 2판 페이지면 다시 넣지 않는다
-      if (store.markOf(pageKeyV1(path)) === hashMark(cur)) md = noteMarkdown(n, formatDay(n.day, journalFormat(graph)));
-      else return store.markOf(blockKey(path)) ? "removed" : "edited";
-    } else {
-      const now = blocks[i].join("\n");
-      if (now === block) return "same";
-      if (hashMark(now) !== store.markOf(blockKey(path))) return "edited";
-      blocks[i] = block.split("\n");
-      md = `${[...head, ...blocks.flat()].join("\n")}\n`;
-    }
+  if (!at) {
+    if (isEmpty(n)) return "empty";
+    if (store.markOf(blockKey(path))) return "removed";
+    md = !cur ? `${block}\n` : `${cur}${cur.endsWith("\n") ? "" : "\n"}${block}\n`;
+  } else {
+    const now = lines.slice(at[0], at[1]).join("\n");
+    if (now === block) return "same";
+    if (hashMark(now) !== store.markOf(blockKey(path))) return "edited";
+    md = [...lines.slice(0, at[0]), ...block.split("\n"), ...lines.slice(at[1])].join("\n");
   }
+  mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.usagi-tmp`; // 임시 파일 → rename 으로 Tine 이 반쯤 쓴 파일을 읽지 않게
   writeFileSync(tmp, md);
   renameSync(tmp, path);

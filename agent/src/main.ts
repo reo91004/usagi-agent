@@ -536,9 +536,9 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
 }));
 setInterval(kgHourly, 60 * 60e3);
 
-// 연구 노트(research-note.ts): 한 시간마다 오늘·어제 페이지를 다시 만든다(바뀐 경우만 쓴다). 어제 것은 자정 넘어 끝난 세션까지 담으려고
-// 어제 페이지에는 하루가 끝났으니 요약을 한 번 붙인다(날짜마다 이 데몬에서 한 번만 시도 — 실패해도 매시간 다시 부르지 않게)
-const noteSkipped = new Set<string>(); // 사용자가 고친 페이지는 한 번만 알린다
+// 연구 노트(research-note.ts): 한 시간마다 오늘·어제 저널의 우사기 블록을 다시 쓴다(바뀐 경우만). 어제 것은 자정 넘어 끝난 세션까지 담으려고
+// 어제 블록에는 하루가 끝났으니 요약을 한 번 붙인다(날짜마다 이 데몬에서 한 번만 시도 — 실패해도 매시간 다시 부르지 않게)
+const noteSkipped = new Set<string>(); // 사용자가 고친 블록은 한 번만 알린다
 const summaryTried = new Set<string>();
 const writeNotes = safe("research-note", async () => {
   if (!cfg.tineGraph) return;

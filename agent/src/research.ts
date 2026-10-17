@@ -1,11 +1,10 @@
 // 패널 「연구」 탭(#40·#119): 실험(usagi-run 작업)·서버 tmux 세션·오늘 연구 노트·어제 요약. 연구 쪽 연결(sshHosts·jobHosts·tineGraph)이 없으면 없다.
 // 순수하게 로컬 DB·파일만 본다(서버 접속 없음). GPU 는 패널에서 버튼을 누를 때만 따로 가져온다(remote-fs.ts remoteGpu).
-import { existsSync } from "node:fs";
 import type { Config } from "./config.ts";
 import { dayStart, localDay } from "./focus.ts";
 import type { tmuxSeen } from "./jobs.ts";
 import { remoteHosts } from "./remote-fs.ts";
-import { notePath } from "./research-note.ts";
+import { hasAuto, notePath } from "./research-note.ts";
 import type { Store } from "./store.ts";
 
 export type ResearchJob = {
@@ -44,14 +43,14 @@ export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tin
     const yday = localDay(dayStart(today) - 12 * 3600e3);
     const s = store.node(`note-summary:${yday}`);
     const lines = strs(s?.props.lines, 3), next = strs(s?.props.next, 3);
-    note = { day: today, exists: existsSync(notePath(cfg.tineGraph, today)), ...(lines.length || next.length ? { yesterday: { day: yday, lines, next } } : {}) };
+    note = { day: today, exists: hasAuto(notePath(cfg.tineGraph, today)), ...(lines.length || next.length ? { yesterday: { day: yday, lines, next } } : {}) };
   }
   return { hosts, jobs, tmux, ...(note ? { note } : {}) };
 }
 
-// 패널 「열기」: 그 날짜 노트 파일 경로(있을 때만). 날짜 모양이 아니면 거절
+// 패널 「열기」: 그 날짜 저널 파일 경로(우사기 블록이 있을 때만). 날짜 모양이 아니면 거절
 export function notePathFor(cfg: Pick<Config, "tineGraph">, day: string): string | null {
   if (!cfg.tineGraph || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const p = notePath(cfg.tineGraph, day);
-  return existsSync(p) ? p : null;
+  return hasAuto(p) ? p : null;
 }

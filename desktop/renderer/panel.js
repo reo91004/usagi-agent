@@ -541,7 +541,7 @@ function researchSection() {
         r.note.exists
           ? h('button.ghost.small', { type: 'button', text: '열기', onclick: (ev) => openNote(r.note.day, ev.currentTarget) })
           : h('span.muted.small', { text: '오늘 한 일이 생기면 만들어져요' })),
-      h('div.muted.small', { text: `Tine 의 「우사기 연구 노트___${r.note.day}」 페이지에 쓰고, 그날 저널에서 이어져요.` }),
+      h('div.muted.small', { text: `Tine 의 그날 일지(저널)에 「우사기 기록」 블록으로 써요.` }),
       y && (y.lines.length || y.next.length)
         ? h('div.note-sum', null,
           h('div.muted.small', { text: `어제(${y.day}) 요약` }),
