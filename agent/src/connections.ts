@@ -7,6 +7,7 @@
 //  gh       — gh auth status
 //  local    — 뇌(provider)·커넥터 설정 · Slack 봇 토큰 설정 여부 · 마지막 캘린더 동기화·Slack 수집·지식그래프 run (매번 새로, 비용 없음)
 // net·gh·local 은 GET 할 때마다 새로, claude 는 비싸서 POST /connections/check 로만(결과는 기억해 둔다).
+import { lookup } from "node:dns/promises";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -69,7 +70,7 @@ export function redact(s: unknown, max = 240): string {
 // ── 확인 결과(원재료) ────────────────────────────────────────────
 export type HttpProbe = { state: "ok" | "vpn" | "down" | "timeout"; status?: number; latencyMs: number; error?: string; at: string };
 export type SdkProbe = { account?: { email?: string; organization?: string; provider?: string; tokenSource?: string }; servers: { name: string; status: string; error?: string }[]; version?: string; error?: string; latencyMs: number; at: string };
-export type GhProbe = { ok: boolean; missing?: boolean; error?: string; latencyMs: number; at: string };
+export type GhProbe = { ok: boolean; missing?: boolean; offline?: boolean; error?: string; latencyMs: number; at: string };
 
 type Fetch = (url: string, init: RequestInit) => Promise<{ status: number; headers: { get(k: string): string | null } }>;
 export type ConnectionsDeps = {
@@ -79,12 +80,23 @@ export type ConnectionsDeps = {
   httpTimeoutMs?: number;
   sdkProbe?: () => Promise<Omit<SdkProbe, "at" | "latencyMs">>;
   gh?: () => Promise<{ ok: boolean; err?: string }>;
+  resolves?: (host: string) => Promise<boolean>; // 이 Mac 이 그 주소를 찾는가(gh 확인이 실패했을 때 인터넷 문제인지 가린다)
   hasServer?: (name: string) => boolean; // Claude Code 에 그 MCP 서버가 등록돼 있나(기본 ~/.claude.json)
   cliServers?: () => string[]; // Codex·agy 에 넘길 수 있는 MCP 서버 이름(기본 cli-mcp.ts cliMcpServers)
   env?: NodeJS.ProcessEnv;
   lastRun?: (kind: RunKind) => Run | undefined;
   kg?: () => { phase: string; reason?: string; step?: string } | undefined;
 };
+
+// 주소 찾기(시스템 이름 찾기 — gh·Slack 과 같은 길). 3초 안에 못 찾으면 false
+export async function resolves(host: string, ms = 3000): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([lookup(host), new Promise((_, no) => { timer = setTimeout(() => no(new Error("timeout")), ms); })]);
+    return true;
+  } catch { return false; }
+  finally { clearTimeout(timer); }
+}
 
 const worst = (xs: ConnState[]): ConnState => (["error", "warn", "unknown", "ok", "off"] as ConnState[]).find((s) => xs.includes(s)) ?? "unknown";
 const ago = (iso: string | undefined, now: Date) => {
@@ -118,6 +130,7 @@ export class Connections {
       httpTimeoutMs: deps.httpTimeoutMs ?? 10_000,
       sdkProbe: deps.sdkProbe ?? (() => realSdkProbe()),
       gh: deps.gh ?? (async () => { const r = await runGh(ghArgv.authStatus(), { bin: cfg.github?.bin, timeoutMs: 10_000 }); return { ok: r.ok, ...(r.err ? { err: r.err } : {}) }; }),
+      resolves: deps.resolves ?? resolves,
       hasServer: deps.hasServer ?? hasUserMcpServer,
       cliServers: deps.cliServers ?? (() => cliMcpServers(cfg.connectors ?? CONNECTORS).map((s) => s.name)),
       env: deps.env ?? process.env,
@@ -156,7 +169,9 @@ export class Connections {
       try {
         const r = await this.d.gh();
         const missing = !r.ok && /ENOENT|not found|command not found/i.test(r.err ?? "");
-        this.ghr = { ok: r.ok, ...(missing ? { missing } : {}), ...(r.err ? { error: redact(r.err) } : {}), latencyMs: Date.now() - t0, at: this.iso() };
+        // gh 는 인터넷이 안 돼도 「토큰이 잘못됐다」고 말한다 — 실패했을 때만 주소 찾기를 한 번 해서 가린다
+        const offline = !r.ok && !missing && !(await this.d.resolves("api.github.com"));
+        this.ghr = { ok: r.ok, ...(missing ? { missing } : {}), ...(offline ? { offline } : {}), ...(r.err ? { error: redact(r.err) } : {}), latencyMs: Date.now() - t0, at: this.iso() };
       } catch (e) { this.ghr = { ok: false, error: redact(e), latencyMs: Date.now() - t0, at: this.iso() }; }
     }
     // local 은 rows() 가 매번 새로 계산한다
@@ -261,8 +276,8 @@ export class Connections {
     // gh
     const g = this.ghr;
     rows.push(g
-      ? { id: "gh", label: "GitHub(gh)", group: "local", check: "gh", checkedAt: g.at, latencyMs: g.latencyMs, state: g.ok ? "ok" : g.missing ? "off" : "error",
-          detail: g.ok ? `로그인됨${this.cfg.github?.enabled === false ? " · 설정에서 꺼 둠" : ""}` : g.missing ? "gh 가 설치되어 있지 않아요" : "gh auth status 실패 — 터미널에서 gh auth login", ...(g.error && !g.ok ? { error: g.error } : {}) }
+      ? { id: "gh", label: "GitHub(gh)", group: "local", check: "gh", checkedAt: g.at, latencyMs: g.latencyMs, state: g.ok ? "ok" : g.missing ? "off" : g.offline ? "warn" : "error",
+          detail: g.ok ? `로그인됨${this.cfg.github?.enabled === false ? " · 설정에서 꺼 둠" : ""}` : g.missing ? "gh 가 설치되어 있지 않아요" : g.offline ? "인터넷 연결 문제(이 Mac 이 github.com 주소를 못 찾음)로 로그인을 확인하지 못했어요 — 연결되면 다시 확인해요" : "gh auth status 실패 — 터미널에서 gh auth login", ...(g.error && !g.ok ? { error: g.error } : {}) }
       : { id: "gh", label: "GitHub(gh)", group: "local", check: "gh", state: "unknown", pending: true, detail: "확인 전" });
 
     // 로컬(설정·마지막 run) — 매번 새로

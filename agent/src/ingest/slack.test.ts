@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Store } from "../store.ts";
 import { loadConfig } from "../config.ts";
-import { SlackIngester, attentionSince, callKey, formatAttention, mentions, permalinkOf } from "./slack.ts";
+import { SlackIngester, attentionSince, callKey, formatAttention, ingestErrorText, mentions, permalinkOf } from "./slack.ts";
 
 const ME = "UME";
 const NOW = Date.parse("2026-10-08T12:00:00Z");
@@ -307,4 +307,10 @@ test("동시 실행 방지: 돌고 있으면 바로 0을 돌려준다", async ()
   const [a, b] = await Promise.all([ing.run(), ing.run()]);
   assert.ok(a.messages > 0);
   assert.equal(b.messages, 0);
+});
+
+test("ingestErrorText: 이름 찾기·연결 실패는 인터넷 문제로, 그 밖은 호출 수와 마지막 오류", () => {
+  assert.match(ingestErrorText({ errors: 20, calls: 20 }, "A request error occurred: getaddrinfo ENOTFOUND slack.com"), /^인터넷 연결 문제로 Slack 에 닿지 못했어요\(20\/20회\)/);
+  assert.match(ingestErrorText({ errors: 1, calls: 5 }, "fetch failed"), /인터넷 연결 문제/);
+  assert.equal(ingestErrorText({ errors: 2, calls: 9 }, "invalid_auth"), "Slack 호출 2/9회 실패: invalid_auth");
 });
