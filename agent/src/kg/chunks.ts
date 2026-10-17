@@ -9,6 +9,7 @@ import type { Store } from "../store.ts";
 import { IS_WIN, winNorm } from "../plat.ts";
 import { mutedIds, permalinkOf } from "../ingest/slack.ts";
 import { readLines } from "../ingest/sessions.ts";
+import { clip, oneLine } from "../text.ts";
 
 export const CHUNK_TARGET = 7000;
 const MAX_PROMPT = 4000, MAX_ASSISTANT = 2500, MAX_SUB_TASK = 1500, MAX_SUB_TEXT = 1500, MAX_TOOLS_LINE = 400;
@@ -43,8 +44,6 @@ export function ensureChunkTables(store: Store) {
   store.db.exec(SCHEMA);
 }
 
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 export const hashText = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 16);
 
 // KST 기준 "MM-DD HH:MM"

@@ -76,10 +76,8 @@ function fileConfig(): Record<string, unknown> {
 function fileBudget(): number | undefined {
   const env = Number(process.env.CY_AGENT_KG_BUDGET);
   if (env > 0) return env;
-  try {
-    const v = Number(JSON.parse(readFileSync(join(HOME_DIR, "config.json"), "utf8")).kgBudgetUsd);
-    return v > 0 ? v : undefined;
-  } catch { return undefined; }
+  const v = Number(fileConfig().kgBudgetUsd);
+  return v > 0 ? v : undefined;
 }
 
 export class KgBackfill {

@@ -11,6 +11,7 @@ import { voice, tone } from "./voice.ts";
 import { PRIO_LABEL } from "./local-mode.ts";
 import { phrase, phraseVoice, customPhrase } from "./phrases.ts";
 import { mergeDetail, mergeQuestion, type MergeInfo } from "./merge-request.ts";
+import { clip } from "./text.ts";
 
 export type ReactionBus = { bubble(b: Bubble): string; clear(id: string): void };
 export type TodoLike = { id: string; title: string; source?: string; priority?: number; status?: string; created?: string; updated?: string; description?: string };
@@ -64,7 +65,6 @@ export type ReactionOpts = {
   sequenceGapMs?: number;
 };
 
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 // 말풍선용 할 일 목록(마크다운 — 오버레이가 글머리표·표로 그린다). 1–3개는 한 줄에 하나
 // `- **[P1]** 제목 · 출처` (+ 설명은 다음 줄), 4개 넘으면 짧은 표. max 넘으면 "…외 N개"

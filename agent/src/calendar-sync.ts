@@ -21,6 +21,7 @@ import { CONNECTORS, isWriteName, mcpTool, type Conn } from "./connectors.ts";
 import { eventsInWindow, fetchIcsText, type FetchText } from "./ics.ts";
 import { phrase } from "./phrases.ts";
 import { calendarAlertOf } from "./calendar-alert.ts";
+import { clip } from "./text.ts";
 
 export const SYNC_EVERY_MS = 30 * 60e3;   // 30분마다 다시 가져온다
 const AWAY_RECHECK_MS = 10 * 60e3; // 자리 비움 중에는 이 간격으로만 입력(ioreg)을 다시 본다
@@ -97,7 +98,6 @@ export function planAlerts(meetings: Meeting[], nowMs: number, fired: (m: Meetin
 export function kstHHMM(iso: string): string {
   return new Date(Date.parse(iso) + 9 * 3600e3).toISOString().slice(11, 16);
 }
-const clip = (s: string, n: number) => s.length > n ? `${s.slice(0, n - 1)}…` : s;
 const LOCATION_MAX = 30;
 
 // 온라인 링크 이름: Teams 면 "온라인(Teams)", 그 밖(Zoom 등)은 "온라인". 링크 없으면 없음

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Store, Node } from "./store.ts";
 import { character } from "./characters.ts";
+import { clipText as clip } from "./text.ts";
 
 export const CATEGORIES = ["preference", "person", "project", "routine", "style", "priority"] as const;
 export type FactCategory = (typeof CATEGORIES)[number];
@@ -57,10 +58,6 @@ const CAT_KO: Record<FactCategory, string> = {
 };
 const round = (x: number) => Math.round(x * 100) / 100;
 const clamp = (x: number) => Math.max(0, Math.min(1, round(x)));
-const clip = (s: unknown, n: number) => {
-  const t = String(s ?? "").replace(/\s+/g, " ").trim();
-  return t.length > n ? t.slice(0, n - 1) + "…" : t;
-};
 
 // ---------- 저장소 ----------
 

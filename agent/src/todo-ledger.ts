@@ -1,6 +1,7 @@
 // 할 일 일지(store.ts todo_ledger) 읽기 도우미: "사용자가 지우거나 끝낸 일" 기억 → 브리핑 맥락·cy todos_list·GET /todos/ledger.
 // 기록은 store 의 할 일 변경 경로가 남긴다(added·edited·done·skipped·reopened·trashed·restored·purged·progress·blocked·merged, by user|briefing|rule|auto).
 import { kstDay, type LedgerAction, type LedgerEntry, type Store, type TodoActor } from "./store.ts";
+import { clip } from "./text.ts";
 
 export const MEMORY_DAYS = 14;
 const LIFE: LedgerAction[] = ["added", "done", "skipped", "reopened", "trashed", "restored", "purged"];
@@ -22,7 +23,6 @@ export function removedRecently(store: Store, now = new Date(), days = MEMORY_DA
   return [...last.values()].sort((a, b) => b.at.localeCompare(a.at) || b.n - a.n).filter((e) => e.action === "trashed" || e.action === "purged" || e.action === "done" || e.action === "skipped").slice(0, limit);
 }
 
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 export const memoryLine = (e: LedgerEntry) => `- ${e.day.slice(5)} ${actionKo(e.action)}(${byKo(e.by)}) id=${e.todoId} ${clip(e.title.replace(/\s+/g, " "), 70)}`;
 
 // 브리핑 맥락용(짧게): 지운 일 먼저(최대 30), 그다음 끝낸 일(최대 15 — 열린 할 일 바로 위 "최근 끝낸 할 일"과 겹쳐도 짧게)

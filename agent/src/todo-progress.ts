@@ -11,6 +11,8 @@ import { HOME_DIR, type Config } from "./config.ts";
 import { finalOutput, runs as globalRuns, trackQuery, withRun, type Run, type RunKind, type RunRegistry } from "./runs.ts";
 import type { AutoEvidence, Node, Store, Todo } from "./store.ts";
 import { cliStructured, featureBrain, skipQuietly, usesCli, type CodexDeps } from "./feature-brain.ts";
+import { clipText as clip } from "./text.ts";
+import { fmtTime } from "./todo-auto.ts";
 
 export const PROGRESS = {
   intervalMin: 5,        // 기본 간격(cfg.progressCheckMin, 0 이면 끔)
@@ -90,8 +92,6 @@ function state(store: Store) {
     set: (k: string, v: string | number) => { store.db.prepare("INSERT OR REPLACE INTO todo_progress_state (key, value) VALUES (?, ?)").run(k, String(v)); },
   };
 }
-const clip = (s: unknown, n: number) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
-const fmtTime = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(5, 16);
 
 const running = new WeakSet<Store>();
 

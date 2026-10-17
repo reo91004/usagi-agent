@@ -9,6 +9,7 @@ import { HOME_DIR, type Config } from "../config.ts";
 import { looksLikeInstruction } from "../profile.ts";
 import { cliStructured, usesCli, type CodexDeps } from "../feature-brain.ts";
 import type { Chunk } from "./chunks.ts";
+import { clip, oneLine } from "../text.ts";
 
 export const ENTITY_TYPES = ["project", "person", "decision", "issue", "doc", "repo", "topic"] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
@@ -218,8 +219,6 @@ export async function stage2(cfg: Config, cs: Chunk[], known: string, deps: Extr
   return { extraction: v.extraction, stat, rejected: v.rejected };
 }
 
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 모델 출력 검증: 알 수 없는 type/rel, 범위 밖 chunk, 지시문처럼 생긴 텍스트, http 아닌 url은 버린다
