@@ -15,7 +15,7 @@ import { SlackDeepBackfill, type DeepProgress, type SlackDeepDeps, type SlackSur
 import { buildSlackChunks, ensureChunkTables, rowToChunk, scanSessions, type ChunkRow, type ScanResult, type ChunkSource } from "./chunks.ts";
 import { stage1, stage1Batches, stage2, stage2Batches, type CallStat, type Verdict } from "./extract.ts";
 import { ensureMergeTables, knownNames, mergeExtraction, Resolver, type MergeResult } from "./merge.ts";
-import { featureBrain, NEEDS_CODER, skipQuietly, type CodexDeps } from "../feature-brain.ts";
+import { featureBrain, NEEDS_CODER, skipQuietly, usesCli, type CodexDeps } from "../feature-brain.ts";
 import { sessionsAllowed } from "../onboarding.ts";
 import { sessionDirs } from "../ingest/remote-sessions.ts";
 
@@ -63,6 +63,8 @@ export type KgDeps = {
 const META = `CREATE TABLE IF NOT EXISTS kg_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`;
 const MAX_ATTEMPTS = 3;
 const MAX_CONSECUTIVE_FAILS = 8;
+// CLI 뇌(Codex·agy)는 비용을 0으로 보고해 달러 예산이 듣지 않는다: 매시간 증분 한 회차의 모델 호출 상한
+export const CLI_MAX_CALLS = 6;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const r5 = (x: number) => Math.round(x * 1e5) / 1e5;
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -224,6 +226,9 @@ export class KgBackfill {
   }
 
   // 동시 n개. 시작 전마다 예산·정지 확인. 연속 실패가 많으면 오류로 멈춘다
+  // 비용이 0으로 보고되는 CLI 뇌에서 달러 예산 대신 쓰는 회차당 호출 상한(증분에서만 켠다)
+  private callCap = Infinity;
+  private runCalls = 0;
   private async pool(tasks: (() => Promise<void>)[], n: number, budget: number, backfill: boolean): Promise<boolean> {
     let i = 0, stopped = false;
     const avg = () => {
@@ -240,6 +245,8 @@ export class KgBackfill {
           break;
         }
         if (this.fails >= MAX_CONSECUTIVE_FAILS) { stopped = true; break; }
+        if (this.runCalls >= this.callCap) { stopped = true; break; }
+        this.runCalls++;
         const t = tasks[i++];
         inflight++;
         try { await t(); } finally { inflight--; }
@@ -518,13 +525,15 @@ export class KgBackfill {
   }
 
   // ── 증분: 워터마크 이후 청크만. 백필이 끝나지 않았어도 최근 것은 돈다(오래된 건 백필 몫)
-  async incremental(opts: { budgetUsd?: number } = {}): Promise<{ chunks: number; costUsd: number; complete: boolean }> {
+  async incremental(opts: { budgetUsd?: number; maxCalls?: number } = {}): Promise<{ chunks: number; costUsd: number; complete: boolean }> {
     if (this.active) return { chunks: 0, costUsd: 0, complete: false };
     if (!this.brainOk()) { skipQuietly("kg", this.cfg); return { chunks: 0, costUsd: 0, complete: false }; }
     let done!: () => void;
     this.active = new Promise((ok) => (done = ok));
     this.stop = false;
     this.fails = 0;
+    this.runCalls = 0;
+    this.callCap = opts.maxCalls ?? (usesCli(this.cfg) ? CLI_MAX_CALLS : Infinity);
     const c0 = this.cost();
     const now = (this.deps.now ?? Date.now)();
     const minEnd = this.meta("watermark") ?? new Date(now - 864e5).toISOString();
@@ -535,6 +544,7 @@ export class KgBackfill {
       const complete = await this.process({ minEnd }, c0 + (opts.budgetUsd ?? 2), false);
       return { chunks: before, costUsd: r2(this.cost() - c0), complete };
     } finally {
+      this.callCap = Infinity;
       this.active = undefined;
       done();
       this.emit(true);

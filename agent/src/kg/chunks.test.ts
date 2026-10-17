@@ -124,3 +124,23 @@ test("buildSlackChunks: 스레드는 스레드끼리, 최상위는 대화·날�
   // 다시 만들어도 바뀐 게 없으면 그대로
   assert.equal(buildSlackChunks(store).newOrChanged, 0);
 });
+
+test("buildSlackChunks(sinceIso): 바뀐 묶음만 다시 읽는다 — 오래된 스레드의 새 답장은 그 스레드 전체, 오래된 날짜 묶음은 건드리지 않는다", () => {
+  const store = new Store(":memory:");
+  const msg = (ts: string, text: string, extra: Record<string, unknown> = {}) =>
+    store.upsertNode(`message:C1:${ts}`, "message", text, { channel: "C1", ts, text, author: "UA", authorName: "Alice", ...extra }, new Date(Number(ts) * 1000).toISOString());
+  const t0 = Date.parse("2026-09-01T02:00:00Z") / 1000;
+  msg(`${t0}.000100`, "옛 스레드 시작", { replyCount: 1 });
+  msg(`${t0 + 60}.000100`, "옛 답", { thread_ts: `${t0}.000100` });
+  msg(`${t0 + 3600}.000100`, "옛 잡담");
+  const day9 = Date.parse("2026-09-09T02:00:00Z") / 1000;
+  msg(`${day9}.000100`, "최근 잡담");
+  assert.equal(buildSlackChunks(store).groups, 3);
+  store.db.exec("DELETE FROM kg_chunks");
+  msg(`${day9 + 60}.000100`, "스레드에 새 답", { thread_ts: `${t0}.000100` });
+  const r = buildSlackChunks(store, { sinceIso: new Date((day9 + 30) * 1000).toISOString() });
+  assert.equal(r.groups, 1);
+  const rows = store.db.prepare("SELECT id, text FROM kg_chunks").all() as any[];
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].text, /옛 스레드 시작[\s\S]*옛 답[\s\S]*스레드에 새 답/);
+});

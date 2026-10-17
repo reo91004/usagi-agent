@@ -334,16 +334,21 @@ export function buildSlackChunks(store: Store, opts: { sinceIso?: string } = {})
   const groupKey = (m: M) => (m.thread ? `${m.channel}:t${m.thread}` : `${m.channel}:d${kstDay(m.at)}`);
   let msgs: M[] = rows.map(parse);
   if (opts.sinceIso) {
-    // 바뀐 묶음 전체를 다시 읽는다
+    // 바뀐 묶음 전체를 다시 읽는다. 채널 전체 이력을 훑지 않는다:
+    // 날짜 묶음은 그날(KST)의 updated 범위(인덱스), 스레드 묶음은 thread_ts·ts 가 그 스레드인 것만
     const keys = new Set(msgs.map(groupKey));
-    const chans = [...new Set(msgs.map((m) => m.channel))];
-    msgs = [];
-    for (const ch of chans) {
-      for (const r of db.prepare("SELECT id, props, updated FROM nodes WHERE kind = 'message' AND json_extract(props, '$.channel') = ?").all(ch) as any[]) {
-        const m = parse(r);
-        if (keys.has(groupKey(m))) msgs.push(m);
-      }
+    const days = [...keys].filter((k) => /:d\d{4}-\d\d-\d\d$/.test(k)).map((k) => k.slice(-10)).sort();
+    const threads = [...new Set(msgs.filter((m) => m.thread).map((m) => m.thread!))];
+    const found = new Map<string, any>();
+    if (days.length) {
+      const lo = new Date(Date.parse(`${days[0]}T00:00:00+09:00`)).toISOString(), hi = new Date(Date.parse(`${days[days.length - 1]}T00:00:00+09:00`) + 864e5).toISOString();
+      for (const r of db.prepare("SELECT id, props, updated FROM nodes WHERE kind = 'message' AND updated >= ? AND updated < ?").all(lo, hi) as any[]) found.set(r.id, r);
     }
+    if (threads.length) {
+      const q = threads.map(() => "?").join(",");
+      for (const r of db.prepare(`SELECT id, props, updated FROM nodes WHERE kind = 'message' AND (json_extract(props, '$.thread_ts') IN (${q}) OR json_extract(props, '$.ts') IN (${q}))`).all(...threads, ...threads) as any[]) found.set(r.id, r);
+    }
+    msgs = [...found.values()].map(parse).filter((m) => keys.has(groupKey(m)));
   }
   const groups = new Map<string, M[]>();
   for (const m of msgs) {

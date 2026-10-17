@@ -297,3 +297,18 @@ test("결정 규칙: 답하기류만 바로 끝내고, 나머지는 '답했음' 
   assert.equal(r2?.hints, 0); // 같은 답으로는 다시 묻지 않는다
   assert.equal(calls.length, 1);
 });
+
+test("모델이 계속 실패하는 힌트는 실패 횟수만큼 늘려 쉰다", async () => {
+  const s = setup();
+  const q1 = ts(80, "000200"); msg(s.store, "C1", q1, { mention: true, text: "CSV 가져와 주세요" }); msg(s.store, "C1", ts(79), { me: true, thread: q1, text: "가져왔어요" });
+  s.store.upsertTodo({ id: `slack:C1:${q1}`, title: "CSV를 리스트로 가져오기", source: "slack", priority: 2 });
+  await detectCompletions(s.cfg, s.store, { query: fakeQuery(() => []).q, now: NOW });
+  let n = 0;
+  const bad = (() => { n++; return (async function* () { throw new Error("모델 실패"); })(); }) as any;
+  const run = (min: number) => runAfterSlackIngest(s.agent, s.cfg, s.store, { query: bad, now: new Date(NOW.getTime() + min * 60e3), log: () => {} });
+  assert.equal((await run(1))?.hints, 1);
+  assert.equal((await run(17))?.hints, 0, "15분 쿨다운은 지났지만 힌트는 30분 쉰다");
+  assert.equal((await run(40))?.hints, 1);
+  assert.equal((await run(60))?.hints, 0, "두 번째 실패 뒤엔 60분 쉰다");
+  assert.ok(n >= 2);
+});

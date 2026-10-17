@@ -13,7 +13,7 @@ import { basename } from "node:path";
 import { IS_WIN, LOCAL_PROJECT_SQL, isLocalProjectId, pathWithin } from "../plat.ts";
 import type { Config } from "../config.ts";
 import { looksLikeInstruction } from "../profile.ts";
-import { featureBrain, skipQuietly, type CodexDeps } from "../feature-brain.ts";
+import { featureBrain, skipQuietly, usesCli, type CodexDeps } from "../feature-brain.ts";
 import type { Store } from "../store.ts";
 import { batchBy, run, type CallStat } from "./extract.ts";
 import { canonical, ensureMergeTables, meId, normKey, readEntity, type EntityProps, type StatusEntry } from "./merge.ts";
@@ -767,12 +767,15 @@ export type RefineReport = {
 };
 
 const MAX_FAILS = 6;
+// CLI 뇌(Codex·agy)는 비용을 0으로 보고해 달러 예산이 듣지 않는다: 매시간 다듬기 한 회차의 모델 호출 상한
+export const CLI_MAX_REFINE_CALLS = 3;
 
 export class Refiner {
   cfg: Config; store: Store; deps: RefineDeps; model: string;
   run = "";
   costUsd = 0; calls = 0; fails = 0;
   budget = Infinity;
+  maxCalls = Infinity; // 비용 0 으로 보고하는 CLI 뇌용 회차당 호출 상한
   stopped?: RefineReport["stopped"];
   private stop = false;
   private callCosts: number[] = [];
@@ -820,6 +823,7 @@ export class Refiner {
     const worker = async () => {
       while (i < tasks.length && !this.stop) {
         if (this.costUsd + (inflight + 1) * this.avgCall() * 1.3 > this.budget) { this.stop = true; this.stopped = "budget"; break; }
+        if (this.calls + inflight >= this.maxCalls) { this.stop = true; this.stopped = "budget"; break; }
         if (this.fails >= MAX_FAILS) { this.stop = true; this.stopped = "failing"; break; }
         if (this.deps.shouldStop?.()) { this.stop = true; this.stopped = "user"; break; }
         const t = tasks[i++];
@@ -1003,15 +1007,21 @@ async function estimate(r: Refiner, plan: RefinePlan): Promise<NonNullable<Refin
 
 // 매시간용: 워터마크 이후 근거가 붙은 엔티티만. 합쳐진 id 정리 → 그 엔티티가 든 후보 묶음 → 그 이슈들 → 그 프로젝트 요약(6시간 넘은 것만).
 // 처음(워터마크 없음)이면 워터마크만 찍고 규칙(stale)만 돈다 — 전체 검토는 `kg refine`.
-export async function refineIncremental(cfg: Config, store: Store, opts: { budgetUsd?: number; deps?: RefineDeps; summaryMaxAgeMs?: number } = {}): Promise<RefineReport> {
+export async function refineIncremental(cfg: Config, store: Store, opts: { budgetUsd?: number; maxCalls?: number; deps?: RefineDeps; summaryMaxAgeMs?: number } = {}): Promise<RefineReport> {
   const t0 = Date.now();
   const r = new Refiner(cfg, store, opts.deps);
   r.budget = opts.budgetUsd ?? 0.5;
-  r.run = `inc-${r.iso()}`;
+  r.maxCalls = opts.maxCalls ?? (usesCli(cfg) ? CLI_MAX_REFINE_CALLS : Infinity);
   const report = emptyReport({ sureMerges: 0, clusters: 0, clusterMembers: 0, clusterCalls: 0, issuesToReview: 0, issueCalls: 0, projectsToSummarize: 0, summaryCalls: 0 }, false, store);
   if (!featureBrain(cfg, opts.deps?.codex?.commandExists)) return noBrain(cfg, report, opts.deps);
   const startedAt = r.iso();
   const wm = meta(store, "refineWatermark");
+  // 예산에 걸려 멈췄으면 같은 입력 구간(wm~to)을 같은 run 으로 이어 한다: 끝낸 판정은 다시 부르지 않는다.
+  // 구간 뒤에 생긴 새 근거는 구간이 끝나 워터마크가 to 로 옮겨진 다음 회차에서 처리한다.
+  const pend = JSON.parse(meta(store, "refineIncPending") ?? "null") as { run: string; from: string; to: string } | null;
+  const resume = pend && pend.from === wm ? pend : undefined;
+  const to = resume?.to ?? startedAt;
+  r.run = resume?.run ?? `inc-${startedAt}`;
   refoldMerged(store, startedAt);
   if (!wm) {
     report.issues.staleByRule = applyStaleRule(store, r.now());
@@ -1020,7 +1030,7 @@ export async function refineIncremental(cfg: Config, store: Store, opts: { budge
     return report;
   }
   const touched = new Set((store.db.prepare(`SELECT DISTINCT ev.target t FROM kg_evidence ev JOIN kg_chunks c ON c.id = ev.chunk
-    WHERE c.updated >= ? AND instr(ev.target, '|') = 0`).all(wm) as any[]).map((x) => canonical(store, x.t)));
+    WHERE c.updated >= ? AND c.updated < ? AND instr(ev.target, '|') = 0`).all(wm, to) as any[]).map((x) => canonical(store, x.t)));
   let ok = true;
   if (touched.size) {
     ok = await r.resolveEntities(report, { only: touched });
@@ -1045,8 +1055,11 @@ export async function refineIncremental(cfg: Config, store: Store, opts: { budge
     report.issues.staleByRule = applyStaleRule(store, r.now());
   }
   report.stopped = r.stopped;
-  // 예산에 걸려 못 본 것은 다음 시간에 다시(워터마크를 옮기지 않는다)
-  if (ok) setMeta(store, "refineWatermark", startedAt);
+  // 예산에 걸려 못 본 것은 다음 시간에 같은 구간으로 이어 한다(워터마크를 옮기지 않는다)
+  if (ok) {
+    setMeta(store, "refineWatermark", to);
+    store.db.prepare("DELETE FROM kg_meta WHERE key = 'refineIncPending'").run();
+  } else setMeta(store, "refineIncPending", JSON.stringify({ run: r.run, from: wm, to }));
   report.issues.after = statusDist(store);
   report.calls = r.calls; report.costUsd = r4(r.costUsd); report.ms = Date.now() - t0;
   return report;
