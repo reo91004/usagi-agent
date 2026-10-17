@@ -130,6 +130,22 @@ export function ensureAgyMcp(url: string, home = homedir(), servers: CliMcpServe
   return changed;
 }
 
+// 뇌가 agy 가 아닐 때(#56): 우사기가 agy 전역 설정에 넣은 것만 지운다 — usagi·usagi-… 서버(사용자 MCP 비밀값이 들어 있을 수 있다),
+// mcp(usagi…) 규칙, 수정 run 의 워크트리 쓰기 규칙. 사용자가 넣은 다른 서버·규칙은 그대로. 다시 agy 로 바꾸면 첫 채팅·수정 run 때 다시 넣는다
+export function removeAgyUsagi(home = homedir(), worktreesDir = join(HOME_DIR, "worktrees")): string[] {
+  const p = agyPaths(home);
+  const changed: string[] = [];
+  const mcp = readObj(p.mcp);
+  const cur: Obj = mcp?.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+  const keep = Object.fromEntries(Object.entries(cur).filter(([k]) => k !== MCP_NAME && !ours(k)));
+  if (mcp && Object.keys(keep).length !== Object.keys(cur).length) { writeObj(p.mcp, { ...mcp, mcpServers: keep }, 0o644); changed.push(p.mcp); }
+  const st = readObj(p.settings);
+  const allow: unknown[] = Array.isArray(st?.permissions?.allow) ? st!.permissions.allow : [];
+  const left = allow.filter((r) => !ourRule(r) && r !== AGY_ALLOW && r !== `write_file(${worktreesDir})`);
+  if (st && left.length !== allow.length) { writeObj(p.settings, { ...st, permissions: { ...st.permissions, allow: left } }, 0o600); changed.push(p.settings); }
+  return changed;
+}
+
 function addAllow(path: string, st: Obj, rules: string[]): boolean {
   const allow: unknown[] = Array.isArray(st.permissions?.allow) ? st.permissions.allow : [];
   const add = rules.filter((r) => !allow.includes(r));

@@ -168,3 +168,24 @@ test("ask(채팅, 뇌 codex): 설정의 커넥터와 ~/.claude.json 으로 사�
     setCliMcpUrl(undefined);
   }
 });
+
+test("#56 removeAgyUsagi: 우사기가 넣은 서버·규칙만 지우고 사용자 것은 그대로, 헤더 없는 http(OAuth) 서버는 Codex·agy 에 안 붙임", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { removeAgyUsagi } = await import("./mcp-http.ts");
+  const { cliMcpServers } = await import("./cli-mcp.ts");
+  const home = mkdtempSync(join(tmpdir(), "agy-clean-"));
+  const p = agyPaths(home);
+  mkdirSync(join(home, ".gemini", "config"), { recursive: true });
+  mkdirSync(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+  writeFileSync(p.mcp, JSON.stringify({ mcpServers: { usagi: { url: "http://127.0.0.1:1/mcp/x" }, "usagi-gmail": { command: "x", env: { TOKEN: "secret" } }, mine: { command: "y" } } }));
+  writeFileSync(p.settings, JSON.stringify({ trustedWorkspaces: ["/u"], permissions: { allow: [AGY_ALLOW, "mcp(usagi-gmail/search)", "write_file(/w/worktrees)", "read_file(/u/.gitconfig)", "command(git)"] } }));
+  assert.deepEqual(removeAgyUsagi(home, "/w/worktrees"), [p.mcp, p.settings]);
+  assert.deepEqual(JSON.parse(readFileSync(p.mcp, "utf8")).mcpServers, { mine: { command: "y" } });
+  assert.deepEqual(JSON.parse(readFileSync(p.settings, "utf8")), { trustedWorkspaces: ["/u"], permissions: { allow: ["read_file(/u/.gitconfig)", "command(git)"] } });
+  assert.deepEqual(removeAgyUsagi(home, "/w/worktrees"), []);
+  assert.deepEqual(removeAgyUsagi(mkdtempSync(join(tmpdir(), "agy-none-"))), []); // agy 를 안 쓰는 맥
+  const conns = { slack: { cap: "slack", mode: "off" }, calendar: { cap: "calendar", mode: "off" }, mail: { cap: "mail", mode: "mcp", server: "oauthonly", tools: { search: "search_threads" } }, issues: { cap: "issues", mode: "off" } } as any;
+  assert.deepEqual(cliMcpServers(conns, () => ({ mcpServers: { oauthonly: { type: "http", url: "https://mail.example/mcp" } } })), []);
+});
