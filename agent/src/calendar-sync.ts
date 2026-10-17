@@ -4,6 +4,7 @@
 //
 // api(ICS): ics.ts 가 코드로 읽는다(모델 없음). mcp: 경량 모델이 매핑된 일정 도구를 한 번 부르고 구조화 출력으로 돌려준다.
 // 장소: location 이름(여러 곳이면 ", "). 장소 칸에 링크(Zoom 등)를 적은 일정은 온라인 링크로 본다.
+import { googleSource } from "./google-calendar.ts";
 import { query as sdkQuery, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { NEEDS_CLAUDE_MCP, skipQuietly } from "./feature-brain.ts";
 import { mkdirSync } from "node:fs";
@@ -180,6 +181,14 @@ export function alertDetail(m: Meeting): string | undefined {
 
 export type CalendarSource = (cfg: Config, w: { from: string; to: string }) => Promise<{ ok: boolean; events: CalEvent[]; calls: number; errors: number; costUsd: number }>;
 
+// ICS 와 Google 로그인을 같이 쓸 때: 둘 다 읽어 합친다(같은 일정은 toMeetings 가 제목·시작으로 하나로). 하나라도 실패하면 ok=false(예전 것 유지)
+export function bothSources(srcs: CalendarSource[]): CalendarSource {
+  return async (cfg, w) => {
+    const rs = await Promise.all(srcs.map((s) => s(cfg, w)));
+    return { ok: rs.every((r) => r.ok), events: rs.flatMap((r) => r.events), calls: rs.reduce((n, r) => n + r.calls, 0), errors: rs.reduce((n, r) => n + r.errors, 0), costUsd: 0 };
+  };
+}
+
 // api: 비공개 ICS 주소들(여러 캘린더면 여러 개). 하나라도 실패하면 ok=false(예전 것 유지)
 export function icsSource(urls: string[], opts: { timeZone: string; email?: string }, fetchText: FetchText = fetchIcsText): CalendarSource {
   return async (_cfg, w) => {
@@ -281,7 +290,10 @@ export function mcpEventsToCal(list: unknown): CalEvent[] {
 
 // 커넥터 설정 → 원천. off·준비 안 됨은 null
 export function sourceFor(conn: Conn): CalendarSource | null {
-  if (conn.mode === "api" && conn.cap === "calendar") return conn.icsUrls.length ? icsSource(conn.icsUrls, { timeZone: conn.timeZone, email: conn.email }) : null;
+  if (conn.mode === "api" && conn.cap === "calendar") {
+    const srcs = [...(conn.icsUrls.length ? [icsSource(conn.icsUrls, { timeZone: conn.timeZone, email: conn.email })] : []), ...(conn.google ? [googleSource()] : [])];
+    return srcs.length > 1 ? bothSources(srcs) : srcs[0] ?? null;
+  }
   if (conn.mode === "mcp") return mcpCalendarSource(conn);
   return null;
 }

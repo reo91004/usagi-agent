@@ -51,6 +51,7 @@ import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
 import { collectDay, summarizeDay, writeDay } from "./research-note.ts";
 import { notePathFor, researchSummary } from "./research.ts";
 import { directivesView } from "./directives.ts";
+import { googleStatus, logout as logoutGoogle, saveClient, setGoogleCalendar, startLogin } from "./google-calendar.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl } from "./mcp-http.ts";
@@ -199,6 +200,27 @@ await bus.listen(cfg.port, {
   }),
   researchGpu: async () => ({ at: new Date().toISOString(), hosts: await remoteGpuData(cfg) }),
   directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
+  // Google 캘린더 로그인: 끝나면 config.json 에 google: true → 연결이 바뀌었으니 데몬이 다시 켜지며 붙는다(reloadConnectors)
+  google: {
+    status: () => googleStatus(),
+    client: (text) => { try { saveClient(text); return { ok: true }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; } },
+    login: async () => {
+      try {
+        return { ok: true, ...(await startLogin({ onDone: (email) => {
+          console.log(`[calendar] Google 로그인 됨${email ? `: ${email}` : ""}`);
+          try { setGoogleCalendar(join(HOME_DIR, "config.json"), true); } catch (e: any) { console.warn("[calendar]", e?.message ?? e); }
+          pushStatus();
+          reloadConnectors();
+        } })) };
+      } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
+    },
+    logout: async () => {
+      await logoutGoogle();
+      try { setGoogleCalendar(join(HOME_DIR, "config.json"), false); } catch (e: any) { console.warn("[calendar]", e?.message ?? e); }
+      reloadConnectors();
+      return { ok: true };
+    },
+  },
   researchNote: (day) => notePathFor(cfg, day),
   todoDone: (id) => agent.todoDone(id),
   todoAdd: (t) => agent.addTodo(t),
