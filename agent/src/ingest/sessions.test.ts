@@ -75,6 +75,15 @@ test("readLines: 1MB 경계를 넘는 줄도 한 줄로, 마지막 줄바꿈이 
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("readLines: 8MB 넘는 줄은 버리고 빈 줄로, 앞뒤 줄은 그대로(offset 은 앞으로)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cy-lines-"));
+  const p = join(dir, "s.jsonl");
+  const huge = "x".repeat(9 << 20);
+  writeFileSync(p, `a\n${huge}\nb\n${huge}`); // 마지막 줄은 줄바꿈 없이 끝나는 큰 줄
+  assert.deepEqual([...readLines(p)], ["a", "", "b", ""]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("ingestSessions: subagents 폴더는 들어가지 않는다", () => {
   const dir = mkdtempSync(join(tmpdir(), "cy-sub-"));
   const line = (id: string) => JSON.stringify({ type: "user", sessionId: id, cwd: "/w", message: { content: "안녕" } }) + "\n";

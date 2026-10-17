@@ -45,6 +45,8 @@ test("[stall]: 단조 시계로만 잰다 — 잠자기(벽시계만 크게 뜀)
   assert.equal(stallLag(4500, 4500), 3500); // 진짜 멈춤
   assert.ok(stallLag(1001, 8 * 3600e3) <= 0); // 맥이 8시간 잠듦
   assert.ok(stallLag(1000, 1000 + 60e3) <= 0); // 시계 맞춤
+  assert.ok(stallLag(5020, 5020, 5000) <= 2000); // 5초 주기: 평소 지터는 임계(2초) 아래
+  assert.ok(stallLag(7500, 7500, 5000) > 2000); // 5초 주기에서도 2.5초 멈춤은 잡힌다
 });
 
 // 새 OpenAI 키 모양(sk-proj-·sk-svcacct-, 밑줄·하이픈 섞임)도 가린다. 진짜 키 아님

@@ -148,6 +148,7 @@ export class Store {
   db: DatabaseSync;
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA busy_timeout = 5000;"); // 다른 프로세스(cli·패널)가 쓰는 중이면 바로 실패하지 않고 기다린다. journal_mode 전환도 잠금이 필요해 먼저
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec(SCHEMA);
     this.migrate();

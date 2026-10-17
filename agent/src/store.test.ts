@@ -6,6 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "./store.ts";
 
+test("Store: 열자마자 busy_timeout 5000", () => {
+  const s = new Store(":memory:");
+  assert.equal((s.db.prepare("PRAGMA busy_timeout").get() as any).timeout, 5000);
+});
+
 test("제안 상태 전이는 기대 상태일 때만 일어난다(중복 승인 방지)", () => {
   const s = new Store(":memory:");
   s.addProposal({ id: "p1", repo: "/r/app", title: "버튼", plan: "색 변경" });

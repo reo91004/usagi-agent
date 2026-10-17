@@ -15,8 +15,6 @@ import { writeDay } from "./research-note.ts";
 
 const cfg = loadConfig();
 const store = new Store(cfg.dbPath);
-// 데몬도 같은 DB에 쓴다(WAL) — 잠금이면 기다린다
-store.db.exec("PRAGMA busy_timeout = 5000;");
 const [cmd, sub, ...rest] = process.argv.slice(2);
 
 if (cmd === "note") {
