@@ -7,6 +7,7 @@ import { DEDUPE, refsOf, sameItem } from "./todo-match.ts";
 import type { Attachment } from "./attachments.ts";
 import { IS_WIN, pathWithin } from "./plat.ts";
 
+export type ResearchMetaRow = { path: string; kind: "research" | "project" | "none" | null; name: string | null; subs: unknown[]; url: string | null; mergedInto: string | null };
 export type Node = { id: string; kind: string; label: string; props: Record<string, unknown>; updated: string };
 export type Todo = {
   id: string; title: string; source: string; link?: string; priority: number; status: string; created: string;
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS chat (n INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT 
 CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'chat', todo_id TEXT, created TEXT NOT NULL, updated TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS chat_threads_updated ON chat_threads(updated);
 CREATE TABLE IF NOT EXISTS hidden_projects (path TEXT PRIMARY KEY, name TEXT NOT NULL, at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS research_meta (path TEXT PRIMARY KEY, kind TEXT, name TEXT, subs TEXT NOT NULL DEFAULT '[]', url TEXT, merged_into TEXT, at TEXT NOT NULL);
 `;
 const LEDGER = `
 CREATE TABLE IF NOT EXISTS todo_ledger (n INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, at TEXT NOT NULL, todo_id TEXT NOT NULL, title TEXT NOT NULL, action TEXT NOT NULL, by TEXT NOT NULL, detail TEXT);
@@ -637,6 +639,17 @@ export class Store {
   hiddenProjects(): { path: string; name: string }[] {
     return (this.db.prepare("SELECT path, name FROM hidden_projects ORDER BY at").all() as any[]).map((r) => ({ path: r.path, name: r.name }));
   }
+  // 연구 프로젝트 메타(연구 탭): 폴더 키별 종류·이름·제출 기록·주소·합친 대표 폴더. 사용자가 정한 것만 있다
+  researchMeta(): ResearchMetaRow[] {
+    return (this.db.prepare("SELECT * FROM research_meta").all() as any[]).map((r) => ({
+      path: r.path, kind: r.kind, name: r.name, subs: JSON.parse(r.subs), url: r.url, mergedInto: r.merged_into,
+    }));
+  }
+  putResearchMeta(m: ResearchMetaRow) {
+    this.db.prepare("INSERT OR REPLACE INTO research_meta (path, kind, name, subs, url, merged_into, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(m.path, m.kind, m.name, JSON.stringify(m.subs), m.url, m.mergedInto, now());
+  }
+
   // 경로가 숨긴 프로젝트(또는 그 하위 폴더)인가
   isHiddenPath(path: string, hidden = this.hiddenProjects()): boolean {
     return hidden.some((h) => path === h.path || path.startsWith(h.path.endsWith("/") ? h.path : h.path + "/") || (IS_WIN && pathWithin(path, h.path)));

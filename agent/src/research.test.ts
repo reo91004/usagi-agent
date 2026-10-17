@@ -23,7 +23,7 @@ test("researchSummary: 연구 연결이 없으면 없음. 도는 작업은 다, 
   const r = researchSummary({ sshHosts: ["g"], jobHosts: ["g", "h"], tineGraph: undefined }, store, NOW)!;
   assert.deepEqual(r.hosts, ["g", "h"]);
   assert.deepEqual(r.jobs.map((j) => [j.name, j.state]), [["학습", "running"], ["평가", "done"], ["ablation", "failed"], ["죽음", "lost"], ["옛 0", "done"], ["옛 1", "done"], ["옛 2", "done"]]);
-  assert.deepEqual(r.jobs[0], { id: "job:g:run", name: "학습", state: "running", at: ago(0.1), host: "g", start: 100, cwd: "/w" });
+  assert.deepEqual(r.jobs[0], { id: "job:g:run", name: "학습", state: "running", at: ago(0.1), label: "학습", host: "g", start: 100, cwd: "/w" });
   assert.deepEqual(r.jobs[1].files, ["a.json"]);
   assert.equal(r.jobs[2].code, 137);
   assert.equal(r.note, undefined);

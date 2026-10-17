@@ -43,6 +43,7 @@ export type BusHandlers = {
   // 연구 탭 「기록 지우기」: usagi-run 의 끝·실패·끊김 기록 하나를 이 맥에서 지운다(서버 파일은 읽을 때 이미 지워짐). 모르는·도는 중이면 false → 404. 없으면 503
   jobForget?(id: string): boolean;
   researchNote?(day: string): string | null;
+  researchProjectPut?(body: unknown): { ok: true } | { error: string }; // 연구 프로젝트 메타 저장(research-projects.ts). { error } → 400
   // 이 Mac 의 캘린더·미리알림(eventkit.ts): 상태 · 연결(macOS 권한을 묻고 기다리는 동안 pending) · 해제. 없으면 503
   apple?: { status(): Promise<unknown>; connect(o: { calendar: boolean; reminders: boolean }): unknown; disconnect(o: { calendar: boolean; reminders: boolean }): unknown };
   // 맥락 도구 MCP(mcp-http.ts) — Codex·agy 뇌가 부른다. 경로의 토큰 검사·본문 읽기는 처리기가 한다. 없으면 503
@@ -544,6 +545,12 @@ export class Bus {
       const body = method === "POST" || method === "PUT" ? await readJson(req) : undefined;
       const r = h.guidelines.handle(method, gl[1], body);
       return json(res, r.status, r.body);
+    }
+    if (req.method === "PUT" && url.pathname === "/research/projects") {
+      if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
+      if (!h.researchProjectPut) return json(res, 503, { error: "research projects unavailable" });
+      const r = h.researchProjectPut(await readJson(req));
+      return "ok" in r ? json(res, 200, r) : json(res, 400, r);
     }
     if (req.method === "PUT" && url.pathname === "/settings") {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });

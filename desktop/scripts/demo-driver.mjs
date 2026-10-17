@@ -709,7 +709,8 @@ const SCENES = {
     await d.wait(4000);
     await pn.scrollTop('#content');
     d.cue('프로젝트 카드');
-    await pn.click('#nav button[data-section="projects"]');
+    await pn.click('#nav button[data-section="research"]');
+    await pn.click('.unbound-folders .hidden-toggle'); // 묶지 않은 폴더는 접혀 있다
     await d.hold('panel');
     await d.snap('projects');
     await pn.scroll('#content', 420);
@@ -908,12 +909,12 @@ const SCENES = {
     await d.hold('panel');
     await pn.eval(`(() => { const l = document.getElementById('chat-log'); l.scrollTo({ top: l.scrollHeight, behavior: 'smooth' }); })()`);
     await d.wait(3500);
-    d.cue('"프로젝트 현황 보여줘" → show 로 작업 폴더 탭');
+    d.cue('"프로젝트 현황 보여줘" → show 로 연구 탭');
     await pn.click('#chat-input');
     await pn.type('프로젝트 현황 보여줘');
     await d.wait(500);
     await pn.key('Enter');
-    await pn.waitFor(`!document.getElementById('sec-projects').hidden`, { timeout: 30000, label: '작업 폴더 탭으로' });
+    await pn.waitFor(`!document.getElementById('sec-research').hidden`, { timeout: 30000, label: '연구 탭으로' });
     await d.snap('chat-show-projects');
     await d.wait(5000);
   },

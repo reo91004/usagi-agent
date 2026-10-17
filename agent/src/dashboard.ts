@@ -10,6 +10,8 @@ import { gitActivity, type Commit, type RepoActivity } from "./git.ts";
 import { listRules, ruleSummary } from "./todo-rules.ts";
 import { DailyPlanService, type DailyPlan } from "./daily-plan.ts";
 import { gitAllowed, sessionsAllowed } from "./onboarding.ts";
+import { buildResearchProjects, type ResearchProject } from "./research-projects.ts";
+import type { tmuxSeen } from "./jobs.ts";
 
 export type DashProject = {
   name: string; path: string; lastActive: string; sessions24h: number;
@@ -17,12 +19,14 @@ export type DashProject = {
   commitsToday: number; recentCommits: Commit[];
   onMac?: boolean; // 접두 없는 경로가 이 Mac 에 있나(VS Code 원격 세션 기록은 서버 경로가 접두 없이 온다). 접두 경로는 생략
   hidden: boolean; // 패널에서 숨김 — 목록 끝에 모아 보여주고 집계·프롬프트에선 뺀다
+  hiddenByResearch?: true; // 연구 프로젝트(연구·프로젝트로 정했거나 합친 폴더)에 속함 — 패널이 「묶지 않은 폴더」에서 뺀다
 };
 export type Dashboard = {
   generatedAt: string;
   briefing: { at: string; bubble: string; replyMd: string } | null;
   commitsToday: number;
   projects: DashProject[];
+  researchProjects: ResearchProject[]; // 연구 탭 맨 위 목록(research-projects.ts)
   todos: DashTodo[];
   recentDone: (DashTodo & { doneAt: string })[]; // 최근 3일 안에 끝난 것(최신순, 최대 10) — 패널 "최근 완료"
   proposals: { id: string; title: string; repo: string; status: ProposalStatus; result?: string; base?: string }[];
@@ -46,6 +50,7 @@ export type DashTodo = {
 export type DashboardDeps = {
   git?: (cfg: Config) => Promise<RepoActivity[]>;
   now?: Date;
+  tmux?: typeof tmuxSeen; // 연구 프로젝트의 실행 중 tmux(기본: 메모리의 마지막 확인)
 };
 
 const DAY = 864e5;
@@ -65,11 +70,17 @@ export async function buildDashboard(cfg: Config, store: Store, deps: DashboardD
   const now = deps.now ?? new Date();
   // git 커밋은 사용자가 고른 레포 폴더에서만, 작업 기록(세션)은 켰을 때만(onboarding.ts)
   const repos = gitAllowed(cfg) ? await (deps.git ?? ((c) => gitActivity(c)))(cfg).catch(() => [] as RepoActivity[]) : [];
+  const sessionsOf = new Map<string, Node[]>();
+  const projs = projects(store, repos, now, sessionsAllowed(cfg), sessionsOf);
+  const researchProjects = buildResearchProjects(store, projs, sessionsOf, now, deps.tmux);
+  const owned = new Set(researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)));
+  for (const p of projs) if (owned.has(p.path)) p.hiddenByResearch = true;
   return {
     generatedAt: now.toISOString(),
     briefing: store.latestBriefing(),
     commitsToday: repos.reduce((n, r) => n + r.commitsToday.length, 0),
-    projects: projects(store, repos, now, sessionsAllowed(cfg)),
+    projects: projs,
+    researchProjects,
     todos: store.openTodos().map(dashTodo),
     recentDone: store.recentlyDone(new Date(now.getTime() - 3 * DAY).toISOString(), 10)
       .map((t) => ({ ...dashTodo(t), doneAt: t.updated ?? t.created })),
@@ -123,7 +134,7 @@ export function gitRootOf(dir: string): string {
 }
 
 // path 가 root 폴더 안인가 — 같은 서버끼리만. 서버의 홈·루트(/home/<user>, /root)는 바깥 폴더로 치지 않는다
-function insideOf(path: string, root: string): boolean {
+export function insideOf(path: string, root: string): boolean {
   const a = splitHost(path), b = splitHost(root);
   if (a.host !== b.host || path === root) return false;
   if (b.host) return !/^\/(?:home\/[^/]+|root)?\/?$/.test(b.dir) && a.dir.startsWith(b.dir + "/");
@@ -133,7 +144,7 @@ function insideOf(path: string, root: string): boolean {
 // 세션 cwd 를 레포 단위로 묶는다: 숨은 폴더 아래는 그 위로(.plans · .claude/worktrees), 레포 하위 폴더는 레포로(레포 목록 밖이면 가장 가까운 .git 루트로),
 // 같은 서버에서 다른 프로젝트 안에 든 프로젝트는 그 바깥 프로젝트로 합친다. 합친 줄은 세션·커밋을 더하고 가장 최근 세션의 제목·요청을 보인다
 type Group = { repos: RepoActivity[]; sessions: Node[] };
-function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true): DashProject[] {
+function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true, sessionsOut?: Map<string, Node[]>): DashProject[] {
   const since = now.getTime() - 7 * DAY;
   const byLen = [...repos].sort((a, b) => b.path.length - a.path.length);
   const groups = new Map<string, Group>();
@@ -180,6 +191,7 @@ function projects(store: Store, repos: RepoActivity[], now: Date, withSessions =
     const lastActive = [last?.updated, ...g.repos.map((r) => r.recentCommits[0]?.time)].filter((x): x is string => !!x && Date.parse(x) >= since)
       .map((x) => new Date(x).toISOString()).sort().at(-1);
     if (!lastActive) continue;
+    sessionsOut?.set(path, sessions);
     out.push({
       name: rootRepo?.name ?? path.split(sep).filter(Boolean).at(-1) ?? path,
       path,

@@ -2,7 +2,8 @@
 // 순수하게 로컬 DB·파일만 본다(서버 접속 없음). GPU 는 패널에서 버튼을 누를 때만 따로 가져온다(remote-fs.ts remoteGpu).
 import type { Config } from "./config.ts";
 import { dayStart, localDay } from "./focus.ts";
-import type { tmuxSeen } from "./jobs.ts";
+import type { TmuxSession } from "./jobs.ts";
+import { expName, projectOf, type ResearchProject } from "./research-projects.ts";
 import { remoteHosts } from "./remote-fs.ts";
 import { hasAuto, notePath } from "./research-note.ts";
 import type { Store } from "./store.ts";
@@ -10,18 +11,19 @@ import type { Store } from "./store.ts";
 export type ResearchJob = {
   id: string; name: string; host?: string; state: "running" | "done" | "failed" | "lost";
   start?: number; seconds?: number; code?: number | null; cwd?: string; cmd?: string; files?: string[]; at: string;
+  label: string; project?: string; // 실험 이름 · 속한 연구 프로젝트 key
 };
 export type Research = {
   hosts: string[];
   jobs: ResearchJob[];
-  tmux: typeof tmuxSeen; // 서버별 마지막으로 읽은 tmux 세션(작업 확인 ssh 에 실려 옴)
+  tmux: Record<string, { at: string; sessions: (TmuxSession & { label: string; project?: string })[] }>; // 서버별 마지막으로 읽은 tmux 세션(작업 확인 ssh 에 실려 옴)
   note?: { day: string; exists: boolean; yesterday?: { day: string; lines: string[]; next: string[] } };
 };
 
 const strs = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, n) : []);
 const RECENT = 6; // 끝난 작업은 최근 몇 개만(도는 작업은 다)
 
-export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tineGraph">, store: Store, now = new Date(), tmux: Research["tmux"] = {}): Research | undefined {
+export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tineGraph">, store: Store, now = new Date(), tmuxIn: Record<string, { at: string; sessions: TmuxSession[] }> = {}, projects: ResearchProject[] = []): Research | undefined {
   const hosts = remoteHosts(cfg);
   if (!hosts.length && !cfg.tineGraph) return undefined;
   const all = store.nodesSince("job", new Date(now.getTime() - 3 * 86400e3).toISOString(), 200);
@@ -30,13 +32,18 @@ export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tin
     const state = p.running ? "running" : p.lost ? "lost" : p.code !== null && p.code !== undefined && p.code !== 0 ? "failed" : "done";
     const files = strs(p.files, 8);
     return {
-      id: j.id, name: j.label, state, at: j.updated,
+      id: j.id, name: j.label, state, at: j.updated, label: expName({ name: j.label, cmd: p.cmd, cwd: p.cwd }),
+      ...(projectOf(projects, p.host, p.cwd) ? { project: projectOf(projects, p.host, p.cwd) } : {}),
       ...(p.host ? { host: String(p.host) } : {}), ...(Number(p.start) > 0 ? { start: Number(p.start) } : {}),
       ...(state === "done" || state === "failed" ? { seconds: Number(p.seconds) || 0, code: Number.isInteger(p.code) ? p.code : null } : {}),
       ...(p.cwd ? { cwd: String(p.cwd) } : {}), ...(p.cmd ? { cmd: String(p.cmd) } : {}), ...(files.length ? { files } : {}),
     };
   });
   const jobs = [...shaped.filter((j) => j.state === "running"), ...shaped.filter((j) => j.state !== "running").slice(0, RECENT)];
+  const tmux: Research["tmux"] = Object.fromEntries(Object.entries(tmuxIn).map(([host, t]) => [host, {
+    at: t.at,
+    sessions: t.sessions.map((s) => ({ ...s, label: expName({ tmuxName: s.name, cmd: s.running ?? undefined, cwd: s.path }), ...(projectOf(projects, host, s.path) ? { project: projectOf(projects, host, s.path) } : {}) })),
+  }]));
   let note: Research["note"];
   if (cfg.tineGraph) {
     const today = localDay(now.getTime());
