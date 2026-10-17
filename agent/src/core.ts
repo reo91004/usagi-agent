@@ -16,6 +16,8 @@ import { attentionSince, formatAttention } from "./ingest/slack.ts";
 import { directivesSince, directiveTodo, markDirective } from "./directives.ts";
 import { recordFeedback, rememberFact, extractRememberedFact, applyMemoryOps, listFacts, forgetFact, factId } from "./profile.ts";
 import { think as realThink, type Thought } from "./brain.ts";
+import { cliMcpServers, readOnlyGate, type CliMcpServer } from "./cli-mcp.ts";
+import type { ProviderDeps } from "./providers.ts";
 import { briefingMilestone, briefingTask, readySources, type SourceId } from "./briefing-sources.ts";
 import { runFix as realRunFix, mergePr as realMergePr, normalizeBase, resolveRepo, runCliAgent, type FixDeps, type FixResult } from "./fixer.ts";
 import { Chat, applyTodoChanges, converse as realConverse, todoThreadFor, unfinishedLine, RESTART_WHY, type Converse, type RunCommand, type SendOpts, type Sent } from "./chat.ts";
@@ -23,7 +25,7 @@ import type { SlashCommands } from "./commands.ts";
 import type { Thread, ThreadKind } from "./store.ts";
 import { buildDashboard, dashboardSummary, type Dashboard } from "./dashboard.ts";
 import { DailyPlanService } from "./daily-plan.ts";
-import { CAPABILITIES, CONNECTORS } from "./connectors.ts";
+import { CAPABILITIES, CONNECTORS, type Connectors } from "./connectors.ts";
 import type { RepoActivity } from "./git.ts";
 import { testsFromLog, type MergeDeps, type Reactions } from "./reactions.ts";
 import { autoDoneBlocks, briefingBlocks, mergeBlocks, proposalBlocks, resolvedBlocks, todoRef, traceBlocks } from "./slack/blocks.ts";
@@ -87,6 +89,7 @@ export type Deps = {
   bgWorktreesDir?: string; // 격리 백그라운드 에이전트의 워크트리 폴더(테스트용). 기본 ~/.cy-agent/worktrees
   // 실제로 쓸 수 있는 커넥터 기능(브리핑이 연결 안 된 출처를 건너뛰게 — briefing-sources.ts readySources). 없거나 모르면 null
   ready?: () => ReadonlySet<SourceId> | null;
+  cliServers?: (conns: Connectors) => CliMcpServer[]; // Codex·agy 에 넘길 MCP 서버(기본 cli-mcp.ts cliMcpServers, 시험용으로 바꿔치기)
   attachments?: AttachmentStore; // 채팅 첨부 보관(테스트는 임시 폴더). 기본 ~/.cy-agent/attachments
   // 자동 머지 레포 목록 고치기(main: settings.autoMergeOp — config.json 에도). 없으면 메모리 cfg 만
   autoMergeOp?: (op: "add" | "remove", slug: string) => { ok: true; changed: boolean; list: string[] } | { ok: false; error: string };
@@ -522,8 +525,12 @@ export class Agent {
       const conns = this.cfg.connectors ?? CONNECTORS;
       let ready: ReadonlySet<SourceId> | null = null;
       try { ready = this.deps.ready ? this.deps.ready() : readySources(conns); } catch { ready = null; }
-      // MCP 는 Claude Code 뇌로만 읽는다 — 다른 뇌(Codex·API 키)엔 도구가 없으니 MCP 출처는 지시에서 뺀다
-      if (activeBrain(this.cfg) !== "claude-code") ready = new Set([...(ready ?? CAPABILITIES)].filter((cap) => conns[cap].mode !== "mcp"));
+      // MCP 는 Claude Code 뇌와, Codex·agy 에 넘길 수 있는 서버(cli-mcp.ts)만 읽는다 — 그 밖의 출처는 지시에서 뺀다
+      const brain = activeBrain(this.cfg);
+      const cli = brain === "codex" || brain === "agy" ? (this.deps.cliServers ?? cliMcpServers)(conns) : [];
+      if (brain !== "claude-code") ready = new Set([...(ready ?? CAPABILITIES)].filter((cap) => { const c = conns[cap]; return c.mode !== "mcp" || cli.some((s) => s.name === c.server); }));
+      // Codex 는 데몬 문지기(읽기 도구만), agy 는 전역 설정의 읽기 도구(providers.ts remoteJson 이 mcp·servers·gate 를 받는다)
+      const mcpDeps = cli.length ? { mcp: true, servers: cli, ...(brain === "codex" ? { gate: readOnlyGate(cli) } : {}) } as ProviderDeps : undefined;
       // 진행 보고: 금방 끝나면 조용히, 오래 걸리면 "슬랙 보는 중…" 같은 이정표만(도구 호출마다 아님).
       // 이정표는 그 출처의 데이터 호출이 성공해서 돌아왔을 때만(도구 목록 검색·실패한 호출·연결 안 된 출처는 아무것도 안 띄움)
       const prog = this.reactions?.progress("briefing", phrase("briefing_prog"), { quietMs: 10e3 });
@@ -532,7 +539,7 @@ export class Agent {
         const m = briefingMilestone(step, ok, conns, ready);
         if (m && !seen.has(m)) { seen.add(m); prog?.step(m); }
       };
-      const t = await this.deps.think(this.cfg, this.store, briefingTask(conns, ready), () => {}, { onResult }).finally(() => prog?.done());
+      const t = await this.deps.think(this.cfg, this.store, briefingTask(conns, ready), () => {}, { onResult, ...(mcpDeps ? { deps: mcpDeps } : {}) }).finally(() => prog?.done());
       const posted = await this.absorb(t);
       this.store.saveBriefing({ bubble: t.bubble, replyMd: t.reply_md });
       this.changed();

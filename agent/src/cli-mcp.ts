@@ -1,14 +1,16 @@
-// 사용자가 Claude Code 에 등록한 MCP 연결(connectors mode "mcp" — 메일·이슈·캘린더·Slack)을 Codex·agy 채팅에도 붙인다(#15 3단계).
+// 사용자가 Claude Code 에 등록한 MCP 연결(connectors mode "mcp" — 메일·이슈·캘린더·Slack)을 Codex·agy 채팅에도 붙인다(#15 3단계). 뒤에서 도는 브리핑·캘린더 동기화도 같은 방식으로 읽는다(#164, readOnlyGate).
 //   서버 정의(command/args/env 또는 url/headers)는 ~/.claude.json 에서, 읽기 도구는 커넥터 매핑 중 guard.ts isReadOnlyCall 을 통과하는 것.
 //   Codex: 서버를 직접 붙이지 않고 데몬의 문지기 주소(mcp-http.ts openGate)를 -c mcp_servers.<이름>.url 로 준다(#65). 데몬이 진짜 서버에 붙어
 //          서버의 도구를 다 보여 주고, 부르기는 승인 브로커(permissions.ts)를 거친다 — 읽기는 바로, 쓰기는 Claude Code 뇌와 같은 승인 카드.
 //          그래서 Codex 쪽 승인은 "approve"(codex exec 는 승인 정책 never 라 prompt 면 바로 거절), 비밀값은 codex 프로세스에 가지 않는다
 //   agy:   전역 mcp_config.json 의 "usagi-<이름>"(enabledTools — 읽기 도구만) + settings.json permissions.allow "mcp(usagi-<이름>/<도구>)"(mcp-http.ts ensureAgyMcp)
 //          headless agy 는 허용 규칙이 없는 MCP 호출을 자동 거절한다(2026-10-17 agy 1.4.0 확인). 쓰기 승인 카드는 못 붙인다(#42)
+//          뒤에서 도는 브리핑도 같은 전역 설정을 읽는다(읽기 도구만 열려 있다). 실행마다 문지기를 달거나 부름을 셀 수는 없어서 캘린더 동기화(부른 횟수를 확인해야 한다)는 agy 로 안 한다
 // 도구별로 열 수 없는 서버(매핑이 비었거나 sse·headersHelper)는 붙이지 않는다. 비밀값(env·헤더 값)은 argv·로그·프롬프트에 넣지 않는다.
 import { CAP_LABELS, CAPABILITIES, CONNECTORS, mcpTool, type Connectors } from "./connectors.ts";
 import { isReadOnlyCall } from "./guard.ts";
 import { readClaudeJson } from "./mcp.ts";
+import type { GateDecide } from "./mcp-http.ts";
 import { PERMISSION_TTL_MS } from "./permissions.ts";
 
 export type CliMcpDef = { command: string; args: string[]; env: Record<string, string> } | { url: string; headers: Record<string, string> };
@@ -70,6 +72,17 @@ export function codexMcpArgs(servers: CliMcpServer[], gate: string): string[] {
     const k = `mcp_servers.${s.name}`;
     return ["-c", `${k}.url=${toml(`${gate}/${s.name}`)}`, "-c", `${k}.tool_timeout_sec=${CODEX_TOOL_TIMEOUT_S}`, "-c", `${k}.default_tools_approval_mode="approve"`];
   });
+}
+
+// 뒤에서 도는 일(브리핑·캘린더 동기화)의 문지기: 사용자 화면이 없어 승인 카드를 못 띄우니, 서버에 매핑된 읽기 도구(only 가 있으면 그 하나)만 바로 통과시키고
+// 나머지(쓰기·매핑 밖 도구)는 거절한다. onCall: 통과한 호출마다(캘린더 동기화가 실제로 불렀는지 세는 데)
+export function readOnlyGate(servers: CliMcpServer[], only?: string, onCall?: () => void): GateDecide {
+  const ok = new Set(servers.flatMap((s) => s.tools.map((t) => mcpTool(s.name, t))).filter((t) => !only || t === only));
+  return async (tool) => {
+    if (!ok.has(tool)) return { deny: "뒤에서 도는 작업이라 읽기 도구만 쓸 수 있어요. 쓰기는 하지 않는다" };
+    onCall?.();
+    return { allow: true };
+  };
 }
 
 // ── agy ────────────────────────────────────────────────

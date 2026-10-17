@@ -4,7 +4,7 @@
 //   agy         → agy -p 한 번(도구 없이 JSON 만 — providers.ts agyExec) + 모양 검사
 //   그 밖(gemini·openai·anthropic·local) 또는 codex·agy 명령이 없으면 → 조용히 건너뛴다(기능마다 로그 한 줄, 한 번만)
 // 워크트리·백그라운드 에이전트는 여기 없다 — Claude Code 전용 그대로. 코드 고치기는 codex 도 된다(fixer.ts driveCodex).
-// 메일·이슈 MCP 연결은 Codex·agy 뇌면 채팅에서만 읽는다(cli-mcp.ts) — 뒤에서 하는 정리·브리핑·캘린더 동기화는 Claude Code 뇌일 때만
+// 사용자 MCP 연결(메일·이슈·캘린더)은 Codex·agy 뇌도 채팅과 브리핑에서 읽는다(cli-mcp.ts, 읽기 도구만). 캘린더 MCP 동기화는 Claude Code·Codex 뇌만(calendar-sync.ts)
 import type { Config } from "./config.ts";
 import { brainOrder, activeBrain, isCooled, withFallback } from "./brain-fallback.ts";
 import { DEFAULT_GENERAL_MODEL } from "./config.ts";
@@ -16,10 +16,11 @@ export type CodexStat = { costUsd: number; inTokens: number; outTokens: number; 
 
 export const NEEDS_CODER = "이 기능은 Claude Code·Codex·Antigravity 가 있어야 돌아요";
 export const NEEDS_CLAUDE_MCP = "MCP 연결(메일·이슈·캘린더·Slack)은 Claude Code·Codex·Antigravity 뇌일 때만 읽어요";
-export const MCP_CHAT_ONLY = "Codex·Antigravity 뇌는 MCP 연결을 채팅에서만 읽어요(브리핑·캘린더 동기화는 Claude Code 뇌일 때)";
+export const MCP_CHAT_ONLY = "Codex·Antigravity 뇌도 MCP 연결을 읽기 전용으로 읽어요(채팅·브리핑)";
 export const MCP_CLI_UNUSABLE = "Codex·Antigravity 로 읽으려면 connectors 의 tools 에 읽기 도구 이름이 있고, Claude Code 에 stdio 서버나 헤더(토큰)로 붙는 http 서버로 등록돼 있어야 해요. Claude Code 안에서 로그인한 서버(Slack 공식·Jira 등)는 넘기지 못해요";
-// 캘린더 MCP 동기화(일정 알림·오늘 일정)는 Claude Code 뇌로만 돈다(calendar-sync.ts mcpCalendarSource)
-export const CAL_MCP_CLAUDE_ONLY = "캘린더 MCP 는 Claude Code 뇌일 때만 일정을 가져와요. 이 Mac 캘린더나 ICS 주소는 어떤 뇌든 돼요";
+// 캘린더 MCP 동기화(일정 알림·오늘 일정)는 Claude Code·Codex 뇌로만 돈다(calendar-sync.ts mcpCalendarSource). Antigravity 는 실행마다 부름을 확인할 수 없어 안 한다
+export const CAL_MCP_CLAUDE_ONLY = "캘린더 MCP 는 Claude Code·Codex 뇌일 때만 일정을 가져와요(Antigravity 는 안 돼요). 이 Mac 캘린더나 ICS 주소는 어떤 뇌든 돼요";
+export const MCP_CAL_CODEX = "Codex 뇌도 캘린더 MCP 를 읽기 전용으로 읽어요(30분마다 동기화)";
 // 뇌가 Claude Code 가 아닐 때 MCP 연결 줄에 붙일 말
 export const mcpBrainNote = (provider?: string) => (provider === "codex" || provider === "agy" ? MCP_CHAT_ONLY : NEEDS_CLAUDE_MCP);
 
@@ -50,7 +51,7 @@ export function skipQuietly(feature: string, cfg: Pick<Config, "brain">, log: (s
 }
 export function resetSkipNotes() { noted.clear(); }
 
-// 패널·상태용 커넥터 목록(대시보드·GET /status 가 같이 쓴다): Codex·agy 뇌면 넘길 수 있는 서버(usable — cli-mcp.ts cliMcpServers 의 이름, 그 뇌일 때만 부른다)만 준비됨 + 「채팅에서만」(캘린더는 동기화가 안 돌아 준비 안 됨),
+// 패널·상태용 커넥터 목록(대시보드·GET /status 가 같이 쓴다): Codex·agy 뇌면 넘길 수 있는 서버(usable — cli-mcp.ts cliMcpServers 의 이름, 그 뇌일 때만 부른다)만 준비됨 + 「채팅에서만」(캘린더는 Codex 만 동기화가 돌고 agy 는 준비 안 됨),
 // 그 밖의 뇌면 MCP 연결은 준비 안 됨 + 이유(등록돼 있어도 읽지 않으니까)
 export function withMcpBrain<T extends { cap?: string; mode: string; ready: boolean; detail?: string; server?: string }>(cfg: Pick<Config, "brain">, list: T[], usable: () => readonly string[] = () => []): T[] {
   const p = cfg.brain?.provider ?? "claude-code";
@@ -61,7 +62,7 @@ export function withMcpBrain<T extends { cap?: string; mode: string; ready: bool
     if (c.mode !== "mcp") return c;
     if (!cli) return { ...c, ready: false, detail: NEEDS_CLAUDE_MCP };
     if (!c.ready) return c; // 등록 안 됨 같은 원래 이유
-    if (c.cap === "calendar") return { ...c, ready: false, detail: CAL_MCP_CLAUDE_ONLY };
+    if (c.cap === "calendar") return p === "codex" && ok.includes(c.server ?? "") ? { ...c, detail: `${c.detail} · ${MCP_CAL_CODEX}` } : { ...c, ready: false, detail: ok.includes(c.server ?? "") || p === "agy" ? CAL_MCP_CLAUDE_ONLY : MCP_CLI_UNUSABLE };
     return ok.includes(c.server ?? "") ? { ...c, detail: `${c.detail} · ${MCP_CHAT_ONLY}` } : { ...c, ready: false, detail: MCP_CLI_UNUSABLE };
   });
 }

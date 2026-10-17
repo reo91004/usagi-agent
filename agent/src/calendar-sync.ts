@@ -8,7 +8,10 @@ import { eventkitSource } from "./eventkit.ts";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "./claude-sdk.ts";
 import { hidIdleSec } from "./activity.ts";
-import { mcpBrainNote, skipQuietly } from "./feature-brain.ts";
+import { activeBrain } from "./brain-fallback.ts";
+import { cliMcpServers, readOnlyGate, type CliMcpServer } from "./cli-mcp.ts";
+import { MCP_CLI_UNUSABLE, mcpBrainNote, shapeError, skipQuietly } from "./feature-brain.ts";
+import { codexExec, type CodexOpts } from "./providers.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
@@ -163,17 +166,32 @@ const MCP_EVENTS_SCHEMA = {
 } as const;
 
 // mcp: 경량 모델이 매핑된 목록 도구(listEvents)만 부르고, 결과를 우리 모양으로 옮겨 준다(서버마다 응답 모양이 달라서)
-export function mcpCalendarSource(conn: Extract<Conn, { mode: "mcp" }>, q: typeof sdkQuery = sdkQuery): CalendarSource {
+// Claude Code 뇌는 SDK 로, Codex 뇌는 codex exec 에 데몬 문지기 주소를 줘서(listEvents 하나만 통과) 읽는다. agy 는 안 한다 —
+// agy 는 실행마다 문지기를 달 수 없어 listEvents 를 실제로 불렀는지 세지 못하고, 안 부르고 지어낸 일정이 저장되는 걸 막을 수 없다
+export type CliCalendarDeps = { servers?: () => CliMcpServer[]; codex?: Pick<CodexOpts, "execFile" | "commandExists"> };
+export function mcpCalendarSource(conn: Extract<Conn, { mode: "mcp" }>, q: typeof sdkQuery = sdkQuery, cli: CliCalendarDeps = {}): CalendarSource {
   const tool = conn.tools.listEvents;
   return async (cfg, w) => {
-    // MCP 는 Claude Code 경로로만 읽는다(Codex·API 키 뇌에선 SDK 를 부르지 않는다). 예전 일정은 그대로 둔다
-    if ((cfg.brain?.provider ?? "claude-code") !== "claude-code") {
-      skipQuietly("calendar", cfg, console.log, mcpBrainNote(cfg.brain?.provider));
+    const brain = activeBrain(cfg);
+    if (brain !== "claude-code" && brain !== "codex") {
+      skipQuietly("calendar", cfg, console.log, mcpBrainNote(brain));
       return { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 };
     }
     if (!tool || isWriteName(tool)) return { ok: false, events: [], calls: 0, errors: 1, costUsd: 0 };
     const full = mcpTool(conn.server, tool);
     let calls = 0;
+    const task = `${full} 로 ${w.from} 부터 ${w.to} 전까지(시간대 Asia/Seoul) 내 기본 캘린더 일정을 모두 가져와(페이지가 있으면 끝까지). 결과의 일정을 events 로 그대로 옮겨라. 지어내지 말고, 모르는 값은 false/생략.`;
+    const sys = "너는 읽기 전용 캘린더 조회를 한 번 중계하고 결과를 정해진 JSON 으로 옮긴다. 다른 도구는 쓰지 않는다.";
+    if (brain === "codex") {
+      const servers = (cli.servers ?? (() => cliMcpServers(cfg.connectors ?? CONNECTORS)))().filter((s) => s.name === conn.server && s.tools.includes(tool));
+      if (!servers.length) { skipQuietly("calendar", cfg, console.log, MCP_CLI_UNUSABLE); return { ok: false, events: [], calls: 0, errors: 0, costUsd: 0 }; }
+      let out: any, errors = 0;
+      try {
+        out = (await codexExec(task, MCP_EVENTS_SCHEMA, { system: sys, mcp: true, servers, gate: readOnlyGate(servers, full, () => calls++), ...cli.codex })).out;
+        if (shapeError(out, MCP_EVENTS_SCHEMA)) { errors++; out = undefined; }
+      } catch { errors++; }
+      return { ok: !!out?.ok && calls > 0 && !errors, events: mcpEventsToCal(out?.events), calls, errors, costUsd: 0 };
+    }
     const pre: HookCallback = async (input) => {
       if (input.hook_event_name !== "PreToolUse") return {};
       if (input.tool_name === full || input.tool_name === "StructuredOutput" || input.tool_name === "ToolSearch") { if (input.tool_name === full) calls++; return {}; }
@@ -184,10 +202,10 @@ export function mcpCalendarSource(conn: Extract<Conn, { mode: "mcp" }>, q: typeo
     let out: any, costUsd = 0, errors = 0;
     try {
       for await (const m of q({
-        prompt: `${full} 로 ${w.from} 부터 ${w.to} 전까지(시간대 Asia/Seoul) 내 기본 캘린더 일정을 모두 가져와(페이지가 있으면 끝까지). 결과의 일정을 events 로 그대로 옮겨라. 지어내지 말고, 모르는 값은 false/생략.`,
+        prompt: task,
         options: {
           cwd, model: cfg.models.light, settingSources: ["user"], permissionMode: "dontAsk",
-          systemPrompt: "너는 읽기 전용 캘린더 조회를 한 번 중계하고 결과를 정해진 JSON 으로 옮긴다. 다른 도구는 쓰지 않는다.",
+          systemPrompt: sys,
           allowedTools: [full, "ToolSearch", "StructuredOutput"],
           disallowedTools: ["Bash", "Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch"],
           hooks: { PreToolUse: [{ hooks: [pre] }] },
