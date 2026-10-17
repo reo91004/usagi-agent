@@ -34,6 +34,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   store.upsertNode("session:c", "session", "숨김", { tool: "claude", cwd: "/secret/x", turns: 1 }, at("11:00"));
   store.hideProject("/secret", "secret");
   store.upsertNode("session:d", "session", "임시 폴더", { tool: "claude", cwd: "/private/tmp/x", turns: 1 }, at("11:30"));
+  store.upsertNode("session:g", "session", "- TODO 목록 정리", { tool: "claude", cwd: "/r/app/.claude/worktrees/w1", turns: 2 }, at("11:50")); // 워크트리는 레포로, 작업 표시는 막는다
   store.upsertNode("session:e", "session", "하위 에이전트", { tool: "claude", cwd: "/r/app/.claude/worktrees/agent-1", turns: 0 }, at("11:40")); // 0턴은 뺀다
   store.upsertNode("job:gpu1:1", "job", "resnet 학습", { seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] }, at("12:00"));
   store.upsertNode("job:gpu1:q1", "job", "우사기 확인", { seconds: 1, code: 0, host: "gpu1", cwd: "/home/me", cmd: "sleep 1" }, at("12:10"));
@@ -48,6 +49,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   led.run(at("09:10"), "t2", "다시 연 일", "done");
   led.run(at("09:20"), "t2", "다시 연 일", "reopened");
   led.run(at("09:30"), "t3", "교수님께 결과 보내기", "added");
+  led.run(at("09:41"), "t7", "논문 그림 2 고치기", "done"); // 같은 제목은 한 번만
   led.run(at("09:40"), "t4", "생겼다 끝낸 일", "added");
   led.run(at("09:50"), "t4", "생겼다 끝낸 일", "done");
   led.run(at("09:55"), "t5", "생겼다 지운 일", "added");
@@ -55,6 +57,7 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   led.run(at("09:57"), "reminder:r1", "미리알림에서 가져온 생일", "added");
   led.run(at("09:58"), "t6", "김호은 DM 확인 답장", "added");
   led.run(at("09:59"), "t6", "김호은 DM 확인 답장", "skipped");
+  led.run(at("10:01"), "t8", "생겼다 끝낸 일", "skipped"); // 끝낸 일과 같은 제목은 「안 함」에서 뺀다
   const git = async (now: Date) => {
     assert.equal(now.toISOString(), at("12:00"));
     return [{ path: "/r/app", name: "app", commitsToday: [
@@ -71,26 +74,30 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
     { name: "죽은 것", seconds: 0, code: null, host: "gpu1", lost: true },
   ]);
   assert.deepEqual(n.meetings, [{ time: "14:00", title: "랩 미팅" }]);
-  assert.deepEqual(n.done, ["논문 그림 2 고치기", "생겼다 끝낸 일"]);
-  assert.deepEqual(n.skipped, ["김호은 DM 확인 답장"]);
+  assert.deepEqual(n.sessions.map((p) => p.project), ["gpu1:/home/me/exp", "/r/app"]);
+  assert.deepEqual(n.done, ["논문 그림 2 고치기", "논문 그림 2 고치기", "생겼다 끝낸 일"]);
+  assert.deepEqual(n.skipped, ["김호은 DM 확인 답장", "생겼다 끝낸 일"]);
   assert.deepEqual(n.added, ["교수님께 결과 보내기"]);
   assert.deepEqual(n.focus, { seconds: 4000, longest: 1800 });
-  assert.deepEqual(n.commits, [{ repo: "app", sha: "abc1234", subject: "fix: 그림" }]);
+  assert.deepEqual(n.commits, [{ repo: "app", path: "/r/app", sha: "abc1234", subject: "fix: 그림" }]);
   assert.equal(n.summary, undefined);
 
   const md = `${autoBlock(n)}\n`;
   assert.equal(md, [
-    "- 오늘 한 일", `  id:: ${autoId("2026-10-17")}`,
-    "\t- 실험",
-    "\t\t- resnet 학습 @gpu1 · 1시간 2분 · 끝", "\t\t\t- 폴더 `/home/me/exp` · 명령 `python train.py`", "\t\t\t- 바뀐 파일: `out/m.json`",
-    "\t\t- 빨리 죽은 것 @gpu1 · 2초 · 실패(종료 코드 1)",
-    "\t\t- 죽은 것 @gpu1 · 끊김(끝 기록 없이 사라짐)",
+    "- ## 오늘 한 일", `  id:: ${autoId("2026-10-17")}`,
+    "\t- 집중 **1시간 6분**(가장 길게 30분) · 작업 세션 **4** · 실험 **3** · 커밋 **1** · 끝낸 일 **2**",
+    "\t- ### 실험",
+    "\t\t- **resnet 학습** `gpu1` · 1시간 2분 · 끝", "\t\t\t- 폴더 `/home/me/exp` · 명령 `python train.py`", "\t\t\t- 바뀐 파일 `out/m.json`",
+    "\t\t- **빨리 죽은 것** `gpu1` · 2초 · ==실패(종료 코드 1)==",
+    "\t\t- **죽은 것** `gpu1` · ==끊김(끝 기록 없이 사라짐)==",
     "\t\t- 짧은 작업 1건(10초 미만, 모두 끝)",
-    "\t- 회의", "\t\t- 14:00 랩 미팅",
-    "\t- 코드", "\t\t- app `abc1234` fix: 그림", "\t\t- 작업 세션 `gpu1:/home/me/exp`", "\t\t\t- 학습 스크립트 고치기 (Claude Code, 3턴, 파일 2개 고침)",
-    "\t\t\t- You are auditing the repository in the current di… (Codex, 2개 세션, 3턴)",
-    "\t- 할 일", "\t\t- 끝냄: 논문 그림 2 고치기", "\t\t- 끝냄: 생겼다 끝낸 일", "\t\t- 안 함: 김호은 DM 확인 답장", "\t\t- 새로 생김: 교수님께 결과 보내기",
-    "\t- 집중 1시간 6분 (가장 길게 이어서 30분)", "",
+    "\t- ### 회의", "\t\t- **14:00** 랩 미팅",
+    "\t- ### 코드",
+    "\t\t- [[exp]] `gpu1`", "\t\t\t- 학습 스크립트 고치기 · Claude Code · 3턴 · 파일 2개",
+    "\t\t\t- You are auditing the repository in the current di… · Codex · 세션 2개 · 3턴",
+    "\t\t- [[app]]", "\t\t\t- `abc1234` fix: 그림", "\t\t\t- \u200bTODO 목록 정리 · Claude Code · 2턴",
+    "\t- ### 할 일", "\t\t- DONE 논문 그림 2 고치기", "\t\t- DONE 생겼다 끝낸 일", "\t\t- CANCELED 김호은 DM 확인 답장", "\t\t- 새로 생김", "\t\t\t- 교수님께 결과 보내기",
+    "",
   ].join("\n"));
 
   const off = await collectDay({ ...cfg, readSessions: false, onboarded: false }, store, "2026-10-17", { git: async () => { throw new Error("부르면 안 됨"); } });
@@ -105,6 +112,7 @@ const graphDir = (edn = "{}") => {
 };
 const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], skipped: [], added: [], commits: [] };
 const one: DayNote = { ...empty, done: ["a"] };
+const oneBlock = `- ## 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 끝낸 일 **1**\n\t- ### 할 일\n\t\t- DONE a`;
 
 test("notePath: config.edn 의 저널 폴더·파일 이름 형식, 없으면 Logseq 기본", () => {
   assert.match(notePath(graphDir(), "2026-10-17"), /\/journals\/2026_10_17\.md$/);
@@ -119,7 +127,7 @@ test("writeNote: 저널이 없으면 폴더째 우사기 블록만 담아 만들
   assert.equal(existsSync(join(graph, "journals")), false);
   const path = notePath(graph, "2026-10-17");
   assert.equal(writeNote(store, graph, one), "written");
-  assert.equal(readFileSync(path, "utf8"), `- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n`);
+  assert.equal(readFileSync(path, "utf8"), `${oneBlock}\n`);
   assert.equal(writeNote(store, graph, one), "same");
   assert.deepEqual(readdirSync(join(graph, "journals")), ["2026_10_17.md"]); // 임시 파일 안 남음
   assert.equal(existsSync(join(graph, "pages")), false);
@@ -134,7 +142,7 @@ test("writeNote: 0.6.0 이 쓴 「우사기 기록」(usagi-auto) 블록은 다�
   writeFileSync(path, `- 앞\n${legacy}\n- 뒤\n`);
   store.setMark(`tine-note-auto:${path}`, parseInt(createHash("sha1").update(legacy).digest("hex").slice(0, 13), 16)); // 0.6.0 이 그 블록을 쓴 뒤 남긴 해시
   assert.equal(writeNote(store, graph, one), "written");
-  assert.equal(readFileSync(path, "utf8"), `- 앞\n- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n- 뒤\n`);
+  assert.equal(readFileSync(path, "utf8"), `- 앞\n${oneBlock}\n- 뒤\n`);
   assert.match(autoId("2026-10-17"), /^75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.notEqual(autoId("2026-10-17"), autoId("2026-10-18"));
 });
@@ -146,7 +154,7 @@ test("writeNote: Tine 이 줄바꿈만 넣어 만든 빈 일지에는 빈 줄 �
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, "\n");
   assert.equal(writeNote(store, graph, one), "written");
-  assert.equal(readFileSync(path, "utf8"), `- 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일\n\t\t- 끝냄: a\n`);
+  assert.equal(readFileSync(path, "utf8"), `${oneBlock}\n`);
 });
 
 test("writeNote: 있는 저널 끝에 덧붙이고, 다시 쓸 때는 우사기 블록 줄만 바꾼다(나머지는 바이트 그대로)", () => {
@@ -174,7 +182,7 @@ test("writeNote: 우사기 블록 안을 고치거나 블록을 지웠으면 그
   const store = new Store(":memory:");
   const path = notePath(graph, "2026-10-17");
   writeNote(store, graph, one);
-  const edited = readFileSync(path, "utf8").replace("끝냄: a", "끝냄: a (내가 고침)");
+  const edited = readFileSync(path, "utf8").replace("DONE a", "DONE a (내가 고침)");
   writeFileSync(path, `- 내 블록\n${edited}`);
   assert.equal(writeNote(store, graph, { ...one, done: ["a", "b"] }), "edited");
   assert.equal(readFileSync(path, "utf8"), `- 내 블록\n${edited}`);
@@ -211,7 +219,7 @@ test("summarizeDay: 끝난 날 한 번만, 뇌 답을 3줄로 잘라 저장하�
   const day = await collectDay({ ...cfg, readSessions: false }, store, "2026-10-17", { git: async () => [] });
   assert.deepEqual(day.summary, { lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] });
   const md = autoBlock({ ...n, summary: day.summary });
-  assert.match(md, /- 오늘 한 일\n  id:: 75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\n\t- 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- 다음: 결과 파일 확인\n\t- 실험\n/);
+  assert.match(md, /- ## 오늘 한 일\n  id:: 75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\n\t- 실험 \*\*1\*\* · 끝낸 일 \*\*1\*\*\n\t- ### 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- \*\*다음\*\*\n\t\t\t- 결과 파일 확인\n\t- ### 실험\n/);
 });
 
 test("sharedGit: 어제·오늘 노트가 git 을 한 번만 부르고 날짜로 나눈다", async () => {

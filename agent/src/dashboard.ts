@@ -100,10 +100,10 @@ function dashTodo(t: Todo): DashTodo {
 }
 
 const HOST_PATH = /^([^\s:/\\]{2,}):(\/.*)$/; // 「서버:/경로」 (한 글자 접두 C:\ 는 드라이브)
-const splitHost = (path: string) => { const m = HOST_PATH.exec(path); return m ? { host: m[1], dir: m[2] } : { host: "", dir: path }; };
+export const splitHost = (path: string) => { const m = HOST_PATH.exec(path); return m ? { host: m[1], dir: m[2] } : { host: "", dir: path }; };
 
 // 숨은 폴더(.plans · .claude/worktrees · .x …)가 처음 나오는 곳에서 자른다 → 그 위 폴더. 원격은 「host:」 접두가 그대로 붙는다
-const cutHidden = (path: string) => path.replace(/[\\/]\.[^\\/]+(?:[\\/].*)?$/, "") || path;
+export const cutHidden = (path: string) => path.replace(/[\\/]\.[^\\/]+(?:[\\/].*)?$/, "") || path;
 
 // 이 Mac 폴더가 든 가장 가까운 git 레포 루트(홈 아래까지, 최대 12단계). 없으면 그대로.
 // 프로세스 동안 기억한다 — 패널이 새로고침할 때마다 existsSync 를 되풀이하지 않게(레포를 새로 만들어도 다음 실행 때 반영)
