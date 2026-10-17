@@ -113,3 +113,19 @@ test("dashboard: 할 일의 (진행중) 토글(doing)을 싣는다: 켬·끔 그
   assert.equal(byId("t2").doing, false);
   assert.equal("doing" in byId("t3"), false);
 });
+
+test("dashboard: Claude Code 워크트리 cwd는 본 레포 한 카드로 묶고(원격 접두 포함), e2e 임시 레포는 제외", async () => {
+  const store = new Store(":memory:");
+  session(store, "w1", "/code/app/.claude/worktrees/fix-a", ago(3), { branch: "worktree-fix-a" });
+  session(store, "w2", "/code/app/.claude/worktrees/fix-b/agent/src", ago(1), { branch: "worktree-fix-b" });
+  session(store, "w3", "/code/other/.claude/worktrees/x", ago(2)); // 레포 목록에 없어도 본 경로로 묶임
+  session(store, "r1", "srv:/home/me/proj/.claude/worktrees/y", ago(2));
+  session(store, "e2e", "/code/usagi/.e2e/repos/tmp1", ago(1));
+  const repos: RepoActivity[] = [{ path: "/code/app", name: "app", branch: "main", commitsToday: [], recentCommits: [] }];
+  const d = await buildDashboard(loadConfig(), store, { now, git: async () => repos });
+  assert.deepEqual(d.projects.map((p) => p.path).sort(), ["/code/app", "/code/other", "srv:/home/me/proj"]);
+  const app = d.projects.find((p) => p.path === "/code/app")!;
+  assert.equal(app.sessions24h, 2);
+  assert.equal(app.branch, "worktree-fix-b"); // 가장 최근 세션의 브랜치
+  assert.equal(d.projects.find((p) => p.path === "srv:/home/me/proj")!.name, "proj");
+});

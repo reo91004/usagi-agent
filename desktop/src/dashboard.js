@@ -110,10 +110,18 @@ export function isActiveProject(p, now = Date.now()) {
   return p.sessions24h > 0 || p.commitsToday > 0 || (Number.isFinite(t) && now - t < DAY);
 }
 
+// 원격 서버 세션의 경로는 「host:/절대경로」 로 온다(데몬 ingest/sessions.ts). 한 글자 접두(C:\\ 같은 드라이브)는 호스트가 아니다.
+export function splitHost(path) {
+  const m = /^([^\s:/\\]{2,}):(\/.*)$/.exec(path);
+  return m ? { host: m[1], dir: m[2] } : { host: '', dir: path };
+}
+
 function shapeProject(p, now) {
+  const path = str(p.path);
   return {
     name: str(p.name) || '(이름 없음)',
-    path: str(p.path),
+    path, // 숨기기 키 — 접두 포함 원본
+    ...splitHost(path), // host: 서버 이름(이 Mac 이면 ''), dir: 보여줄 경로
     lastActive: str(p.lastActive),
     lastActiveRel: relativeTime(p.lastActive, now),
     sessions24h: num(p.sessions24h),
