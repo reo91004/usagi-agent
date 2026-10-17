@@ -39,3 +39,9 @@ test('remoteUrl: 별칭만, 절대 경로만, 조각마다 인코딩', () => {
   assert.equal(remoteUrl('pacl-205', 'relative/x', hosts), null);
   assert.equal(remoteUrl('pacl-205', '/x\n/y', hosts), null);
 });
+
+test('remoteUrl: 별칭이 없는 서버는 user@host 로, 이상한 글자는 거부', () => {
+  const hosts = sshConfigHosts(CFG);
+  assert.equal(remoteUrl('reo@10.150.31.155', '/home/reo/x y', hosts), 'vscode://vscode-remote/ssh-remote+reo@10.150.31.155/home/reo/x%20y');
+  for (const bad of ['reo@', '@host', 'a b@host', 'reo@h/ost', 'reo@host;x', 'reo@host:22', '-oProxyCommand=x', '']) assert.equal(remoteUrl(bad, '/x', hosts), null, bad);
+});

@@ -1,9 +1,10 @@
 // Claude Code / Codex 세션 JSONL → 지식그래프(session · project · file 노드).
 import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import type { Store } from "../store.ts";
 import { IS_WIN, winNorm } from "../plat.ts";
+import { loadSshSessionHosts } from "./ssh-hosts.ts";
 
 export type SessionDigest = {
   id: string;
@@ -165,10 +166,14 @@ export function isCyAgentCwd(cwd: string | undefined, skipCwdPrefix?: string, ho
 // 바뀐 파일만 다시 읽는다(mtime 기준). 반환: 새로 반영한 세션 수
 // skipCwdPrefix: 데몬 자신이 돌린 세션(브리핑·자동수정)은 기록에서 뺀다(같은 맥의 다른 시사 설치 폴더도 — isCyAgentCwd)
 // host: ssh 서버에서 받아 온 기록(ingest/remote-sessions.ts) — cwd 를 「서버:/경로」로 적어 이 맥의 폴더와 섞이지 않게
+// ssh-<id> 폴더(Claude 데스크탑 앱의 SSH 세션)는 앱 세션 정보로 서버를 찾아 같은 모양으로 적는다(ssh-hosts.ts, 패스마다 처음 필요할 때 한 번 읽음).
+//   서버를 찾은 파일은 「서버 확인」 표시를 따로 남겨, 서버를 모르던 때 쌓은 세션도 한 번 다시 읽는다. sshHosts: 테스트용 주입
 export function ingestSessions(
-  store: Store, dirs: { claude: string; codex: string }, opts: { sinceMs?: number; skipCwdPrefix?: string; host?: string } = {},
+  store: Store, dirs: { claude: string; codex: string },
+  opts: { sinceMs?: number; skipCwdPrefix?: string; host?: string; sshHosts?: Map<string, string> } = {},
 ): number {
-  const { sinceMs = 14 * 864e5, skipCwdPrefix, host } = opts;
+  const { sinceMs = 14 * 864e5, skipCwdPrefix } = opts;
+  let sshHosts = opts.sshHosts;
   let n = 0;
   const cutoff = Date.now() - sinceMs;
   for (const [tool, dir] of [["claude", dirs.claude], ["codex", dirs.codex]] as const) {
@@ -176,7 +181,11 @@ export function ingestSessions(
       if (path.includes("/subagents/") || path.includes(`${sep}subagents${sep}`)) continue; // 서브에이전트 트랜스크립트는 부모 세션에 포함
       let mtime: number;
       try { mtime = statSync(path).mtimeMs; } catch { continue; }
-      if (mtime < cutoff || store.markOf(path) === mtime) continue;
+      if (mtime < cutoff) continue;
+      const sshId = !opts.host && tool === "claude" ? /^ssh-(.+)$/.exec(basename(dirname(path)))?.[1] : undefined;
+      const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
+      const hostMark = sshId && host ? `ssh-host:${path}` : "";
+      if (store.markOf(path) === mtime && (!hostMark || store.markOf(hostMark) !== undefined)) continue;
       const id = basename(path, ".jsonl");
       let s: SessionDigest | undefined;
       try { s = tool === "claude" ? parseClaudeSession(readLines(path), id) : parseCodexSession(readLines(path), id); } catch { continue; }
@@ -186,6 +195,7 @@ export function ingestSessions(
         n++;
       }
       store.setMark(path, mtime);
+      if (hostMark) store.setMark(hostMark, 1);
     }
   }
   return n;

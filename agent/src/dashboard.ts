@@ -1,7 +1,7 @@
 // 데스크톱 패널용 스냅샷(GET /dashboard). 지식그래프 프로젝트 + git 커밋 + 할 일·제안·브리핑·오늘 할 일 표.
 import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { HOME_DIR } from "./config.ts";
 import type { Config } from "./config.ts";
 import { IS_WIN, isFsRoot, pathWithin, realish, samePath, winNorm } from "./plat.ts";
@@ -97,48 +97,99 @@ function dashTodo(t: Todo): DashTodo {
   };
 }
 
-// 세션 cwd가 레포 하위 폴더·워크트리(레포 목록 밖이어도 .claude/worktrees)여도 그 레포 하나로 묶는다(가장 긴 경로 우선)
+const HOST_PATH = /^([^\s:/\\]{2,}):(\/.*)$/; // 「서버:/경로」 (한 글자 접두 C:\ 는 드라이브)
+const splitHost = (path: string) => { const m = HOST_PATH.exec(path); return m ? { host: m[1], dir: m[2] } : { host: "", dir: path }; };
+
+// 숨은 폴더(.plans · .claude/worktrees · .x …)가 처음 나오는 곳에서 자른다 → 그 위 폴더. 원격은 「host:」 접두가 그대로 붙는다
+const cutHidden = (path: string) => path.replace(/[\\/]\.[^\\/]+(?:[\\/].*)?$/, "") || path;
+
+// 이 Mac 폴더가 든 가장 가까운 git 레포 루트(홈 아래까지, 최대 12단계). 없으면 그대로.
+// 프로세스 동안 기억한다 — 패널이 새로고침할 때마다 existsSync 를 되풀이하지 않게(레포를 새로 만들어도 다음 실행 때 반영)
+const gitRootMemo = new Map<string, string>();
+export function gitRootOf(dir: string): string {
+  const hit = gitRootMemo.get(dir);
+  if (hit !== undefined) return hit;
+  let found = dir;
+  for (let p = dir, i = 0; i < 12; i++) {
+    if (existsSync(join(p, ".git"))) { found = p; break; }
+    const up = dirname(p);
+    if (up === p || samePath(up, homedir())) break;
+    p = up;
+  }
+  gitRootMemo.set(dir, found);
+  return found;
+}
+
+// path 가 root 폴더 안인가 — 같은 서버끼리만. 서버의 홈·루트(/home/<user>, /root)는 바깥 폴더로 치지 않는다
+function insideOf(path: string, root: string): boolean {
+  const a = splitHost(path), b = splitHost(root);
+  if (a.host !== b.host || path === root) return false;
+  if (b.host) return !/^\/(?:home\/[^/]+|root)?\/?$/.test(b.dir) && a.dir.startsWith(b.dir + "/");
+  return within(a.dir, b.dir);
+}
+
+// 세션 cwd 를 레포 단위로 묶는다: 숨은 폴더 아래는 그 위로(.plans · .claude/worktrees), 레포 하위 폴더는 레포로(레포 목록 밖이면 가장 가까운 .git 루트로),
+// 같은 서버에서 다른 프로젝트 안에 든 프로젝트는 그 바깥 프로젝트로 합친다. 합친 줄은 세션·커밋을 더하고 가장 최근 세션의 제목·요청을 보인다
+type Group = { repos: RepoActivity[]; sessions: Node[] };
 function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true): DashProject[] {
   const since = now.getTime() - 7 * DAY;
   const byLen = [...repos].sort((a, b) => b.path.length - a.path.length);
-  const groups = new Map<string, { repo?: RepoActivity; sessions: Node[] }>();
+  const groups = new Map<string, Group>();
   const group = (cwd: string) => {
-    // Claude Code 워크트리(<repo>/.claude/worktrees/<이름>[/…])는 본 레포 경로로 되돌린다. 원격은 「host:」 접두가 그대로 붙는다
-    const path = cwd.replace(/[\\/]\.claude[\\/]worktrees[\\/].*$/, "") || cwd;
+    const path = cutHidden(cwd);
     const repo = byLen.find((r) => within(path, r.path));
-    const key = repo?.path ?? path;
-    if (!groups.has(key)) groups.set(key, { repo, sessions: [] });
-    return groups.get(key)!;
+    const { host, dir } = splitHost(path);
+    const key = repo?.path ?? (host ? path : gitRootOf(dir));
+    if (!groups.has(key)) groups.set(key, { repos: [], sessions: [] });
+    const g = groups.get(key)!;
+    if (repo && !g.repos.includes(repo)) g.repos.push(repo);
+    return g;
   };
   for (const p of withSessions ? store.nodesSince("project", new Date(since).toISOString(), 200) : []) {
     const path = (p.props.path as string) ?? p.id.replace(/^project:/, "");
     if (isNoisePath(path)) continue;
-    group(path).sessions.push(...store.inbound(p.id, "in").filter((s) => Date.parse(s.updated) >= since));
+    // 서버 이름을 나중에 알게 돼 경로가 바뀐 세션은 옛 프로젝트 노드에도 이어져 있다 — 세션 자신의 cwd 와 같은 쪽에만 센다
+    group(path).sessions.push(...store.inbound(p.id, "in").filter((s) => Date.parse(s.updated) >= since && (typeof s.props.cwd !== "string" || s.props.cwd === path)));
   }
   for (const r of repos) {
     if (r.recentCommits.some((c) => Date.parse(c.time) >= since)) group(r.path);
   }
+  // 다른 프로젝트 안에 든 줄은 가장 가까운 바깥 줄로 합친다(바깥이 또 합쳐지면 끝까지 따라간다)
+  const keys = [...groups.keys()];
+  const rootOf = (k: string): string => {
+    const up = keys.filter((o) => insideOf(k, o)).sort((a, b) => b.length - a.length)[0];
+    return up ? rootOf(up) : k;
+  };
+  const merged = new Map<string, Group>();
+  for (const k of keys) {
+    const root = rootOf(k), g = groups.get(k)!;
+    const m = merged.get(root) ?? merged.set(root, { repos: [], sessions: [] }).get(root)!;
+    m.repos.push(...g.repos.filter((r) => !m.repos.includes(r)));
+    m.sessions.push(...g.sessions);
+  }
 
   const out: DashProject[] = [];
-  for (const [path, g] of groups) {
+  for (const [path, g] of merged) {
     const sessions = g.sessions.sort((a, b) => b.updated.localeCompare(a.updated));
     const last = sessions[0];
-    const lastCommit = g.repo?.recentCommits[0]?.time;
-    const lastActive = [last?.updated, lastCommit].filter((x): x is string => !!x && Date.parse(x) >= since)
+    const rootRepo = g.repos.find((r) => r.path === path);
+    const commits = [...new Map(g.repos.flatMap((r) => r.recentCommits).map((c) => [c.sha, c])).values()]
+      .sort((a, b) => b.time.localeCompare(a.time)).slice(0, 5);
+    const lastActive = [last?.updated, ...g.repos.map((r) => r.recentCommits[0]?.time)].filter((x): x is string => !!x && Date.parse(x) >= since)
       .map((x) => new Date(x).toISOString()).sort().at(-1);
     if (!lastActive) continue;
     out.push({
-      name: g.repo?.name ?? path.split(sep).filter(Boolean).at(-1) ?? path,
+      name: rootRepo?.name ?? path.split(sep).filter(Boolean).at(-1) ?? path,
       path,
       lastActive,
       sessions24h: sessions.filter((s) => Date.parse(s.updated) >= now.getTime() - DAY).length,
       lastTitle: last?.label ?? null,
       lastPrompt: (last?.props.lastPrompt as string) ?? null,
-      branch: (last?.props.branch as string) ?? g.repo?.branch ?? null,
-      commitsToday: g.repo?.commitsToday.length ?? 0,
-      recentCommits: g.repo?.recentCommits ?? [],
+      branch: (last?.props.branch as string) ?? rootRepo?.branch ?? null,
+      commitsToday: g.repos.reduce((n, r) => n + r.commitsToday.length, 0),
+      recentCommits: commits,
       hidden: false,
-      ...(/^[^\s:/\\]{2,}:\//.test(path) ? {} : { onMac: existsSync(path) }),
+      ...(HOST_PATH.test(path) ? {} : { onMac: existsSync(path) }),
     });
   }
   const hidden = store.hiddenProjects();
