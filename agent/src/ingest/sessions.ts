@@ -173,7 +173,9 @@ export function recordSession(store: Store, s: SessionDigest) {
   }
 }
 
-type SavedRead = { offset: number; ino: number; edge: string; fold: FoldState };
+// 접는 규칙(claudeFold·codexFold·isHumanText 등)을 바꾸면 올린다: 저장된 중간 상태를 버리고 처음부터 다시 읽는다
+const FOLD_V = 1;
+type SavedRead = { v: number; offset: number; ino: number; edge: string; fold: FoldState };
 // 이어 읽을 자리가 같은 파일인지: 맨 앞과 읽은 자리 바로 앞 각 256바이트의 해시(덧붙기만 했으면 그대로다)
 function edgeHash(path: string, off: number): string {
   const fd = openSync(path, "r");
@@ -233,10 +235,10 @@ export function ingestSessions(
       const host = sshId ? (sshHosts ??= loadSshSessionHosts()).get(sshId) : opts.host;
       const id = basename(path, ".jsonl");
       const mk = tool === "claude" ? claudeFold : codexFold;
-      // 이어 읽기: 같은 파일(inode)이 줄지 않았고 읽은 자리 앞이 그대로일 때만. 아니면 처음부터
+      // 이어 읽기: 접는 규칙이 같고, 같은 파일(inode)이 줄지 않았고 읽은 자리 앞이 그대로일 때만. 아니면 처음부터
       let saved: SavedRead | undefined;
       try { saved = JSON.parse(store.stateOf(path) ?? "null") ?? undefined; } catch { saved = undefined; }
-      const resume = !!saved && saved.ino === st.ino && st.size >= saved.offset && edgeHash(path, saved.offset) === saved.edge;
+      const resume = saved?.v === FOLD_V && saved.ino === st.ino && st.size >= saved.offset && edgeHash(path, saved.offset) === saved.edge;
       const fold = mk(id, resume ? saved!.fold : undefined);
       let offset = resume ? saved!.offset : 0;
       let s: SessionDigest | undefined;
@@ -252,7 +254,7 @@ export function ingestSessions(
           offset = end;
         }
         s ??= fold.finish();
-        store.setState(path, JSON.stringify({ offset, ino: st.ino, edge: edgeHash(path, offset), fold: fold.save() } satisfies SavedRead));
+        store.setState(path, JSON.stringify({ v: FOLD_V, offset, ino: st.ino, edge: edgeHash(path, offset), fold: fold.save() } satisfies SavedRead));
       } catch { continue; }
       if (s && !isCyAgentCwd(s.cwd, skipCwdPrefix)) {
         if (host && s.cwd) s.cwd = `${host}:${s.cwd}`;

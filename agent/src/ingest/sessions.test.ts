@@ -165,5 +165,11 @@ test("ingestSessions 증분: 늘어난 부분만 읽고, 줄었거나 앞이 바
   renameSync(tmp, path); bump(5);
   ingestSessions(store, dirs);
   assert.equal(store.node("session:s1")?.props.turns, 4);
+  // 저장된 상태가 다른 접는 규칙(버전)의 것이면 처음부터: 틀린 중간 상태를 이어 쌓지 않는다
+  const st = JSON.parse(store.stateOf(path)!);
+  store.setState(path, JSON.stringify({ ...st, v: -1, fold: { ...st.fold, turns: 99 } }));
+  appendFileSync(path, u("s1", "다섯째")); bump(6);
+  ingestSessions(store, dirs);
+  assert.equal(store.node("session:s1")?.props.turns, 5);
   rmSync(dir, { recursive: true, force: true });
 });
