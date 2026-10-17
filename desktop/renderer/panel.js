@@ -3380,6 +3380,21 @@ function applyCaps(c) {
 cy.caps?.().then(applyCaps).catch(() => {});
 cy.onCaps?.(applyCaps);
 $('close').addEventListener('click', () => cy.close());
+// 항상 위 고정(#171): 켜짐은 앱이 state.json 에 기억(settings-app-get/set)
+const pinBtn = $('panel-pin');
+pinBtn.append(navIcon('pin'));
+function showPin(on) {
+  pinBtn.classList.toggle('on', on);
+  pinBtn.setAttribute('aria-pressed', String(on));
+  const tip = on ? '고정 풀기' : '항상 위에 고정';
+  pinBtn.dataset.tip = tip;
+  pinBtn.setAttribute('aria-label', tip);
+}
+cy.getAppPrefs?.().then((r) => { if (r?.ok) showPin(r.panelPinned === true); }).catch(() => {});
+pinBtn.addEventListener('click', async () => {
+  const r = await cy.setAppPrefs?.({ panelPinned: pinBtn.getAttribute('aria-pressed') !== 'true' }).catch(() => null);
+  if (r?.ok) showPin(r.panelPinned === true);
+});
 document.addEventListener('keydown', (e) => {
   if (drag && e.key === 'Escape') { e.preventDefault(); finishDrag(false); return; } // 끌기 취소
   if (e.key === 'Escape' && !e.isComposing) {

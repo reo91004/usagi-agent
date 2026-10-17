@@ -605,6 +605,7 @@ function createPanel() {
   };
   panel.on('show', applyDock);
   panel.on('hide', applyDock);
+  applyPanelPin();
   // 창은 큰데 안쪽 화면이 옛 크기로 남아 오른쪽에 빈 띠가 보이는 경우(#128): 보일 때·크기 바꾸기를 마쳤을 때 맞춰 본다
   const refit = async () => {
     if (!panel || panel.isDestroyed() || !panel.isVisible()) return;
@@ -1115,8 +1116,16 @@ function applyDock() {
   }
 }
 
+// 패널 「항상 위」 고정(#171): 캐릭터 창('screen-saver')보다 아래인 'floating' 레벨. 켜짐은 state.panelPinned 로 다음 실행에도 이어진다
+function applyPanelPin() {
+  if (!panel || panel.isDestroyed()) return;
+  if (state.panelPinned === true) panel.setAlwaysOnTop(true, 'floating');
+  else panel.setAlwaysOnTop(false);
+}
+
 // Dock 표시가 바뀌면 오버레이의 항상 위·모든 데스크탑 설정이 풀릴 수 있어 다시 건다
 function keepOverlayAbove() {
+  applyPanelPin();
   if (!win || win.isDestroyed()) return;
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
@@ -2083,6 +2092,7 @@ const appPrefs = {
       try { on = app.getLoginItemSettings(loginTarget()).openAtLogin === true; } catch { on = state.openAtLogin === true; }
     }
     return { ok: true, version: app.getVersion(), openAtLogin: { available: p.manage, on, hint: loginItemHint(p.reason) }, updateCheck: state.updateCheck !== false,
+      panelPinned: state.panelPinned === true,
       ...(process.platform === 'darwin' ? { showInDock: state.showInDock === true } : {}) };
   },
   set(patch) {
@@ -2097,6 +2107,11 @@ const appPrefs = {
       state.showInDock = patch.showInDock;
       saveState();
       applyDock();
+    }
+    if ('panelPinned' in patch) {
+      state.panelPinned = patch.panelPinned;
+      saveState();
+      applyPanelPin();
     }
     if ('updateCheck' in patch) {
       state.updateCheck = patch.updateCheck;

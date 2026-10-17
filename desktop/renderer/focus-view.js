@@ -32,7 +32,9 @@ export function createFocusView({ h, cy }) {
     focus = normFocus(raw);
     // 시작·그만했으면 기록 보기도 새로(오늘 칸이 바뀐다)
     if (open && (!!before?.active !== !!focus?.active || before?.active?.paused !== focus?.active?.paused)) loadStats(true);
+    timerSync();
     redraw();
+    tick(); // 멈춘 사이 바뀐 오늘 합계 글자를 바로 맞춘다
   }
   async function cmd(c) {
     if (busy || !cy.focusCmd) return;
@@ -85,7 +87,14 @@ export function createFocusView({ h, cy }) {
     for (const el of document.querySelectorAll('[data-focus-clock]')) el.textContent = fmtClock(elapsedSec(a, now));
     for (const el of document.querySelectorAll('[data-focus-today]')) el.textContent = fmtDuration(todayLive(focus, now));
   }
-  setInterval(tick, 1000); // 가려진 창이면 브라우저가 알아서 늦춘다
+  // 1초 타이머는 집중 중(쉬는 중 제외)일 때만 돈다. 쉬는 동안 자정이 지난 것은 창이 다시 보일 때 tick 이 맞춘다
+  let timer = null;
+  function timerSync() {
+    const run = !!focus?.active && !focus.active.paused;
+    if (run && !timer) timer = setInterval(tick, 1000);
+    else if (!run && timer) { clearInterval(timer); timer = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
   // ---- [집중하기] 줄: 할 일 탭 도구줄·오늘 할 일 머리에 ----
   function bar(scope = 'todos') {
