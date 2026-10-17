@@ -725,7 +725,9 @@ button.ghost.danger-text { color: var(--err); }
 .th-acts { display: none; gap: 2px; flex: none; }
 .th-row:hover .th-acts, .th-row:focus-within .th-acts { display: flex; }
 .th-row:hover .th-dot { display: none; }
-.th-acts button { padding: 1px 5px; font-size: 12px; background: none; color: var(--muted); border-radius: 6px; }
+.th-acts button { display: grid; place-items: center; padding: 3px 5px; background: none; color: var(--muted); border-radius: 6px; }
+.th-acts button:hover { color: var(--fg); }
+.th-acts svg { display: block; width: 14px; height: 14px; }
 .th-acts button:hover { background: var(--btn); filter: none; }
 .th-row.confirm { cursor: default; flex-wrap: wrap; background: color-mix(in srgb, var(--err) 9%, transparent); }
 .th-row.confirm .th-ask { flex: 1; min-width: 0; font-size: 12px; }
@@ -737,6 +739,16 @@ button.ghost.danger-text { color: var(--err); }
 #th-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; padding: 0 18px 14px; }
 #th-head { display: flex; align-items: center; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line); }
 #th-toggle { display: none; padding: 3px 8px; }
+#th-toggle svg, .th-sync svg { display: block; width: 16px; height: 16px; }
+#th-toggle[data-tip], .th-sync[data-tip] { position: relative; }
+#th-toggle[data-tip]::after, .th-sync[data-tip]::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0;
+  white-space: nowrap; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; line-height: 1.4;
+  color: var(--surface); background: var(--fg); box-shadow: 0 2px 8px rgba(0,0,0,.25); z-index: 5;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease 0.2s;
+}
+#th-toggle[data-tip]::after { right: auto; left: 0; }
+#th-toggle:hover::after, #th-toggle:focus-visible::after, .th-sync:hover::after, .th-sync:focus-visible::after { opacity: 1; }
 #th-kind { flex: none; font-size: 14px; }
 .th-title {
   min-width: 0;
@@ -765,7 +777,7 @@ button.ghost.danger-text { color: var(--err); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.th-sync { flex: none; margin-left: auto; padding: 2px 8px; font-size: 14px; line-height: 1; }
+.th-sync { flex: none; margin-left: auto; padding: 4px 8px; line-height: 1; }
 .th-sync.spin { animation: th-spin 0.9s linear infinite; }
 @keyframes th-spin { to { transform: rotate(360deg); } }
 .msg-meta .via-cli { padding: 0 6px; border-radius: 8px; background: var(--code); color: var(--muted); font-size: 10px; }
@@ -818,8 +830,9 @@ button.ghost.danger-text { color: var(--err); }
 .msg-row.queued .msg-meta { gap: 4px; }
 /* 말 고치기(✏️): 마지막 내 말에만 — 올려 두면 보인다 */
 .msg-row.user.editable { position: relative; }
-.msg-edit { position: absolute; left: -26px; top: 4px; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; font-size: 12px; line-height: 22px; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.msg-edit { position: absolute; left: -26px; top: 4px; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .msg-row.user.editable:hover .msg-edit, .msg-edit:focus-visible { opacity: 0.75; }
+.msg-edit svg { display: block; width: 14px; height: 14px; }
 .msg-edit:hover { opacity: 1 !important; background: var(--code); }
 .msg-edit-box { align-self: flex-end; display: flex; flex-direction: column; gap: 4px; width: min(520px, 100%); }
 .msg-editor { width: 100%; box-sizing: border-box; resize: none; padding: 8px 10px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--user) 60%, var(--line)); background: var(--bg); color: var(--fg); font: inherit; line-height: 1.45; }
@@ -1501,7 +1514,8 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .char-card > .char-opt { flex: 1; justify-content: flex-start; }
 #sec-settings .char-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sec-settings .char-tag { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--code); color: var(--muted); font-weight: 400; }
-#sec-settings .char-edit { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; padding: 0; border-radius: 7px; background: transparent; color: var(--faint); font-size: 13px; line-height: 24px; }
+#sec-settings .char-edit { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; padding: 0; border-radius: 7px; background: transparent; color: var(--faint); display: grid; place-items: center; }
+#sec-settings .char-edit svg { display: block; width: 14px; height: 14px; }
 #sec-settings .char-card:hover .char-edit, #sec-settings .char-edit:focus-visible { color: var(--accent); background: var(--accent-soft); }
 #sec-settings .char-add { flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; border: 1px dashed var(--line); border-radius: 12px; background: transparent; color: var(--muted); font-size: 12px; }
 #sec-settings .char-add:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
