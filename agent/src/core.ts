@@ -1,4 +1,5 @@
 // 오케스트레이터: 수집·브리핑·제안·승인·실행을 묶고 말풍선(Bus)과 Slack으로 알린다.
+import { activeBrain } from "./brain-fallback.ts";
 import { randomUUID } from "node:crypto";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Bus } from "./bus.ts";
@@ -514,7 +515,7 @@ export class Agent {
       let ready: ReadonlySet<SourceId> | null = null;
       try { ready = this.deps.ready ? this.deps.ready() : readySources(conns); } catch { ready = null; }
       // MCP 는 Claude Code 뇌로만 읽는다 — 다른 뇌(Codex·API 키)엔 도구가 없으니 MCP 출처는 지시에서 뺀다
-      if ((this.cfg.brain?.provider ?? "claude-code") !== "claude-code") ready = new Set([...(ready ?? CAPABILITIES)].filter((cap) => conns[cap].mode !== "mcp"));
+      if (activeBrain(this.cfg) !== "claude-code") ready = new Set([...(ready ?? CAPABILITIES)].filter((cap) => conns[cap].mode !== "mcp"));
       // 진행 보고: 금방 끝나면 조용히, 오래 걸리면 "슬랙 보는 중…" 같은 이정표만(도구 호출마다 아님).
       // 이정표는 그 출처의 데이터 호출이 성공해서 돌아왔을 때만(도구 목록 검색·실패한 호출·연결 안 된 출처는 아무것도 안 띄움)
       const prog = this.reactions?.progress("briefing", phrase("briefing_prog"), { quietMs: 10e3 });

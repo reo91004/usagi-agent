@@ -1,6 +1,7 @@
 // 데스크톱 대화(패널 채팅 탭·캐릭터 호버). 스레드마다 한 번에 하나씩(그 스레드의 줄), 다른 스레드끼리는 동시에(상한 없음) —
 // 단 같은 레포를 동시에 고치려 하면 뒤의 답이 기다린다(repo-lock.ts). 기록은 store 스레드에, 진행은 SSE chat 이벤트로.
 // 스레드마다 기록이 따로다 — 모델은 그 스레드의 최근 흐름만 본다.
+import { activeBrain } from "./brain-fallback.ts";
 import { randomUUID } from "node:crypto";
 import type { Config } from "./config.ts";
 import type { Store, ChatTurn, ChatSendMeta, Todo, Thread, ThreadKind } from "./store.ts";
@@ -284,7 +285,7 @@ export async function converse(
   try { repo = relatedRepo(cfg, store, { todo: focus, text, history }); } catch {}
   const thread = threadId ? store.thread(threadId) : undefined;
   // 첨부: 목록·경로는 프롬프트 글에, 그림·PDF·글 내용은 블록으로(없으면 예전처럼 글 프롬프트만)
-  const att = attachments?.length && threadId ? attachmentInput(attachments, threadId, { tools: (cfg.brain?.provider ?? "claude-code") === "claude-code" }) : undefined;
+  const att = attachments?.length && threadId ? attachmentInput(attachments, threadId, { tools: activeBrain(cfg) === "claude-code" }) : undefined;
   const prompt = chatPrompt(cfg, store, history, text, summary, focus, repo, thread, att?.note);
   const via: ActionVia = thread?.kind === "hover" ? "hover" : "chat";
   const r = await ask<ChatReply>(cfg, prompt, CHAT_SCHEMA, onStep, { ...chatAskOpts(cfg, text || attachmentsTitle(attachments), repo, threadId, via, model), ...(inlineContext(cfg) ? {} : { ctx: { ...ctx, store } }), ...(abort ? { abort } : {}), ...(att?.blocks.length ? { blocks: att.blocks } : {}), facts: brainFacts(store) });

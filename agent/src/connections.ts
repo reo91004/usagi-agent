@@ -92,7 +92,8 @@ const ago = (iso: string | undefined, now: Date) => {
   const m = Math.round((now.getTime() - Date.parse(iso)) / 60e3);
   return m < 1 ? "방금" : m < 60 ? `${m}분 전` : m < 48 * 60 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`;
 };
-export const BRAIN_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", agy: "Antigravity", anthropic: "Claude API", gemini: "Gemini", openai: "OpenAI", genspark: "Genspark", local: "로컬(모델 없음)" };
+import { BRAIN_LABEL } from "./brain-fallback.ts";
+export { BRAIN_LABEL };
 
 // SDK 확인 결과 → Claude 로그인 됐나
 export function sdkLoggedIn(s: Pick<SdkProbe, "account" | "error">): boolean {

@@ -3,7 +3,7 @@
 // api 모드(Slack 사용자 토큰·ICS)는 실시간 도구 없이 로컬 지식그래프·일정 캐시를 맥락으로 넣는다.
 // 정기 작업(브리핑 등)은 읽기 전용(guard.ts). 대화형(opts.interactive — 채팅·캐릭터 대화·할 일 팝오버·Slack DM 요청)은
 // 모든 도구를 쓰되 쓰기는 사용자 승인(permissions.ts: PreToolUse 훅 + canUseTool, 하드 차단 목록).
-import type { CanUseTool, HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import { USAGE_LIMIT_ERROR_PREFIXES, type CanUseTool, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "./claude-sdk.ts";
 import { promptInput, type ContentBlock } from "./attachments.ts";
 export { promptInput };
@@ -14,6 +14,8 @@ export type AskRun = { kind: RunKind; title: string; ref?: string }; // ref: 관
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
+import { withFallback } from "./brain-fallback.ts";
+import { BrainAuthError, BrainLimitError } from "./providers.ts";
 import { briefingExcludeOf, excludeBriefingSources } from "./settings.ts";
 import { allowedMcpServers, hiddenMcpRules, isReadOnlyCall, mcpNameOf, mcpServerVerdict } from "./guard.ts";
 import { registeredMcpServerNames } from "./mcp.ts";
@@ -301,8 +303,15 @@ export function thinkPrompt(cfg: Config, store: Store, task: string, o: { tools?
 // schema 가 null 이면 구조화 출력 없이 마지막 답 글(result)을 그대로 돌려준다(채팅 슬래시 명령)
 // claude-code만 Agent SDK(askRun)를 쓴다. 다른 provider는 JSON만 받는다(askOther — codex·agy 채팅만 MCP 도구를 받는다).
 // 코딩(fixer)은 여기서 켜지지 않는다. fixer.ts의 Claude Code 수정 경로는 provider와 무관하게 그대로다.
+// 첫 뇌가 한도·인증 오류로 못 쓰면 brain.fallback 순서대로 이어 받는다(brain-fallback.ts). 이어 받는 뇌는 자기 모델을 쓴다(opts.model 은 첫 뇌 몫)
 export async function ask<T>(
   cfg: Config, prompt: string, schema: unknown, onStep?: (s: string) => void, opts: AskOpts & { run?: AskRun } = {},
+): Promise<T> {
+  return withFallback(cfg, (c, a) => askOnce<T>(c, prompt, schema, onStep, a.first ? opts : { ...opts, model: undefined }));
+}
+
+async function askOnce<T>(
+  cfg: Config, prompt: string, schema: unknown, onStep: ((s: string) => void) | undefined, opts: AskOpts & { run?: AskRun },
 ): Promise<T> {
   // 세션 창 기록(읽기 전용 run)
   const spec = opts.run ?? { kind: "other" as RunKind, title: opts.interactive ? "질문" : "질문(읽기 전용)" };
@@ -404,6 +413,7 @@ export type AskOpts = {
   // 첨부(attachments.ts): 프롬프트 글 뒤에 붙일 블록(이미지·PDF·글 파일 내용). 있으면 SDK 에 글 대신 사용자 메시지 하나(스트리밍 입력)로 —
   // 없으면 예전처럼 글 프롬프트 그대로(프롬프트 캐시·기존 동작 그대로)
   blocks?: ContentBlock[];
+  query?: typeof query; // 시험용: Claude Agent SDK query 바꿔치기
   // claude-code 가 아닌 뇌: local 이 쓰는 할 일 사실 · 원격 호출 의존성(시험용 fetch 등)
   facts?: BrainFacts;
   deps?: ProviderDeps;
@@ -484,7 +494,7 @@ async function askRun<T>(
   t.isolation?.setLog((ev) => run.log(ev), run.id);
   mkdirSync(join(HOME_DIR, "brain"), { recursive: true });
   const iso = t.settingSources.length ? mcpIsolation(t.mcpAllow) : { hidden: [], env: {} }; // 사용자 MCP 설정을 읽을 때만
-  const q = query({
+  const q = (opts.query ?? query)({
     prompt: promptInput(prompt, opts.blocks),
     options: {
       cwd: t.cwd,
@@ -512,9 +522,13 @@ async function askRun<T>(
       // 턴 한도 없음(maxTurns 를 아예 받지 않는다 — 어떤 run 도 턴 수로 멈추지 않는다)
     },
   });
+  let rejected: { resetsAt?: number } | undefined; // rate_limit_event 가 거절로 알린 한도
+  let assistantError: string | undefined;
   const called = new Map<string, string>(); // tool_use id → 단계 글(결과가 오면 onResult)
   try {
     for await (const m of trackQuery(run, q)) {
+      if (m.type === "rate_limit_event" && m.rate_limit_info.status === "rejected") rejected = { resetsAt: m.rate_limit_info.resetsAt };
+      if (m.type === "assistant" && m.error) assistantError = m.error;
       if (m.type === "assistant") {
         for (const b of m.message.content) if (b.type === "tool_use") { const st = stepName(b.name, b.input); called.set(b.id, st); steps.tool(st); }
       }
@@ -527,6 +541,7 @@ async function askRun<T>(
       if (m.type === "result") {
         if (m.subtype === "error_max_turns") throw new Error("턴 한도에 닿아 멈췄어요(error_max_turns)"); // 세션 창이 주황 + [이어서 하기]로
         if (m.subtype !== "success") throw new Error(`brain 실패: ${m.subtype}`);
+        if (m.is_error) throw claudeFailure(m.result, m.api_error_status, assistantError, rejected); // 한도 안내 글이 답으로 나가지 않게
         if (schema === null) return m.result as T;
         const out = (m as any).structured_output;
         if (!out) throw new Error(`brain: 구조화 결과 없음 — ${m.result.slice(0, 200)}`);
@@ -537,6 +552,19 @@ async function askRun<T>(
     await t.isolation?.closeAll(); // 멈춤·오류로 안 닫힌 격리 워크트리 정리(바뀐 게 있으면 커밋해 남긴다)
   }
   throw new Error("brain: 결과 없이 종료");
+}
+
+// SDK 결과가 is_error 일 때: 한도(사용량 문구·rate_limit_event 거절·429·assistant rate_limit/billing_error) → BrainLimitError,
+// 로그인 문제 → BrainAuthError, 그 밖은 일반 오류. resetsAt 은 초 단위로 올 수 있어 ms 로 맞춘다
+export function claudeFailure(text: string, status: number | null | undefined, assistantError?: string, rejected?: { resetsAt?: number }): Error {
+  const head = text.slice(0, 200);
+  if (assistantError === "authentication_failed" || assistantError === "oauth_org_not_allowed" || assistantError === "account_on_hold") return new BrainAuthError(`Claude Code 로그인이 필요해요: ${head}`);
+  const usage = USAGE_LIMIT_ERROR_PREFIXES.some((p) => text.startsWith(p));
+  if (rejected || usage || assistantError === "billing_error" || assistantError === "rate_limit" || status === 429) {
+    const at = rejected?.resetsAt;
+    return new BrainLimitError(`Claude 사용량 한도에 걸렸어요: ${head}`, "claude-code", rejected || usage || assistantError === "billing_error" ? "exhausted" : "rate", at ? (at < 1e11 ? at * 1000 : at) : undefined);
+  }
+  return new Error(`brain 실패: ${head}`);
 }
 
 // 멈출 수 있는 run: 세션 창 [정지](RunControl.stop — 메시지는 안 받으니 interactive 는 false 그대로) → abort,

@@ -22,10 +22,11 @@ function markCooldown(provider: string, err: Error, now: number) {
   const until = err instanceof BrainLimitError ? err.resetsAt ?? now + COOLDOWN_MS[err.kind] : now + COOLDOWN_MS.exhausted; // 인증·크레딧은 사용자가 고쳐야 풀린다 — 설정을 바꾸면 resetBrainCooldowns
   cooled.set(provider, { until: Math.max(until, now + 1000), err });
 }
+export const isCooled = (provider: string, now = Date.now()) => !!coolUntil(provider, now);
 const coolUntil = (provider: string, now: number) => { const c = cooled.get(provider); return c && c.until > now ? c.until : undefined; };
 
 // 첫 뇌 + fallback. model 이 없는 첫 뇌는 models.general 그대로
-export const brainOrder = (cfg: Cfg): BrainEntry[] => [{ provider: cfg.brain?.provider ?? "claude-code" }, ...(cfg.brain?.fallback ?? [])];
+export const brainOrder = (cfg: Pick<Config, "brain">): BrainEntry[] => [{ provider: cfg.brain?.provider ?? "claude-code" }, ...(cfg.brain?.fallback ?? [])];
 
 // 이 호출에만 쓰는 사본. 첫 뇌는 원래 설정 그대로, 이어 받는 뇌는 자기 모델(없으면 기본 모델 — 다른 뇌의 모델 이름이 가지 않게)
 export function attemptCfg<C extends Cfg>(cfg: C, e: BrainEntry, first: boolean): C {
@@ -34,7 +35,7 @@ export function attemptCfg<C extends Cfg>(cfg: C, e: BrainEntry, first: boolean)
 }
 
 // 지금 실제로 쓰는 뇌(건너뛰지 않는 첫 뇌). 다 쉬는 중이면 첫 뇌
-export function activeBrain(cfg: Cfg, now = Date.now()): BrainProvider {
+export function activeBrain(cfg: Pick<Config, "brain">, now = Date.now()): BrainProvider {
   const order = brainOrder(cfg);
   return (order.find((e) => !coolUntil(e.provider, now)) ?? order[0]).provider;
 }
@@ -43,8 +44,8 @@ export const brainCooldowns = (now = Date.now()): Record<string, number> =>
   Object.fromEntries([...cooled].filter(([, c]) => c.until > now).map(([p, c]) => [p, c.until]));
 
 // call 을 순서대로 시도한다. attempt = 이번 시도의 뇌·사본(first = 첫 뇌인가)
-export async function withFallback<T>(
-  cfg: Cfg, call: (c: Cfg, a: { entry: BrainEntry; first: boolean }) => Promise<T>,
+export async function withFallback<C extends Cfg, T>(
+  cfg: C, call: (c: C, a: { entry: BrainEntry; first: boolean }) => Promise<T>,
   { now = Date.now, ready = (c: Cfg) => brainKeyReady(c) }: { now?: () => number; ready?: (c: Cfg) => boolean | undefined } = {},
 ): Promise<T> {
   const order = brainOrder(cfg);
