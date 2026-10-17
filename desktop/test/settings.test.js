@@ -5,6 +5,7 @@ import { ipcHandlers, buildHandler, decl, requestSent } from './helpers/main-cal
 import { denied } from '../src/denied.js';
 import {
   sanitizeAppPrefs, sanitizeSettingsPatch, needsSetupHint, okCheckId, dotClass, agoText, latencyText, groupRows, pendingChecks, mergeRows, toggleExclude, metaText,
+  jobDirFolder, folderJobDir, serverRows, serversPatch,
   phraseGroups, phraseText, phraseCustom, phraseSaveValue, phraseProblem, repoSlugFrom, autoMergeNext,
   cleanReminder, parseTimes, reminderSummary, REMINDER_DEFAULT,
   cleanCalendarAlert, alertMinutesNext, parseAlertMinutes, alertChoices, calendarAlertSummary, ALERT_DEFAULT,
@@ -257,4 +258,22 @@ test('설정 IPC 는 패널만(fromPanel), 데몬 PUT 요청도 X-CY-Agent 헤�
   assert.equal(fromPanel(null)({ sender: 'p' }), false);
   assert.equal(fromPanel({ ...panel, isDestroyed: () => true })({ sender: 'p' }), false);
   assert.equal((await requestSent('PUT', '/settings', {}))[1].headers['X-CY-Agent'], '1');
+});
+
+test('서버 설정: 저장 본문 · 내 폴더 ↔ jobDirs · 지금 설정이 그대로 행으로 보인다', () => {
+  assert.deepEqual(sanitizeSettingsPatch({ sshHosts: ['a', 'a'], sessionHosts: [], jobDirs: { a: '~/reo/.usagi-agent/jobs' } }), { sshHosts: ['a'], sessionHosts: [], jobDirs: { a: '~/reo/.usagi-agent/jobs' } });
+  for (const bad of [{ sshHosts: ['-oX'] }, { sessionHosts: 'a' }, { jobDirs: { a: 'reo' } }, { jobDirs: { a: '~/../x' } }, { jobDirs: [] }]) assert.equal(sanitizeSettingsPatch(bad), null, JSON.stringify(bad));
+  assert.equal(jobDirFolder('~/reo/.usagi-agent/jobs'), '~/reo');
+  assert.equal(jobDirFolder('~/.usagi-agent/jobs'), '');
+  assert.equal(jobDirFolder(undefined), '');
+  assert.equal(folderJobDir(' ~/Documents/Repository/ '), '~/Documents/Repository/.usagi-agent/jobs');
+  assert.equal(folderJobDir('~/reo/.usagi-agent/jobs'), '~/reo/.usagi-agent/jobs');
+  assert.equal(folderJobDir('  '), '');
+  // 사용자 config: sshHosts 넷, sessionHosts 셋, 공용 계정 둘
+  const st = { sshHosts: ['pacl-reo', 'pacl-205', 'pacl-208', 'pacl-ugrp'], sessionHosts: ['pacl-reo', 'pacl-205', 'pacl-208'], jobDirs: { 'pacl-205': '~/reo/.usagi-agent/jobs', 'pacl-208': '~/reo/.usagi-agent/jobs' } };
+  const rows = serverRows(['pacl-reo', 'pacl-205', 'pacl-208', 'other'], st);
+  assert.deepEqual(rows.map((r) => [r.host, r.jobs, r.sessions, r.folder]), [
+    ['pacl-reo', true, true, ''], ['pacl-205', true, true, '~/reo'], ['pacl-208', true, true, '~/reo'], ['other', false, false, ''], ['pacl-ugrp', true, false, ''],
+  ]);
+  assert.deepEqual(serversPatch(rows), st);
 });

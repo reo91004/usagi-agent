@@ -27,11 +27,41 @@ export function autoMergeNext(list, slug, add) {
   return cur.filter((x) => x.toLowerCase() !== slug.toLowerCase());
 }
 
+// 서버 별칭·결과 폴더 모양(agent/src/jobs.ts okJobHost·okJobDir 와 같다)
+const okHost = (h) => typeof h === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$/.test(h);
+const okDir = (d) => typeof d === 'string' && /^(~\/|\/)[A-Za-z0-9_.\/-]{1,200}$/.test(d) && !d.split('/').includes('..');
+const JOBS_TAIL = '/.usagi-agent/jobs';
+const DEFAULT_JOB_DIR = '~/.usagi-agent/jobs';
+
+// 화면의 「내 폴더」 ↔ 저장하는 jobDirs 값. 기본 폴더(~/.usagi-agent/jobs)는 내 폴더가 아니라서 빈 칸. '' = 공용 계정 아님(jobDirs 에서 뺀다)
+export function jobDirFolder(dir) {
+  if (!dir || dir === DEFAULT_JOB_DIR) return '';
+  return dir.replace(/\/+$/, '').replace(/\/\.usagi-agent\/jobs$/, '');
+}
+export function folderJobDir(text) {
+  const t = String(text ?? '').trim().replace(/\/+$/, '');
+  if (!t) return '';
+  return t.endsWith(JOBS_TAIL) ? t : `${t}${JOBS_TAIL}`;
+}
+
+// 서버 칸 행: ssh config 의 서버 + 지금 설정에만 있는 서버(config.json 에 직접 적은 것도 보인다)
+export function serverRows(sshConfigNames, st) {
+  const names = [...new Set([...sshConfigNames, ...st.sshHosts, ...st.sessionHosts, ...Object.keys(st.jobDirs)])];
+  return names.map((host) => ({ host, jobs: st.sshHosts.includes(host), sessions: st.sessionHosts.includes(host), folder: jobDirFolder(st.jobDirs[host]) }));
+}
+
+// 서버 행들 → PUT /settings 본문. 폴더를 적은 서버만 jobDirs 에 넣는다(켜지 않은 서버라도 폴더는 남긴다)
+export function serversPatch(rows) {
+  const jobDirs = {};
+  for (const r of rows) if (folderJobDir(r.folder)) jobDirs[r.host] = folderJobDir(r.folder);
+  return { sshHosts: rows.filter((r) => r.jobs).map((r) => r.host), sessionHosts: rows.filter((r) => r.sessions).map((r) => r.host), jobDirs };
+}
+
 // 렌더러가 보낸 저장 본문 → 데몬에 넘길 모양(모르는 키·이상한 값이면 null). 진짜 검증(목록 안의 모델인가)은 데몬이
 export function sanitizeSettingsPatch(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const out = {};
-  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character' && k !== 'slackMuted') return null;
+  for (const k of Object.keys(p)) if (k !== 'models' && k !== 'briefing' && k !== 'phrases' && k !== 'autoMerge' && k !== 'todayReminder' && k !== 'readSessions' && k !== 'calendarAlert' && k !== 'character' && k !== 'slackMuted' && k !== 'sshHosts' && k !== 'sessionHosts' && k !== 'jobDirs') return null;
   // 캐릭터(src/character.js 의 id)
   if (p.character !== undefined) {
     if (!okCharacterId(p.character)) return null; // 기본 다섯 또는 사용자 캐릭터 모양(있는지는 데몬이)
@@ -72,6 +102,17 @@ export function sanitizeSettingsPatch(p) {
   if (p.slackMuted !== undefined) {
     if (!Array.isArray(p.slackMuted) || p.slackMuted.length > 2000 || !p.slackMuted.every((x) => typeof x === 'string' && /^[CG][A-Z0-9]{2,20}$/.test(x))) return null;
     out.slackMuted = [...new Set(p.slackMuted)];
+  }
+  // 실험 서버(데몬 settings.ts 와 같은 모양): 별칭 목록·{ 서버: 결과 폴더 } 통째로
+  for (const k of ['sshHosts', 'sessionHosts']) {
+    if (p[k] === undefined) continue;
+    if (!Array.isArray(p[k]) || p[k].length > 50 || !p[k].every(okHost)) return null;
+    out[k] = [...new Set(p[k])];
+  }
+  if (p.jobDirs !== undefined) {
+    const e = p.jobDirs && typeof p.jobDirs === 'object' && !Array.isArray(p.jobDirs) ? Object.entries(p.jobDirs) : null;
+    if (!e || e.length > 50 || !e.every(([h, d]) => okHost(h) && okDir(d))) return null;
+    out.jobDirs = Object.fromEntries(e);
   }
   // 자동 머지 레포: 목록 통째로(빈 목록 = 전부 뺌)
   if (p.autoMerge !== undefined) {

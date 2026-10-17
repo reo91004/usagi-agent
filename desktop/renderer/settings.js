@@ -4,7 +4,7 @@
 import {
   groupRows, pendingChecks, mergeRows, toggleExclude, dotClass, metaText, STATE_LABEL,
   phraseGroups, phraseText, phraseDefaultText, phraseCustom, phraseSaveValue, phraseProblem,
-  repoSlugFrom, autoMergeNext, needsSetupHint, localReadView,
+  repoSlugFrom, autoMergeNext, serverRows, serversPatch, needsSetupHint, localReadView,
   REMINDER_DEFAULT, REMINDER_HOURS, cleanReminder, parseTimes, reminderSummary,
   ALERT_DEFAULT, cleanCalendarAlert, alertMinutesNext, parseAlertMinutes, alertChoices, calendarAlertSummary,
 } from '../src/settings.js';
@@ -829,6 +829,44 @@ function renderSlackChannels() {
 }
 $('sk-search').addEventListener('input', renderSlackChannels);
 
+// ---- 서버 (sshHosts·sessionHosts·jobDirs. 이름 후보는 ~/.ssh/config 의 Host) ----
+let sshNames = [];
+function renderServers() {
+  const box = $('sv-list');
+  box.replaceChildren();
+  const rows = serverRows(sshNames, settings);
+  $('sv-card').hidden = !rows.length;
+  const checkbox = (on, text, title) => {
+    const l = el('label', 'sv-opt');
+    const c = el('input');
+    c.type = 'checkbox';
+    c.checked = on;
+    l.title = title;
+    l.append(c, el('span', null, text));
+    return [l, c];
+  };
+  const saveRows = async (changed) => {
+    const ok = await save(serversPatch(rows.map((r) => ({ ...r, ...(r.host === changed.host ? changed : {}) }))));
+    renderServers();
+    return ok;
+  };
+  for (const r of rows) {
+    const row = el('div', 'gl-row sv-row');
+    const [jl, jc] = checkbox(r.jobs, 'GPU·작업 보기', 'tmux·usagi-run 결과·GPU·폴더를 봐요(2분마다)');
+    const [sl, sc] = checkbox(r.sessions, '작업 기록 받기', '서버의 Claude Code·Codex 기록을 받아요(10분마다)');
+    const folder = el('input');
+    folder.type = 'text';
+    folder.value = r.folder;
+    folder.placeholder = '공용 계정이면 내 폴더 (예: ~/reo)';
+    folder.setAttribute('aria-label', `${r.host} 의 내 폴더`);
+    jc.addEventListener('change', () => saveRows({ host: r.host, jobs: jc.checked }));
+    sc.addEventListener('change', () => saveRows({ host: r.host, sessions: sc.checked }));
+    folder.addEventListener('change', () => saveRows({ host: r.host, folder: folder.value }));
+    row.append(el('span', 'gl-text', r.host), jl, sl, folder);
+    box.append(row);
+  }
+}
+
 // ---- 문구 ----
 const openGroups = new Set(['캐릭터']); // 펼쳐 둔 묶음(다시 그려도 유지)
 function phraseRow(p) {
@@ -1041,12 +1079,12 @@ function applySnapshot(data, { first = false } = {}) {
   if (Array.isArray(data.slackChannels)) slackChannels = data.slackChannels;
   if (first || !settings) {
     settings = data;
-    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderPhrases(); renderCharacter(); loadCharacters();
+    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderPhrases(); renderCharacter(); loadCharacters();
     return;
   }
   const { phrases, todayReminder, calendarAlert, character, characters } = settings;
   settings = { ...data, phrases, todayReminder, calendarAlert, ...(editDirty ? { character, characters } : {}) };
-  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge(); renderSlackChannels();
+  renderBrains(); renderModels(); renderSources(); renderLocal(); renderAutoMerge(); renderSlackChannels(); renderServers();
 }
 
 async function load() {
@@ -1055,6 +1093,7 @@ async function load() {
   if (k && typeof k === 'object' && typeof k.claude === 'boolean') caps = { claude: k.claude, codex: k.codex === true, code: k.code };
   if (!s?.ok || !c?.ok) banner(`${who()}에 연결되지 않았어요. ${who()}가 켜져 있는지 확인해 주세요.`);
   else banner(null);
+  sshNames = (await window.cy.folderHosts?.().catch(() => null))?.hosts?.map((h) => h.host) ?? []; // ~/.ssh/config 의 Host (패널의 프로젝트 열기와 같은 길)
   if (s?.ok) applySnapshot(s.data, { first: true });
   if (c?.ok) {
     await loadCalendars();
