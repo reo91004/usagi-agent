@@ -278,7 +278,7 @@ test("Slack 블록: 승인 카드 [허용]/[항상 허용]/[거부] + 필드·�
 });
 
 // ── Agent 경로 ──
-function agentSetup(o: { converse?: any; askTodo?: any; think?: any } = {}) {
+function agentSetup(o: { converse?: any; think?: any } = {}) {
   const store = new Store(":memory:");
   const bus = new Bus();
   bus.setMood = () => {};
@@ -295,7 +295,7 @@ function agentSetup(o: { converse?: any; askTodo?: any; think?: any } = {}) {
   };
   const agent: Agent = new Agent(cfg(), store, bus, slack, {
     git: async () => [], useBroker: false,
-    ...(o.converse ? { converse: o.converse } : {}), ...(o.askTodo ? { askTodo: o.askTodo } : {}), ...(o.think ? { think: o.think } : {}),
+    ...(o.converse ? { converse: o.converse } : {}), ...(o.think ? { think: o.think } : {}),
     actions: { now: () => new Date(), runs: new RunRegistry(new DatabaseSync(":memory:")), execute: async () => ({ called: false }) },
   });
   const waitPending = async () => { for (let k = 0; k < 100; k++) { const a = sse.find(([e, d]) => e === "action" && d.action.status === "pending"); if (a) return a[1].action; await new Promise((r) => setTimeout(r, 2)); } throw new Error("no card"); };

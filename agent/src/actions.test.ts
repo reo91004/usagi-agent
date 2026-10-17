@@ -190,7 +190,7 @@ test("실행 run 의 원래 화면: 팝오버 카드 → 그 할 일(+스레드)
 
 // ── Agent 경로: 채팅·호버·팝오버·DM, 라우트·CSRF ──
 
-function agentSetup(o: { converse?: any; askTodo?: any; think?: any; execute?: ExecuteCall } = {}) {
+function agentSetup(o: { converse?: any; think?: any; execute?: ExecuteCall } = {}) {
   const store = new Store(":memory:");
   withMeetings(store);
   const bus = new Bus();
@@ -207,7 +207,7 @@ function agentSetup(o: { converse?: any; askTodo?: any; think?: any; execute?: E
   };
   const calls: ToolCall[] = [];
   const agent = new Agent(cfg(), store, bus, slack, {
-    git: async () => [], ...(o.converse ? { converse: o.converse } : {}), ...(o.askTodo ? { askTodo: o.askTodo } : {}), ...(o.think ? { think: o.think } : {}),
+    git: async () => [], ...(o.converse ? { converse: o.converse } : {}), ...(o.think ? { think: o.think } : {}),
     actions: { now: () => NOW, runs: new RunRegistry(new DatabaseSync(":memory:")),
       execute: o.execute ?? (async (_c, call) => { calls.push(call); return { called: true, raw: { ok: true } }; }) },
   });
