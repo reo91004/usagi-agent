@@ -2,6 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { ipcHandlers, buildHandler, decl } from './helpers/main-calls.js';
+import { denied } from '../src/denied.js';
 import {
   okSessionId, okCwd, projectDirName, sessionFile, shQuote, resumeCommand, appleString, terminalArgs, planResume, canResume, resumeTip,
   parseSessionId, importNote, sessionCwd, winResumeLaunches,
@@ -129,30 +131,80 @@ test('planResume win32: launches 로, 워크트리 밖 사라진 폴더는 못 �
   assert.equal(planResume({ ...run, cwd: 'C:\\Windows\\x' }, opts(() => true)).ok, false);
 });
 
-test('IPC 배선: 윈도우는 plan.launches 를 execFile 로 차례로(셸 없이), wt 는 lstat 로 찾는다', () => {
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(main, /platform: process\.platform,\s+wt: process\.platform === 'win32' \? windowsTerminal\(\) : null,/);
-  assert.match(main, /execFile\(l\.file, l\.args, \{ timeout: 15000, env: consoleEnv\(\), \.\.\.\(l\.verbatim \? \{ windowsVerbatimArguments: true \} : \{\}\) \}/);
-  assert.match(main, /'WindowsApps', 'wt\.exe'/);
+// session-claude 핸들러를 가짜 데몬·execFile 로. plan = planResume 이 돌려줄 값
+function claudeRun({ platform, plan, execResults = [], run = { id: 'r1' }, env = {}, existing = [] }) {
+  const log = { exec: [], posts: [], plans: [] };
+  const deps = {
+    denied, fromOurs: (e) => e.ours, okRunId: (id) => /^r\d+$/.test(id), okSessionId, who: () => '시사',
+    request: async () => ({ ok: true, data: { run } }),
+    post: async (...a) => { log.posts.push(a); return { ok: true }; },
+    os: { homedir: () => '/home/me' }, path: { join: (...a) => a.join('/') }, fs: { existsSync: () => false, mkdirSync() {}, lstatSync: (p) => { if (!existing.includes(p)) throw new Error('ENOENT'); } },
+    process: { platform, env }, findSessionCwd: () => null, consoleEnv: () => ({ PATH: 'x' }),
+    planResume: (r, o) => { log.plans.push([r, o]); return plan; },
+    execFile: (file, args, opts, cb) => { log.exec.push([file, args, opts]); cb(execResults.shift() ?? null); },
+    windowsTerminal: () => null,
+  };
+  const h = buildHandler(ipcHandlers().get('session-claude'), deps);
+  return { log, deps, run: (e = { ours: true }, id = 'r1') => h(e, id) };
+}
+
+test('session-claude: 우리 창·run id 만, 윈도우는 plan.launches 를 execFile 로 차례로(셸 없이)', async () => {
+  const launches = [{ file: 'wt.exe', args: ['a'] }, { file: 'cmd.exe', args: ['/k', 'x'], verbatim: true }];
+  const w = claudeRun({ platform: 'win32', plan: { ok: true, launches, cwd: 'C:\\x' }, execResults: [new Error('no wt')] });
+  assert.deepEqual(await w.run({ ours: false }), denied());
+  assert.deepEqual(await w.run({ ours: true }, '../x'), denied());
+  assert.deepEqual(w.log.exec, []);
+  assert.deepEqual(await w.run(), { ok: true });
+  assert.deepEqual(w.log.exec, [
+    ['wt.exe', ['a'], { timeout: 15000, env: { PATH: 'x' } }],
+    ['cmd.exe', ['/k', 'x'], { timeout: 15000, env: { PATH: 'x' }, windowsVerbatimArguments: true }],
+  ]);
+  assert.deepEqual(w.log.posts, [['/runs/r1/sync', { watch: true }]]);
+  assert.equal(w.log.plans[0][1].platform, 'win32');
+  // 모두 실패하면 오류, 지켜보기도 시작하지 않는다
+  const f = claudeRun({ platform: 'win32', plan: { ok: true, launches }, execResults: [new Error('a'), new Error('b')] });
+  assert.deepEqual(await f.run(), { ok: false, error: '터미널을 열지 못했어요.' });
+  assert.deepEqual(f.log.posts, []);
+});
+
+test('windowsTerminal: LOCALAPPDATA 아래 WindowsApps/wt.exe 가 lstat 로 있을 때만', () => {
+  const wt = 'L/Microsoft/WindowsApps/wt.exe';
+  const mk = (env, existing) => claudeRun({ platform: 'win32', plan: null, env, existing }).deps;
+  const call = (d) => buildHandler(decl('windowsTerminal'), d)();
+  assert.equal(call(mk({ LOCALAPPDATA: 'L' }, [wt])), wt);
+  assert.equal(call(mk({ LOCALAPPDATA: 'L' }, [])), null);
+  assert.equal(call(mk({}, [wt])), null);
 });
 
 test('IPC 배선: 세션 창 importSession → 메인 session-import(UUID 만) → POST /runs/import', () => {
   const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
-  const main = read('main.js'), ps = read('preload-session.cjs'), sess = read('renderer/session.js'), html = read('renderer/session.html');
+  const ps = read('preload-session.cjs'), sess = read('renderer/session.js'), html = read('renderer/session.html');
   assert.match(ps, /importSession: \(sid\) => ipcRenderer\.invoke\('session-import', String\(sid\)\)/);
-  assert.match(main, /ipcMain\.handle\('session-import', \(e, sid\) => \(fromOurs\(e\) && okSessionId\(sid\) \? post\('\/runs\/import', \{ sessionId: sid \}\) : denied\(\)\)\)/);
+  const posts = [];
+  const h = buildHandler(ipcHandlers().get('session-import'), { denied, fromOurs: (e) => e.ours, okSessionId, post: (...a) => { posts.push(a); return 'posted'; } });
+  assert.deepEqual(h({ ours: false }, SID), denied());
+  assert.deepEqual(h({ ours: true }, `${SID}; rm -rf ~`), denied());
+  assert.deepEqual(posts, []);
+  assert.equal(h({ ours: true }, SID), 'posted');
+  assert.deepEqual(posts, [['/runs/import', { sessionId: SID }]]);
   assert.match(html, /id="im-sid"/);
   assert.match(sess, /cy\.importSession\(sid\)/);
   assert.match(sess, /await select\(r\.data\.runId\)/);
 });
 
-test('IPC 배선: 세션 창 openInClaude → 메인 session-claude(run 을 데몬에서 다시 받아 planResume → osascript, 셸 없이)', () => {
+test('IPC 배선: 세션 창 openInClaude → 메인 session-claude(run 을 데몬에서 다시 받아 planResume → osascript, 셸 없이)', async () => {
   const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   const main = read('main.js'), ps = read('preload-session.cjs'), sess = read('renderer/session.js'), html = read('renderer/session.html');
   assert.match(ps, /openInClaude: \(id\) => ipcRenderer\.invoke\('session-claude', String\(id\)\)/);
-  assert.match(main, /ipcMain\.handle\('session-claude', async \(e, id\) => \{\s*if \(!fromOurs\(e\) \|\| !okRunId\(id\)\) return denied\(\);/);
-  assert.match(main, /const plan = planResume\(r\.data\.run,/);
-  assert.match(main, /execFile\('osascript', plan\.args,/);
+  const run = { id: 'r1', cwd: '/home/me/x' };
+  const m = claudeRun({ platform: 'darwin', plan: { ok: true, args: ['-e', 'tell'] }, run });
+  assert.deepEqual(await m.run(), { ok: true });
+  assert.equal(m.log.plans[0][0], run, '렌더러가 준 값이 아니라 데몬에서 받은 run 으로 계획');
+  assert.deepEqual(m.log.exec, [['osascript', ['-e', 'tell'], { timeout: 15000 }]]);
+  assert.deepEqual(m.log.posts, [['/runs/r1/sync', { watch: true }]]);
+  const bad = claudeRun({ platform: 'darwin', plan: { ok: false, error: '못 열어요' } });
+  assert.deepEqual(await bad.run(), { ok: false, error: '못 열어요' });
+  assert.deepEqual(bad.log.exec, []);
   assert.doesNotMatch(main, /\bexec\(|execSync|shell: true/);
   assert.match(html, /id="btn-claude"[^>]*>Claude Code에서 열기</);
   assert.match(sess, /cy\.openInClaude\(r\.id\)/);

@@ -7,6 +7,8 @@ import {
 } from '../src/calendars.js';
 import { withConnectorOff } from '../src/disconnect.js';
 import { setupSettings } from '../src/settings-window.js';
+import { ipcHandlers, buildHandler, decl } from './helpers/main-calls.js';
+import { denied } from '../src/denied.js';
 
 const G1 = 'https://calendar.google.com/calendar/ical/chaewon.kim%40gmail.com/private-0123456789abcdef0123456789abcdef/basic.ics';
 const G2 = 'https://calendar.google.com/calendar/ical/abcdef123456%40group.calendar.google.com/private-fedcba9876543210/basic.ics';
@@ -123,10 +125,74 @@ test('[빼기] 문구·반영 안내', () => {
   assert.equal(calendarReloadNote({ changed: false, restarting: false }, false), '');
 });
 
-test('캘린더 IPC: 목록·빼기는 패널에서만(main 의 공용 채널)', () => {
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-  assert.match(main, /ipcMain\.handle\('calendar-list', \(e\) => \(fromPanel\(e\)/);
-  assert.match(main, /ipcMain\.handle\('calendar-remove', \(e, id\) => \(fromPanel\(e\) && okCalendarId\(id\)/);
+test('캘린더 IPC: 목록·빼기는 패널에서만(main 의 공용 채널)', async () => {
+  const h = ipcHandlers(), removed = [];
+  const deps = { denied, fromPanel: (e) => e.panel, okCalendarId, calendarList: () => ['row'], removeCalendar: async (id) => { removed.push(id); return { ok: true }; } };
+  const run = (ch, e, ...a) => buildHandler(h.get(ch), deps)(e, ...a);
+  assert.deepEqual(run('calendar-list', { panel: false }), denied());
+  assert.deepEqual(run('calendar-list', { panel: true }), { ok: true, items: ['row'] });
+  assert.deepEqual(await run('calendar-remove', { panel: false }, hash(G1)), denied());
+  assert.deepEqual(await run('calendar-remove', { panel: true }, '../x'), denied());
+  assert.deepEqual(removed, []);
+  await run('calendar-remove', { panel: true }, 'a1b2c3d4e5f60718');
+  assert.deepEqual(removed, ['a1b2c3d4e5f60718']);
+});
+
+// removeCalendar: 가짜 config·데몬으로 — 어떤 주소가 지워지고 데몬이 다시 읽는지
+async function removeRun({ cfg, connected = true }) {
+  const log = { edits: [], posts: [], saved: [], disconnected: [] };
+  const calendarId = hash;
+  const readDaemonConfig = () => cfg;
+  const deps = {
+    connected, readDaemonConfig, calendarId, calendarUrlById, calendarUrls, calendarList: () => calendarRows(cfg, calendarId), hubDoneFor, calendarReloadNote,
+    withCalendarRemoved, normalizeSisa: (x) => x ?? { done: {} }, readSisa: () => ({ done: { gcal: true } }), writeSisa: (d) => log.saved.push(d), sisaPublic: (d) => d, sendPanel() {}, who: () => '시사',
+    editDaemonConfig: (fn) => { const next = fn(cfg); log.edits.push(next); return next; },
+    post: async (...a) => { log.posts.push(a); return { ok: true, data: { changed: true, restarting: true } }; },
+    disconnectConnector: async (cap) => { log.disconnected.push(cap); return { ok: true, cap }; },
+  };
+  const id = (u) => hash(u);
+  return { log, run: (url) => buildHandler(decl('removeCalendar'), deps)(id(url)) };
+}
+
+test('removeCalendar: 그 주소만 config 에서 빼고 데몬이 다시 읽게 한다, 마지막 하나면 연결 해제', async () => {
+  const two = { connectors: { calendar: { mode: 'api', icsUrls: [G1, G2] } } };
+  const a = await removeRun({ cfg: two });
+  const r = await a.run(G1);
+  assert.deepEqual(a.log.edits[0].connectors.calendar.icsUrls, [G2]);
+  assert.deepEqual(a.log.posts, [['/connectors/reload']]);
+  assert.equal(r.ok, true);
+  assert.equal(r.note, '잠깐 다시 켜지며 적용돼요.');
+  // 꺼진 데몬: 다시 읽기를 부르지 않는다
+  const off = await removeRun({ cfg: two, connected: false });
+  await off.run(G1);
+  assert.deepEqual(off.log.posts, []);
+  // 모르는 id
+  const none = await removeRun({ cfg: two });
+  assert.equal((await none.run('https://x.example/none.ics')).ok, false);
+  assert.deepEqual(none.log.edits, []);
+  // 마지막 하나: 커넥터 전체 해제
+  const one = await removeRun({ cfg: { connectors: { calendar: { mode: 'api', icsUrls: [G1] } } } });
+  await one.run(G1);
+  assert.deepEqual(one.log.disconnected, ['calendar']);
+  assert.deepEqual(one.log.edits, []);
+  // 이 Mac 캘린더를 같이 쓰면 마지막 주소를 빼도 그건 남는다
+  const local = await removeRun({ cfg: { connectors: { calendar: { mode: 'api', local: true, icsUrls: [G1] } } } });
+  await local.run(G1);
+  assert.equal(local.log.edits[0].connectors.calendar.local, true);
+  assert.deepEqual(local.log.disconnected, []);
+});
+
+test('sisa-mark: 이미 있는 캘린더 주소면 duplicate 로 알리고 데몬은 다시 읽지 않는다', async () => {
+  const posts = [];
+  const mk = (wrote) => buildHandler(ipcHandlers().get('sisa-mark'), {
+    denied, fromOurs: () => true, HUB_IDS: new Set(['gcal', 'outlook', 'slack']), slotOk: () => true, CALENDAR_DUP: 'dup!', connected: true, console,
+    normalizeSisa: () => ({ done: {} }), readSisa: () => ({}), writeSisa() {}, writeConnector: () => wrote,
+    post: async (...a) => { posts.push(a); return { ok: true, data: { changed: false } }; },
+  });
+  assert.deepEqual(await mk('dup')({}, 'gcal', G1), { ok: false, duplicate: true, error: 'dup!', done: { gcal: true } });
+  assert.deepEqual(posts, []);
+  assert.equal((await mk(true)({}, 'gcal', G1)).ok, true);
+  assert.deepEqual(posts, [['/connectors/reload']]);
 });
 
 test('화면 연결: 패널 설치 탭·설정 창·프리로드·main 이 캘린더 더하기·목록·빼기를 부른다', () => {
@@ -144,11 +210,6 @@ test('화면 연결: 패널 설치 탭·설정 창·프리로드·main 이 캘�
   assert.match(settings, /캘린더 하나 더 추가/);
   assert.match(read('../preload-panel.cjs'), /calendarRemove: .*'calendar-remove'/);
   assert.match(read('../preload-panel.cjs'), /removeCalendar: .*'calendar-remove'/);
-  const main = read('../main.js');
-  assert.match(main, /ipcMain\.handle\('calendar-remove'/);
-  assert.match(main, /if \(wrote === 'dup'\) return \{ ok: false, duplicate: true/);
-  assert.match(main, /withCalendarRemoved\(cfg, url\)/);
-  assert.match(main, /post\('\/connectors\/reload'\)/);
 });
 
 // 아주 작은 가짜 DOM(설치 화면 그리기·누르기만)

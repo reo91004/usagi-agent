@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { ipcHandlers, buildHandler } from './helpers/main-calls.js';
+import { denied } from '../src/denied.js';
 import {
   clickTarget, pickRun, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl, readOnlyReason,
   initialTranscript, addEvents, buildItems, toolsSummary, shortTool, diffLines,
@@ -275,11 +277,17 @@ test('모델 고르기: 응답 정리, 이 세션에서 고른 것 → 수정 ru
 test('패널 채팅 모델 고르기 배선: preload listModels·chatSend model → 메인 chat-send 가 모양 확인 후 /chat 에 model', async () => {
   const { readFileSync } = await import('node:fs');
   const pre = readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8');
-  const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8');
   assert.match(pre, /listModels: \(\) => ipcRenderer\.invoke\('session-models'\)/);
   assert.match(pre, /model: opts\?\.model == null \? null : String\(opts\.model\)/);
-  assert.match(main, /const model = okModelId\(o\.model\) \? o\.model : null;/);
+  const posts = [];
+  const send = buildHandler(ipcHandlers().get('chat-send'), {
+    denied, fromOurs: () => true, cleanAttachIds: () => [], okThreadId: () => false, okModelId: (m) => m === 'claude-sonnet-5-5', win: null,
+    post: async (...a) => { posts.push(a[1]); return { ok: true, status: 200, data: {} }; },
+  });
+  await send({ sender: 'panel' }, '안녕', { model: 'claude-sonnet-5-5' });
+  await send({ sender: 'panel' }, '안녕', { model: '../evil' });
+  assert.deepEqual(posts, [{ text: '안녕', model: 'claude-sonnet-5-5' }, { text: '안녕' }]);
   assert.match(html, /<select id="chat-model"[^>]*hidden>/);
 });
 
