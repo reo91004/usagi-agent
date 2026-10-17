@@ -19,12 +19,12 @@ import type { ContentBlock } from "./attachments.ts";
 import { DEFAULT_GENERAL_MODEL, HOME_DIR, type BrainProvider, type Config } from "./config.ts";
 
 // redirect: 키를 싣는 요청은 "error"(리다이렉트를 따라가 다른 곳에 키를 보내지 않는다)
-export type FetchLike = (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string; redirect?: "error" | "follow" | "manual" }) => Promise<Response>;
+export type FetchLike = (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string; redirect?: "error" | "follow" | "manual"; signal?: AbortSignal }) => Promise<Response>;
 
 export type ExecFileLike = (
   file: string,
   args: readonly string[],
-  opts?: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv },
+  opts?: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
 ) => Promise<{ stdout: string; stderr?: string }>;
 
 // 첨부 블록(attachments.ts — 글·그림·PDF)을 공급자마다의 입력 모양으로. 예전엔 Claude Code 경로만 받고 API 키 연결은 버렸다
@@ -39,6 +39,7 @@ export type ProviderDeps = {
   execFile?: ExecFileLike;
   commandExists?: (name: string) => boolean;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal; // 채팅 정지: 진행 중인 요청·자식 프로세스를 끊는다
 };
 
 // 출처: https://ai.google.dev/gemini-api/docs/changelog — 새 프로젝트는 3.8 Flash 권장(2.5 는 예전에 쓰던 계정만 열려 새 사용자는 404)
@@ -316,7 +317,7 @@ const geminiSpent = new Map<string, { until: number; limit?: number }>();
 
 export async function geminiJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; now?: () => number } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; now?: () => number; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = geminiKey(cfg, env);
@@ -337,6 +338,7 @@ export async function geminiJson(
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body,
+        signal: opts.signal,
       });
     } catch {
       throw new Error("Gemini 요청을 보내지 못했어요.");
@@ -493,7 +495,7 @@ type ChatSpec = {
   noRetry?: (status: number, body: string) => boolean;
   limit?: (status: number, body: string) => LimitKind | undefined; // 사용량·한도 실패면 BrainLimitError 로
 };
-type ChatOpts = { system?: string; blocks?: ContentBlock[]; fetch?: FetchLike };
+type ChatOpts = { system?: string; blocks?: ContentBlock[]; fetch?: FetchLike; signal?: AbortSignal };
 async function chatCompletionsText(spec: ChatSpec, prompt: string, schema: unknown, opts: ChatOpts): Promise<string> {
   const fetchImpl = opts.fetch ?? fetch;
   const messages = [
@@ -512,6 +514,7 @@ async function chatCompletionsText(spec: ChatSpec, prompt: string, schema: unkno
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${spec.key}` },
         body,
         redirect: "error",
+        signal: opts.signal,
       });
     } catch {
       throw new Error(`${spec.label} 요청을 보내지 못했어요.`);
@@ -572,7 +575,7 @@ export function openaiFailText(status: number, body: string): string | undefined
 
 export async function openaiJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void> } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = openaiKey(cfg, env);
@@ -638,7 +641,7 @@ const redactKeys = (s: string) => s.replace(/\bgsk-[\w-]+/g, "***");
 
 export async function gensparkJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; sleep?: (ms: number) => Promise<void>; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = gensparkKey(cfg, env);
@@ -664,7 +667,7 @@ export async function gensparkJson(
 
 export async function anthropicJson(
   cfg: Pick<Config, "brain" | "models">, prompt: string, schema: unknown,
-  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv } = {},
+  opts: { system?: string; model?: string; blocks?: ContentBlock[]; fetch?: FetchLike; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const env = opts.env ?? process.env;
   const key = anthropicKey(cfg, env);
@@ -676,6 +679,7 @@ export async function anthropicJson(
     res = await fetchImpl(ANTHROPIC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
+      signal: opts.signal,
       body: JSON.stringify({
         model,
         max_tokens: 16000,
@@ -745,7 +749,7 @@ export function killTree(pid: number | undefined) {
   try { spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => {}); } catch {}
 }
 
-export function defaultExecFile(file: string, args: readonly string[], opts: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<{ stdout: string; stderr: string }> {
+export function defaultExecFile(file: string, args: readonly string[], opts: { input?: string; timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // Windows: npm 이 깐 codex 는 codex.cmd → cmd.exe /d /s /c 로(인자는 고정 플래그뿐, 프롬프트는 stdin)
     const sp = spawnSpec(file, args);
@@ -753,11 +757,14 @@ export function defaultExecFile(file: string, args: readonly string[], opts: { i
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     const timer = setTimeout(() => { killTree(child.pid); child.kill(); reject(new Error(`${file} 실행 시간이 초과됐어요.`)); }, opts.timeout ?? 120_000);
+    const onAbort = () => { clearTimeout(timer); killTree(child.pid); child.kill(); reject(new Error("멈췄어요")); };
+    if (opts.signal?.aborted) onAbort(); else opts.signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (d) => out.push(d));
     child.stderr.on("data", (d) => err.push(d));
-    child.on("error", () => { clearTimeout(timer); reject(new Error(`${file} 실행이 실패했어요.`)); });
+    child.on("error", () => { clearTimeout(timer); opts.signal?.removeEventListener("abort", onAbort); reject(new Error(`${file} 실행이 실패했어요.`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       // stdout·stderr·종료 코드는 호출한 쪽이 쓴다(agy 의 AGY_ERROR, codex 의 한도 안내). 메시지 자체에는 넣지 않는다
       if (code !== 0) reject(Object.assign(new Error(`${file} 실행이 실패했어요.`), { code, stderr: Buffer.concat(err).toString("utf8"), stdout: Buffer.concat(out).toString("utf8") }));
       else resolve({ stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
@@ -821,7 +828,7 @@ function cliParts(prompt: string, opts: { blocks?: ContentBlock[]; system?: stri
 
 // mcp: 맥락 도구를 붙인다(채팅처럼 사용자에게 바로 답하는 실행만 — 뒤에서 하는 정리는 도구 없이 빨리)
 // servers: mcp 일 때 함께 붙일 사용자 MCP 연결(cli-mcp.ts cliMcpServers). gate: 그 부르기를 판정할 승인 브로커(brain.ts) — 없으면 안 붙인다
-export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide };
+export type CodexOpts = { blocks?: ContentBlock[]; system?: string; execFile?: ExecFileLike; commandExists?: (name: string) => boolean; timeoutMs?: number; mcp?: boolean; servers?: CliMcpServer[]; gate?: GateDecide; signal?: AbortSignal };
 
 // codex exec 한 번 → 마지막 답의 JSON + 토큰 수. 실패는 짧은 한국어(출력 본문은 넣지 않는다)
 export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts = {}): Promise<{ out: unknown; usage: CodexUsage }> {
@@ -838,9 +845,10 @@ export async function codexExec(prompt: string, schema: unknown, opts: CodexOpts
   const timeout = opts.timeoutMs ?? (gate ? CODEX_TIMEOUT_MS + PERMISSION_TTL_MS : CODEX_TIMEOUT_MS);
   let stdout = "";
   try {
-    stdout = (await exec("codex", args, { input, timeout, cwd: tmpdir() })).stdout;
+    stdout = (await exec("codex", args, { input, timeout, cwd: tmpdir(), signal: opts.signal })).stdout;
   } catch (e) {
     const err = e as { message?: string; stdout?: string; stderr?: string };
+    if (err?.message === "멈췄어요") throw e;
     if (/초과/.test(String(err?.message ?? ""))) throw new Error("codex 실행 시간이 초과됐어요.");
     const kind = codexLimit(String(err?.stdout ?? ""), String(err?.stderr ?? ""));
     if (kind) throw new BrainLimitError("Codex 사용량 한도에 걸렸어요", "codex", kind);
@@ -882,6 +890,7 @@ export function parseAgyStdout(stdout: string): { out: unknown; usage: CodexUsag
 // 모델 실패는 종료 코드 3 + stderr 의 AGY_ERROR 줄
 function agyFailure(e: unknown): Error {
   const err = e as { message?: string; code?: number; stderr?: string };
+  if (err?.message === "멈췄어요") return err as Error;
   if (/초과/.test(String(err?.message ?? ""))) return new Error("agy 실행 시간이 초과됐어요.");
   const line = String(err?.stderr ?? "").split("\n").find((l) => l.includes("AGY_ERROR"));
   if (!line) return new Error(AGY_FAILED);
@@ -992,7 +1001,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
   const timeout = opts.timeoutMs ?? AGY_TIMEOUT_MS;
   const run = async (withSchema: boolean) => {
     try {
-      return (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, withSchema ? schema : undefined, opts.model), { timeout, cwd: dir })).stdout;
+      return (await (opts.execFile ?? defaultExecFile)("agy", agyArgs(input, withSchema ? schema : undefined, opts.model), { timeout, cwd: dir, signal: opts.signal })).stdout;
     } catch (e) {
       throw agyFailure(e);
     }
@@ -1004,7 +1013,7 @@ export async function agyExec(prompt: string, schema: unknown, opts: AgyOpts = {
   let first: string;
   if (spare) {
     try {
-      first = JSON.stringify(await warm!.runTurn(spare, input, timeout));
+      first = JSON.stringify(await warm!.runTurn(spare, input, timeout, opts.signal));
     } catch (e) {
       throw agyFailure(e);
     } finally {

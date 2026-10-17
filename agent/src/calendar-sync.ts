@@ -7,6 +7,7 @@
 import { eventkitSource } from "./eventkit.ts";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "./claude-sdk.ts";
+import { hidIdleSec } from "./activity.ts";
 import { mcpBrainNote, skipQuietly } from "./feature-brain.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -19,6 +20,7 @@ import { phrase } from "./phrases.ts";
 import { calendarAlertOf } from "./calendar-alert.ts";
 
 export const SYNC_EVERY_MS = 30 * 60e3;   // 30분마다 다시 가져온다
+export const MCP_AWAY_SEC = 60 * 60;       // 자리를 이만큼 비우면 MCP(모델 호출) 동기화는 쉰다 — 돌아오면 다음 확인에서 바로 한 번
 
 
 export type CalEvent = {
@@ -248,6 +250,7 @@ export type CalendarDeps = {
   setTimer: (fn: () => void, ms: number) => Timer;
   clearTimer: (t: Timer) => void;
   wrapRun?: <T>(fn: () => Promise<T>) => Promise<T>; // 실행 기록(runs)·활동 표시로 감싸기
+  idleSec?: () => Promise<number>; // 키보드·마우스 안 만진 초(시험용으로 바꿔치기)
   source?: CalendarSource | null; // 원천(커넥터). 안 주면 cfg.connectors.calendar. null = 끔
 };
 export type CalendarAlert = (m: Meeting, text: string, mins: number) => void;
@@ -391,10 +394,12 @@ export class CalendarSync {
     this.timer = this.deps.setTimer(() => this.tick(wait), wait);
   }
 
-  private tick(expected: number) {
+  private async tick(expected: number) {
     const now = this.deps.now().getTime();
     const woke = now - this.lastTick > expected + 120e3; // 예정보다 2분 넘게 늦게 깼으면 잠자기에서 깬 것
     if (woke || now - this.lastSync >= SYNC_EVERY_MS) {
+      // MCP 는 동기화마다 모델 호출이라 오래 자리를 비웠으면 건너뛴다(ICS 는 모델이 없어 그대로). 알림 확인은 계속
+      if (this.cfg.connectors?.calendar?.mode === "mcp" && await (this.deps.idleSec ?? hidIdleSec)() >= MCP_AWAY_SEC) { this.check(); return; }
       this.sync().then((r) => this.onSync?.(r)).catch((e) => { console.warn("[calendar] 동기화 실패:", e?.message ?? e); this.check(); });
       this.arm(); // sync 가 끝나면 check() 가 다시 잡는다
       return;

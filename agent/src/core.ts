@@ -498,7 +498,7 @@ export class Agent {
       if (fresh.length) this.changed();
       return 0;
     }
-    const t = await this.deps.think(this.cfg, this.store, slackTodoTask(formatAttention(items), items.map((i) => `slack:${i.channel}:${i.ts}`)), () => {}, { run: { kind: "briefing", title: "새 Slack → 할 일" } });
+    const t = await this.deps.think(this.cfg, this.store, slackTodoTask(formatAttention(items), items.map((i) => `slack:${i.channel}:${i.ts}`)), () => {}, { run: { kind: "briefing", title: "새 Slack → 할 일" }, context: "light" });
     db.prepare("INSERT INTO slack_meta (key, value) VALUES ('quickTodoAt', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(newest);
     const notable = this.addTodos(t.todos).filter((x) => x.priority !== 4);
     this.changed();

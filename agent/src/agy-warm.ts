@@ -72,12 +72,17 @@ export function createAgyWarm(deps: WarmDeps) {
       return s;
     },
     // 말 한 줄을 먹이고 stdin 을 닫아 한 턴만 돌린다 → result 이벤트의 result. 실패는 stderr 를 실은 오류(agyFailure 가 읽는다)
-    runTurn(s: Spare, input: string, timeoutMs: number): Promise<unknown> {
+    runTurn(s: Spare, input: string, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
       return new Promise((resolve, reject) => {
         const timer = setTimer(() => { reject(new Error("agy 실행 시간이 초과됐어요.")); s.dead = true; s.child.kill(); }, timeoutMs);
+        // 정지: 이 턴의 자식만 죽인다(꺼낸 예비라 다른 말과 공유하지 않는다). 다음 예비는 호출한 쪽이 다시 띄운다
+        const onAbort = () => { clearTimer(timer); reject(new Error("멈췄어요")); s.dead = true; s.child.kill(); };
+        if (signal?.aborted) return onAbort();
+        signal?.addEventListener("abort", onAbort, { once: true });
         const finish = () => {
           if (s.result === undefined && !s.dead) return;
           clearTimer(timer);
+          signal?.removeEventListener("abort", onAbort);
           if (s.result !== undefined) resolve(s.result);
           else reject(Object.assign(new Error("agy 실행이 실패했어요."), { stderr: s.err }));
         };
