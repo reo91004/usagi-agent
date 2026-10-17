@@ -70,9 +70,9 @@ export async function buildDashboard(cfg: Config, store: Store, deps: DashboardD
   const now = deps.now ?? new Date();
   // git 커밋은 사용자가 고른 레포 폴더에서만, 작업 기록(세션)은 켰을 때만(onboarding.ts)
   const repos = gitAllowed(cfg) ? await (deps.git ?? ((c) => gitActivity(c)))(cfg).catch(() => [] as RepoActivity[]) : [];
-  const sessionsOf = new Map<string, Node[]>();
-  const projs = projects(store, repos, now, sessionsAllowed(cfg), sessionsOf);
-  const researchProjects = buildResearchProjects(store, projs, sessionsOf, now, deps.tmux);
+  const withSessions = sessionsAllowed(cfg);
+  const projs = projects(store, repos, now, withSessions);
+  const researchProjects = buildResearchProjects(store, projs, now, withSessions, deps.tmux);
   const owned = new Set(researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)));
   for (const p of projs) if (owned.has(p.path)) p.hiddenByResearch = true;
   return {
@@ -144,7 +144,7 @@ export function insideOf(path: string, root: string): boolean {
 // 세션 cwd 를 레포 단위로 묶는다: 숨은 폴더 아래는 그 위로(.plans · .claude/worktrees), 레포 하위 폴더는 레포로(레포 목록 밖이면 가장 가까운 .git 루트로),
 // 같은 서버에서 다른 프로젝트 안에 든 프로젝트는 그 바깥 프로젝트로 합친다. 합친 줄은 세션·커밋을 더하고 가장 최근 세션의 제목·요청을 보인다
 type Group = { repos: RepoActivity[]; sessions: Node[] };
-function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true, sessionsOut?: Map<string, Node[]>): DashProject[] {
+function projects(store: Store, repos: RepoActivity[], now: Date, withSessions = true): DashProject[] {
   const since = now.getTime() - 7 * DAY;
   const byLen = [...repos].sort((a, b) => b.path.length - a.path.length);
   const groups = new Map<string, Group>();
@@ -191,7 +191,6 @@ function projects(store: Store, repos: RepoActivity[], now: Date, withSessions =
     const lastActive = [last?.updated, ...g.repos.map((r) => r.recentCommits[0]?.time)].filter((x): x is string => !!x && Date.parse(x) >= since)
       .map((x) => new Date(x).toISOString()).sort().at(-1);
     if (!lastActive) continue;
-    sessionsOut?.set(path, sessions);
     out.push({
       name: rootRepo?.name ?? path.split(sep).filter(Boolean).at(-1) ?? path,
       path,
