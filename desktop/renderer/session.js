@@ -1,5 +1,6 @@
 // 작업 세션 창 — 왼쪽 run 목록, 오른쪽 Claude Code 같은 기록 + 입력창. 네트워크는 전부 메인을 거친다.
 import { navIcon } from './nav-icons.js';
+import { h } from './h.js';
 import { who, setWho } from './who.js';
 import { applyCharacters } from '../src/character-registry.js';
 import { START_CHARACTER } from '../src/character.js';
@@ -8,7 +9,7 @@ import { Marked } from './vendor/marked.js';
 import { createMarkdown } from '../src/markdown.js';
 import { relativeTime, clockTime } from '../src/dashboard.js';
 import {
-  kindIcon, kindLabel, STATUS_LABELS, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl, readOnlyReason,
+  kindIcon, kindLabel, STATUS_LABELS, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl,
   initialTranscript, addEvents, buildItems, toolsSummary, diffLines, runningSubagents, toolSig,
   isAtBottom, initialScroll, scrollReducer, composerKey, cleanMessage, okRunId,
   composerMode, gateComposer, awaitingFollowUp, groupRuns, routineHeader, shortWhen, lineage, pickInitial, cleanTask, threadSendBodies,
@@ -46,21 +47,6 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   cy.openLink(a.getAttribute('href'));
 });
-
-function h(sel, props, ...kids) {
-  const [tag, ...cls] = sel.split('.');
-  const el = document.createElement(tag || 'div');
-  if (cls.length) el.className = cls.join(' ');
-  for (const [k, v] of Object.entries(props ?? {})) {
-    if (v == null || v === false) continue;
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'text') el.textContent = v;
-    else if (k === 'dataset') Object.assign(el.dataset, v);
-    else el.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of kids.flat()) if (c != null && c !== false) el.append(c);
-  return el;
-}
 
 // ---- 상태 ----
 let runs = [];

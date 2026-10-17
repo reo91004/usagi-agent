@@ -45,7 +45,7 @@ export function ipcHandlers(src = mainSource) {
   for (const head of ['ipcMain.handle(', 'ipcMain.on(']) {
     for (const args of blocks(head, src)) {
       const m = /^\s*'([^']+)',\s*/.exec(args);
-      map.set(m[1], args.slice(m[0].length).trim());
+      if (m) map.set(m[1], args.slice(m[0].length).trim()); // 반복문으로 등록하는 채널(todo-done 등)은 변수 이름이라 건너뛴다
     }
   }
   return map;

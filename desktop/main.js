@@ -65,12 +65,12 @@ const SIZE = { width: 420, height: 580 }; // 그림 말풍선(스티커)+넓은 
 const OLD_HEIGHT = 420; // 예전 창 높이 — 저장된 위치를 그만큼 올려 캐릭터 자리를 유지
 const OLD_WIDTH = 360; // 예전 창 너비 — 넓어진 만큼의 절반을 왼쪽으로(캐릭터는 가운데라 자리 유지)
 // 개인 캐릭터 그림(저장소 밖). 없으면 번들 플레이스홀더
-const USER_ASSETS = path.join(process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent'), 'assets');
+const AGENT_HOME = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
+const USER_ASSETS = path.join(AGENT_HOME, 'assets');
 // 레포 assets/(설치 때 USER_ASSETS 로 복사하는 원본). 홈에 없을 때 대신 읽는다
 const REPO_ASSETS = path.join(__dirname, '..', 'assets');
 // 앱 번들(dmg)이면 Contents/Resources 의 데몬(agent/)·그림(assets/). 개발 실행이면 데몬은 레포에서 따로(CY_BUNDLED_DAEMON=1 이면 레포 agent/ 를 띄움)
 const BUNDLE = bundlePaths({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appDir: __dirname, env: process.env }, path.join);
-const AGENT_HOME = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
 const PANEL_SIZE = { width: 900, height: 640 }; // 채팅 탭: 대화 목록 + 대화가 나란히
 const SESSION_SIZE = { width: 900, height: 700 };
 const DEBUG = !!process.env.CY_DEBUG;
@@ -83,7 +83,7 @@ attachConsole(logRing, console, process);
 const userData = path.join(app.getPath('appData'), 'cy-agent-desktop');
 // 고른 캐릭터(데몬 config.json character)에 따라 「하치와레 비서」처럼. 켤 땐 파일에서, 그 뒤엔 데몬 state 로 바꾼다(onCharacter)
 function configCharacter() {
-  try { return JSON.parse(fs.readFileSync(path.join(process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent'), 'config.json'), 'utf8'))?.character ?? START_CHARACTER; } catch { return START_CHARACTER; }
+  try { return JSON.parse(fs.readFileSync(path.join(AGENT_HOME, 'config.json'), 'utf8'))?.character ?? START_CHARACTER; } catch { return START_CHARACTER; }
 }
 let wantChar = configCharacter(); // 데몬이 고른 id 그대로(사용자 캐릭터는 목록을 받기 전엔 모른다 — 받으면 다시 맞춘다)
 let charId = okCharacter(wantChar);
@@ -114,61 +114,50 @@ function writeSisa(data) {
   fs.writeFileSync(file, JSON.stringify(data), { mode: 0o600 });
 }
 
-// 데몬이 읽는 설정(~/.cy-agent/config.json)에 연결을 넣는다(캘린더 주소·Slack 사용자 토큰). 다른 칸은 건드리지 않는다.
-// 파일이 깨져 있으면 아무것도 쓰지 않는다. 캘린더는 덮어쓰지 않고 더한다(개수 상한 없음). 이미 있는 주소면 'dup'
-function writeConnector(id, url) {
-  const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
-  const file = path.join(home, 'config.json');
-  let cfg = {};
-  try {
-    cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return false;
-  } catch (err) {
-    if (err?.code !== 'ENOENT') return false;
-    cfg = { ...NEW_DAEMON_CONFIG }; // 데몬보다 먼저 만든 설정 = 새 설치(마법사를 마칠 때까지 아무것도 읽지 않는다)
-  }
-  const conns = cfg.connectors && typeof cfg.connectors === 'object' ? { ...cfg.connectors } : {};
-  if (id === 'gcal' || id === 'outlook') {
-    const r = withCalendarAdded({ connectors: conns }, url);
-    if (!r.added) return 'dup';
-    conns.calendar = r.cfg.connectors.calendar;
-  } else if (id === 'jira') {
-    if (conns.issues && typeof conns.issues === 'object' && conns.issues.mode) return false;
-    conns.issues = { mode: 'mcp', server: 'atlassian' };
-  } else if (id === 'slack') {
-    conns.slack = { mode: 'api', userToken: url }; // 읽기 전용 앱의 사용자 토큰(xoxp-) — 붙여 넣은 걸로 바꾼다
-  } else {
-    return false;
-  }
-  try {
-    fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ ...cfg, connectors: conns }, null, 2), { mode: 0o600 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// 시사 데몬 설정(config.json)을 고쳐 쓴다: fn(지금 객체) → 새 객체. 깨진 파일은 건드리지 않는다. 쓴 객체 | 그대로면 false | 못 쓰면 null
-function editDaemonConfig(fn) {
-  const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
-  const file = path.join(home, 'config.json');
+// 데몬 설정(config.json)을 고쳐 쓴다: fn(지금 객체) → 새 객체. 깨진 파일은 건드리지 않는다(null).
+// 파일이 없으면 {} 에서(fresh 면 NEW_DAEMON_CONFIG — 데몬보다 먼저 만든 설정 = 새 설치, 마법사를 마칠 때까지 아무것도 읽지 않는다).
+// 쓴 객체 | 그대로면 false | 못 쓰면 null. fn 이 객체가 아닌 값(null·'dup' 등)을 주면 쓰지 않고 그 값을 그대로 돌려준다
+function editDaemonConfig(fn, fresh = false) {
+  const file = path.join(AGENT_HOME, 'config.json');
   let cfg = {};
   try {
     cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
   } catch (err) {
     if (err?.code !== 'ENOENT') return null;
+    if (fresh) cfg = { ...NEW_DAEMON_CONFIG };
   }
   const next = fn(cfg);
+  if (!next || typeof next !== 'object') return next;
   if (JSON.stringify(next) === JSON.stringify(cfg)) return false;
   try {
-    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(AGENT_HOME, { recursive: true });
     fs.writeFileSync(file, JSON.stringify(next, null, 2), { mode: 0o600 });
     return next;
   } catch {
     return null;
   }
+}
+
+// 연결을 넣는다(캘린더 주소·Slack 사용자 토큰). 다른 칸은 건드리지 않는다. 캘린더는 덮어쓰지 않고 더한다(개수 상한 없음). 이미 있는 주소면 'dup'
+function writeConnector(id, url) {
+  const r = editDaemonConfig((cfg) => {
+    const conns = cfg.connectors && typeof cfg.connectors === 'object' ? { ...cfg.connectors } : {};
+    if (id === 'gcal' || id === 'outlook') {
+      const added = withCalendarAdded({ connectors: conns }, url);
+      if (!added.added) return 'dup';
+      conns.calendar = added.cfg.connectors.calendar;
+    } else if (id === 'jira') {
+      if (conns.issues && typeof conns.issues === 'object' && conns.issues.mode) return null;
+      conns.issues = { mode: 'mcp', server: 'atlassian' };
+    } else if (id === 'slack') {
+      conns.slack = { mode: 'api', userToken: url }; // 읽기 전용 앱의 사용자 토큰(xoxp-) — 붙여 넣은 걸로 바꾼다
+    } else {
+      return null;
+    }
+    return { ...cfg, connectors: conns };
+  }, true);
+  return r === 'dup' ? 'dup' : r !== null;
 }
 
 // [연결 해제] AI: 앱 저장(sisa-ai.json)에서 빼고, 데몬 설정에서도 키를 지우고, 지금 쓰던 뇌면 로컬(AI 없이 쓰기)로.
@@ -204,7 +193,7 @@ async function disconnectBrain(p) {
 const calendarId = (url) => createHash('sha256').update(url).digest('hex').slice(0, 16);
 function readDaemonConfig() {
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent'), 'config.json'), 'utf8'));
+    const cfg = JSON.parse(fs.readFileSync(path.join(AGENT_HOME, 'config.json'), 'utf8'));
     return cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : {};
   } catch {
     return {};
@@ -284,51 +273,21 @@ async function writeBrain(data) {
   return wrote;
 }
 function writeBrainFile(patch) {
-  const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
-  const file = path.join(home, 'config.json');
-  let cfg = {};
-  try {
-    cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
-  } catch (err) {
-    if (err?.code !== 'ENOENT') return null;
-    cfg = { ...NEW_DAEMON_CONFIG };
-  }
-  const next = withDaemonBrain(cfg, patch);
-  if (JSON.stringify(next) === JSON.stringify(cfg)) return false;
-  try {
-    fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(next, null, 2), { mode: 0o600 });
-    return true;
-  } catch {
-    return null;
-  }
+  const r = editDaemonConfig((cfg) => withDaemonBrain(cfg, patch), true);
+  return r ? true : r;
 }
 
 // 코딩 작업 모델은 시사 데몬이 읽는 설정(models.code)에 쓴다. 'default' 면 그 칸을 지운다.
 function writeCodeModel(model) {
-  const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
-  const file = path.join(home, 'config.json');
-  let cfg = {};
-  try {
-    cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return false;
-  } catch (err) {
-    if (err?.code !== 'ENOENT') return false;
-  }
-  const models = cfg.models && typeof cfg.models === 'object' && !Array.isArray(cfg.models) ? { ...cfg.models } : {};
-  if (model === 'default') delete models.code;
-  else models.code = model;
-  const next = { ...cfg };
-  if (Object.keys(models).length) next.models = models;
-  else delete next.models;
-  try {
-    fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(next, null, 2), { mode: 0o600 });
-    return true;
-  } catch {
-    return false;
-  }
+  return editDaemonConfig((cfg) => {
+    const models = cfg.models && typeof cfg.models === 'object' && !Array.isArray(cfg.models) ? { ...cfg.models } : {};
+    if (model === 'default') delete models.code;
+    else models.code = model;
+    const next = { ...cfg };
+    if (Object.keys(models).length) next.models = models;
+    else delete next.models;
+    return next;
+  }) !== null;
 }
 
 let win = null;
@@ -1199,7 +1158,6 @@ async function probeDaemon() {
 
 async function buildDebugBundle() {
   const daemon = await probeDaemon();
-  const home = process.env.CY_AGENT_HOME ?? path.join(os.homedir(), '.cy-agent');
   const bundle = assembleBundle({
     meta: {
       appVersion: app.getVersion() || '0.1.0',
@@ -1213,7 +1171,7 @@ async function buildDebugBundle() {
       connectors: daemon.connectors,
     },
     electronLog: logRing.text(),
-    daemonLogs: collectLogFiles(path.join(home, 'logs')),
+    daemonLogs: collectLogFiles(path.join(AGENT_HOME, 'logs')),
   });
   lastDebug = bundle;
   return { ok: true, ...bundle };
@@ -1612,7 +1570,7 @@ function setupIPC() {
     const plan = planResume(r.data.run, {
       home,
       claudeDir,
-      worktreesDir: path.join(process.env.CY_AGENT_HOME ?? path.join(home, '.cy-agent'), 'worktrees'),
+      worktreesDir: path.join(AGENT_HOME, 'worktrees'),
       exists: (p) => fs.existsSync(p),
       findSession: (sid) => findSessionCwd(claudeDir, sid),
       platform: process.platform,
@@ -1653,7 +1611,7 @@ function setupIPC() {
     const r = await request('GET', `/runs/${id}?since=999999999`);
     if (!r.ok || !r.data?.run) return { ok: false, error: r.status === 404 ? '이 세션을 찾을 수 없어요.' : `${who()}에 연결되지 않았어요.` };
     const home = os.homedir();
-    const plan = planCodexResume(r.data.run, { home, worktreesDir: path.join(process.env.CY_AGENT_HOME ?? path.join(home, '.cy-agent'), 'worktrees'), exists: (p) => fs.existsSync(p), platform: process.platform });
+    const plan = planCodexResume(r.data.run, { home, worktreesDir: path.join(AGENT_HOME, 'worktrees'), exists: (p) => fs.existsSync(p), platform: process.platform });
     if (!plan.ok) return plan;
     try {
       if (plan.mkdir) fs.mkdirSync(plan.cwd, { recursive: true });
@@ -1717,10 +1675,6 @@ function setupIPC() {
     return err ? { ok: false, error: err } : { ok: true };
   });
   ipcMain.handle('refresh-sources', (e) => (fromOurs(e) ? post('/refresh') : denied()));
-  ipcMain.handle('todo-done', (e, id) => {
-    if (!fromOurs(e) || typeof id !== 'string' || !id) return denied();
-    return post(`/todos/${encodeURIComponent(id)}/done`);
-  });
   ipcMain.handle('todo-add', (e, body) => {
     const b = sanitizeTodoPatch(body, { allowStatus: false });
     if (!fromOurs(e) || !b?.title) return denied();
@@ -1731,26 +1685,16 @@ function setupIPC() {
     if (!fromOurs(e) || typeof id !== 'string' || !id || !p) return denied();
     return post(`/todos/${encodeURIComponent(id)}`, p);
   });
-  ipcMain.handle('todo-delete', (e, id) => {
-    if (!fromOurs(e) || typeof id !== 'string' || !id) return denied();
-    return post(`/todos/${encodeURIComponent(id)}/delete`);
-  });
-  // 휴지통: 되살리기 · 영구 삭제(휴지통에 있는 것만) · 비우기. 지우기(todo-delete)는 휴지통으로 옮긴다
-  ipcMain.handle('todo-restore', (e, id) => {
-    if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 500) return denied();
-    return post(`/todos/${encodeURIComponent(id)}/restore`);
-  });
-  ipcMain.handle('todo-purge', (e, id) => {
-    if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 500) return denied();
-    return post(`/todos/${encodeURIComponent(id)}/purge`);
-  });
+  // 한 건 처리: 완료 · 지우기(휴지통으로) · 되살리기 · 영구 삭제(휴지통에 있는 것만) · 되돌리기. 휴지통 비우기는 따로
+  for (const [channel, action] of [['todo-done', 'done'], ['todo-delete', 'delete'], ['todo-restore', 'restore'], ['todo-purge', 'purge'], ['todo-revert', 'revert']]) {
+    ipcMain.handle(channel, (e, id) => {
+      if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 500) return denied();
+      return post(`/todos/${encodeURIComponent(id)}/${action}`);
+    });
+  }
   ipcMain.handle('todo-trash-empty', (e) => {
     if (!fromOurs(e)) return denied();
     return post('/todos/trash/empty');
-  });
-  ipcMain.handle('todo-revert', (e, id) => {
-    if (!fromOurs(e) || typeof id !== 'string' || !id) return denied();
-    return post(`/todos/${encodeURIComponent(id)}/revert`);
   });
   // 할 일 펼침: 설명·원본(처음이면 데몬이 가벼운 모델로 설명을 만든다 — 길게 기다림)
   ipcMain.handle('todo-last-ask', (e, id) => {

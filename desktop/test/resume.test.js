@@ -138,7 +138,7 @@ function claudeRun({ platform, plan, execResults = [], run = { id: 'r1' }, env =
     denied, fromOurs: (e) => e.ours, okRunId: (id) => /^r\d+$/.test(id), okSessionId, who: () => '시사',
     request: async () => ({ ok: true, data: { run } }),
     post: async (...a) => { log.posts.push(a); return { ok: true }; },
-    os: { homedir: () => '/home/me' }, path: { join: (...a) => a.join('/') }, fs: { existsSync: () => false, mkdirSync() {}, lstatSync: (p) => { if (!existing.includes(p)) throw new Error('ENOENT'); } },
+    AGENT_HOME: '/home/me/.cy-agent', os: { homedir: () => '/home/me' }, path: { join: (...a) => a.join('/') }, fs: { existsSync: () => false, mkdirSync() {}, lstatSync: (p) => { if (!existing.includes(p)) throw new Error('ENOENT'); } },
     process: { platform, env }, findSessionCwd: () => null, consoleEnv: () => ({ PATH: 'x' }),
     planResume: (r, o) => { log.plans.push([r, o]); return plan; },
     execFile: (file, args, opts, cb) => { log.exec.push([file, args, opts]); cb(execResults.shift() ?? null); },

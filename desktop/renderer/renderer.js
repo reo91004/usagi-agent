@@ -43,7 +43,6 @@ const probe = (url) => new Promise((ok) => {
 });
 let stillIdx = 0;
 img.addEventListener('error', () => { if (++stillIdx < charA.stills.length) img.src = charA.stills[stillIdx]; });
-let haveEyes = false;
 async function loadStill() {
   const a = charA;
   const scales = a.retina && window.devicePixelRatio > 1 ? ['@2x', ''] : [''];
@@ -52,7 +51,6 @@ async function loadStill() {
     if (!(await probe(open))) continue;
     const both = closed ? await probe(closed) : false;
     if (a !== charA) return true; // 그새 캐릭터가 또 바뀜 — 새 것이 이어서 그린다
-    haveEyes = true;
     stillIdx = 0;
     img.src = open;
     if (both) { closedImg.src = closed; wrap.classList.add('blink-ready'); }
@@ -824,7 +822,6 @@ let leaveTimer = null;
 let askOpen = false;
 let askFocused = false; // 메인이 창을 포커스 가능하게 바꾼 뒤에만 blur 로 닫는다
 let askPauseTimer = null; // 칩 행동 동안 입력창을 잠깐 숨긴 타이머(pauseAsk)
-let hoverArmed = true; // 닫은 뒤엔 마우스가 캐릭터를 한 번 벗어나야 다시 뜬다
 
 async function showAsk() {
   if (askOpen) return;
@@ -843,7 +840,6 @@ function hideAsk() {
   if (!askOpen) return;
   askOpen = false;
   askFocused = false;
-  hoverArmed = false;
   ask.hidden = true;
   clearTimeout(askPauseTimer);
   ask.classList.remove('paused');
@@ -915,7 +911,6 @@ window.addEventListener('blur', () => { if (askFocused && !picking && !askPauseT
 function updateHover(el) {
   const onChar = !!el?.closest('#char-wrap');
   const onAsk = !!el?.closest('#ask, #char-wrap, #stack .item'); // 말풍선(＋ 로 띄운 칩·그 답) 위에 있는 동안도 입력창을 닫지 않는다
-  if (el && !onChar) hoverArmed = true;
   // 입력창은 클릭으로만 연다(호버로는 안 뜸)
   if (!onChar && hoverTimer) {
     clearTimeout(hoverTimer);
@@ -982,9 +977,7 @@ document.addEventListener('mousemove', (e) => {
   }
   recheckHitSoon();
 });
-document.addEventListener('mouseleave', (e) => {
-  // 포커스가 바뀔 때도 mouseleave 가 오니, 진짜로 캐릭터 밖에서 나간 경우만 호버 재무장
-  if (!wrap.contains(document.elementFromPoint(e.clientX, e.clientY))) hoverArmed = true;
+document.addEventListener('mouseleave', () => {
   last = null;
   recheckHit();
 });

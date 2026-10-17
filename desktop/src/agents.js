@@ -4,6 +4,7 @@
 //   background: 채팅이 백그라운드로 넘긴 에이전트(답과 따로 돌고, 끝나면 결과가 대화에 새 답으로) — 카드에서 멈출 수 있다. 상한·대기 없이 바로 돈다
 //   worktree: 워크트리 격리 에이전트의 { path, branch? }(자기 워크트리에서 돌았다)
 import { isAbsPath } from './resume.js';
+import { ellipsize } from './tool-view.js';
 
 const STATUSES = new Set(['running', 'done', 'failed', 'stopped']);
 const SESSION_STATUSES = new Set(['running', 'done', 'failed', 'stopped']);
@@ -51,8 +52,6 @@ export const runningCount = (agents) => (agents ?? []).filter((a) => a?.status =
 // 카드에서 멈출 수 있나(백그라운드 에이전트가 돌 때 — 채팅 답 안에서 도는 건 그 답의 [멈추기]로)
 export const canStopAgent = (a) => !!a?.background && isLive(a);
 
-const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-
 // 입력창 위 줄: 돌고 있는 것 한 줄씩 + 끝난 것 접힘("에이전트 3개 끝남 ▸"). 아무것도 없으면 null
 // 돌고 있는 게 없으면 줄 자체를 안 보인다(끝난 것은 대화 속 카드로 충분)
 export function agentStrip(agents, { open = false } = {}) {
@@ -71,7 +70,7 @@ export function agentStrip(agents, { open = false } = {}) {
 }
 export function runningLine(a) {
   const parts = [a.description, ...(a.background ? ['백그라운드'] : []), ...(a.worktree ? [`🌿 ${a.worktree.branch ?? '워크트리'}`] : []), `도구 ${a.tools}번`];
-  if (a.last) parts.push(clip(a.last.replace(/\s+/g, ' '), 80));
+  if (a.last) parts.push(ellipsize(a.last.replace(/\s+/g, ' '), 80));
   return parts.join(' · ');
 }
 
@@ -85,7 +84,7 @@ export function agentCard(a) {
   const note = a.background && isLive(a) ? '따로 돌아요 — 다른 말을 해도 기다리지 않아요' : '';
   // 워크트리: 🌿 브랜치 · 경로(세션 창에서 복사할 수 있게 그대로)
   const worktree = a.worktree ? `🌿 ${a.worktree.branch ? `${a.worktree.branch} · ` : ''}${a.worktree.path}` : '';
-  return { title: `🤖 에이전트 시작: ${a.description}`, status, tone: s.tone, last: a.status === 'running' && a.last ? clip(a.last.replace(/\s+/g, ' '), 100) : '', ...(note ? { note } : {}), ...(worktree ? { worktree } : {}) };
+  return { title: `🤖 에이전트 시작: ${a.description}`, status, tone: s.tone, last: a.status === 'running' && a.last ? ellipsize(a.last.replace(/\s+/g, ' '), 100) : '', ...(note ? { note } : {}), ...(worktree ? { worktree } : {}) };
 }
 
 // 대화 속 자리: 시작 시각(startedAt) 바로 뒤 첫 말 앞. msgs = 화면에 그리는 말(오래된 것 먼저, at 있음)
@@ -166,7 +165,7 @@ export function sessionCard(s, { now = Date.now(), connected = true } = {}) {
     header: s.repo || s.title,
     sub: s.branch ?? '',
     label: s.title,
-    last: s.last?.trim() ? clip(s.last.replace(/\s+/g, ' ').trim(), 160) : running ? '시작하는 중…' : '',
+    last: s.last?.trim() ? ellipsize(s.last.replace(/\s+/g, ' ').trim(), 160) : running ? '시작하는 중…' : '',
     age,
     ageTitle: running ? (age === '방금' ? '방금 시작했어요' : `시작한 지 ${age}`) : `${status} · ${age === '방금' ? '방금' : `${age} 전`}`,
     status,

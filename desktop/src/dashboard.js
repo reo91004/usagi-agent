@@ -1,5 +1,6 @@
 // 대시보드 패널 뷰모델 — 순수 로직. GET /dashboard 응답을 그리기 좋게 다듬는다.
 import { isSafeLink } from './bubbles.js';
+import { ellipsize } from './tool-view.js';
 import { shapeRules } from './todo-rules.js';
 import { PRIORITIES, TODAY_GROUP } from './todos.js';
 
@@ -249,7 +250,7 @@ export function shortProc(who) {
   const [, etime = '', ...rest] = str(who).split(' ');
   const [bin = '', ...args] = rest;
   const cmd = [bin.split('/').pop(), ...args].join(' ').trim();
-  return { etime, cmd: cmd.length > 80 ? `${cmd.slice(0, 79)}…` : cmd };
+  return { etime, cmd: ellipsize(cmd, 80) };
 }
 export function shapeGpu(hosts) {
   return arr(hosts).filter((x) => x && str(x.host)).map((x) => ({

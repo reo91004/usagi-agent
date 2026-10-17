@@ -2,18 +2,12 @@
 // 데몬 기록(docs/contract.md "작업 세션"): user { msgId, pending, clientId? } 뒤에 delivery { msgId, state: delivered|cancelled|unsent, now? }.
 // 보낸 말은 CLI 가 지금 도는 도구 호출이 끝난 뒤(도구 경계)·턴이 끝난 뒤에야 모델에 붙인다 — 그때까지 「대기 중」.
 import { toolHeader, ellipsize } from './tool-view.js';
+import { clockTime } from './dashboard.js';
 
 export const okClientId = (v) => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
 export const okMsgId = okClientId;
 let seq = 0;
 export const newClientId = (now = Date.now()) => `c${now.toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-
-const hhmm = (iso) => {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
-  const d = new Date(t);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
 
 // delivery 이벤트 → msgId 별 마지막 상태 { state, at, now }
 export function deliveries(events) {
@@ -57,7 +51,7 @@ export function deliveryView(item, run, tool) {
     : { state: 'sending', status: '보내는 중…', actions: [] };
   if (!item.pending) return null;
   const d = item.delivery;
-  if (d?.state === 'delivered') return { state: 'delivered', status: `✓ 전달됨${d.at ? ` ${hhmm(d.at)}` : ''}`, wait: d.now ? '하던 도구를 멈추고 바로 보냈어요' : '', actions: [] };
+  if (d?.state === 'delivered') return { state: 'delivered', status: `✓ 전달됨${d.at ? ` ${clockTime(d.at)}` : ''}`, wait: d.now ? '하던 도구를 멈추고 바로 보냈어요' : '', actions: [] };
   if (d?.state === 'cancelled') return { state: 'cancelled', status: '취소했어요', wait: '모델에 보내지 않았어요', actions: [] };
   if (d?.state === 'unsent' || run?.status !== 'running') {
     return { state: 'unsent', status: '작업이 먼저 끝나 전달되지 않았어요', wait: '다음 이어서 묻기로 보내요', actions: ['followup'] };
