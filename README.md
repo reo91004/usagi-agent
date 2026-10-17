@@ -338,9 +338,11 @@ usagi-run -n "resnet 학습" -- python train.py
 - 도는 동안에는 서버의 `~/.usagi-agent/jobs/`에 `<id>.running` 표시가 있고, 끝나면 지워집니다. 우사기는 이걸로 지금 돌고 있는 실험을 압니다. 표시만 남고 `usagi-run`이 사라졌으면(서버 재시작, 강제 종료) 「끊김」으로 봅니다.
 - 끝날 때 작업 폴더, 명령, 실행 중에 그 폴더에서 바뀐 파일(최근 것 8개, 깊이 3)을 같이 남깁니다. 「어제 돌린 실험 결과 어때?」라고 물으면 이 파일부터 봅니다.
 
-#### 공용 계정 서버
+#### 혼자 쓰는 서버와 공용 계정 서버
 
-연구실 서버처럼 여러 사람이 한 계정(예: `user`)을 같이 쓰면, `~/.local/bin`이나 `~/.usagi-agent/jobs/`가 모두의 것이 됩니다. 다른 사람이 `usagi-run`을 쓰면 그 결과가 내 맥으로 오고, 내 우사기가 읽은 결과 파일을 지우기까지 합니다. 그래서 내 폴더(예: `~/reo`) 안에 둡니다.
+서버마다 그 계정을 나 혼자 쓰는지부터 봅니다. `~/.ssh/config` 의 `User` 가 내 계정(예: `pacl-reo` 의 `reo`)이면 혼자 쓰는 서버이고, 위 안내 그대로 `~/.local/bin/usagi-run` 에 두면 됩니다. `jobDirs` 에 적을 것도 없습니다.
+
+연구실 서버처럼 여러 사람이 한 계정(예: `pacl-205`·`pacl-208` 의 `user`)을 같이 쓰면, `~/.local/bin`이나 `~/.usagi-agent/jobs/`가 모두의 것이 됩니다. 다른 사람이 `usagi-run`을 쓰면 그 결과가 내 맥으로 오고, 내 우사기가 읽은 결과 파일을 지우기까지 합니다. 그래서 내 폴더(예: `~/reo`) 안에 둡니다.
 
 ```sh
 ssh pacl-208 'mkdir -p ~/reo/bin ~/reo/.usagi-agent/jobs'      # 맥에서 한 번
@@ -366,6 +368,7 @@ export PATH=~/reo/bin:$PATH    # 내 tmux 창에서만
 - 서버에서 맥으로 들어오는 포트는 여전히 열지 않습니다. 다른 사람은 내 결과를 보지 않고, 내 우사기도 남의 결과를 지우지 않습니다.
 - 같은 계정이라 파일 권한으로 막히지는 않습니다. 결과 파일에는 작업 폴더·명령·바뀐 파일 이름만 들어 있습니다.
 - 바꾼 `jobDirs`는 데몬을 다시 켜면 적용됩니다.
+- 혼자 쓰는 서버와 공용 계정 서버를 섞어 적어도 됩니다. 예: `"sshHosts": ["pacl-reo", "pacl-205", "pacl-208"]` 에 `jobDirs` 는 공용 두 대만.
 
 ### 실험 서버 둘러보기 (sshHosts)
 
@@ -384,7 +387,7 @@ export PATH=~/reo/bin:$PATH    # 내 tmux 창에서만
 
 ### ssh 서버의 Claude Code·Codex 작업 기록
 
-서버에서 쓴 Claude Code·Codex 기록도 「내 Claude Code·Codex 작업 기록 읽기」에 넣을 수 있습니다. `config.json`에 서버를 적어 두면 우사기가 10분마다 ssh로 서버의 `~/.claude/projects`, `~/.codex/sessions`에서 최근 14일 안에 바뀐 기록을 받아 와, 이 맥의 기록과 같이 정리합니다.
+서버에서 쓴 Claude Code·Codex 기록도 「내 Claude Code·Codex 작업 기록 읽기」에 넣을 수 있습니다. 혼자 쓰는 계정의 서버만 적으세요. 공용 계정의 `~/.claude/projects`·`~/.codex/sessions` 에는 같은 계정을 쓰는 다른 사람의 기록도 들어 있습니다. `config.json`에 서버를 적어 두면 우사기가 10분마다 ssh로 서버의 `~/.claude/projects`, `~/.codex/sessions`에서 최근 14일 안에 바뀐 기록을 받아 와, 이 맥의 기록과 같이 정리합니다.
 
 ```json
 { "sessionHosts": ["gpu1", "reo@lab.example.ac.kr"] }
@@ -481,7 +484,7 @@ export PATH=~/reo/bin:$PATH    # 내 tmux 창에서만
 | `brain.gensparkApiKey` | `CY_AGENT_GENSPARK_API_KEY` |  | Genspark 키. 비워 두면 `gsk login`이 남긴 키(`~/.genspark-tool-cli/config.json`)를 쓸 때마다 읽습니다. 유료 플랜이 있어야 대답합니다 |
 | `user.name` / `user.aliases` | `CY_AGENT_USER_NAME` | git `user.name` | 부를 이름 / 지식그래프에서 "나"로 볼 다른 이름들. 비워 두면 git 이름을 부르고, git 이름·이메일 아이디·맥 계정 이름도 "나"로 봅니다 |
 | `repoRoots` |  | 새 설치는 `[]`, 예전 설정은 `["~/code"]` | 코드를 고쳐도 되는 레포 폴더. 개요의 내 커밋도 이 폴더에서만 읽습니다. 이 밖은 건드리지 않습니다 |
-| `jobDirs` |  | `{}` | 서버마다 `usagi-run` 결과 폴더(공용 계정이면 개인 폴더, 예: `{"pacl-208": "~/reo/.usagi-agent/jobs"}`). [공용 계정 서버](#공용-계정-서버) |
+| `jobDirs` |  | `{}` | 서버마다 `usagi-run` 결과 폴더(공용 계정이면 개인 폴더, 예: `{"pacl-208": "~/reo/.usagi-agent/jobs"}`). [혼자 쓰는 서버와 공용 계정 서버](#혼자-쓰는-서버와-공용-계정-서버) |
 | `tineGraph` |  |  | 연구 노트를 남길 Tine 그래프 폴더(`logseq/config.edn`이 있는 곳). [연구 노트](#연구-노트-tine) |
 | `appleReminders` |  | `false` | 이 Mac 의 미리알림을 할 일로 가져올지(설치 탭 「더 연결하기」의 「이 Mac 의 캘린더·미리알림」이 켜고 끕니다). 읽기만 하고, 미리알림에서 끝낸 것은 할 일도 끝냅니다 |
 | `allowMcp` |  | `[]` | 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(예: `["notion"]`). 여기 없는 서버는 Claude Code에 등록돼 있어도 브리핑·채팅에서 쓰지 않습니다. 뇌가 Claude Code일 때만 씁니다 |
