@@ -481,6 +481,7 @@ const slackTick = asRoutine(safe("slack-ingest", async () => {
 // 새 할 일은 「할 일 추가했어요」 말풍선(reactions.newTodos)으로 뜬다. 동시에 눌러도 한 번만
 let refreshing: Promise<void> | undefined;
 const refreshAll = () => (refreshing ??= (async () => {
+  void pollJobHosts(true).then(() => bus.dashboardChanged()); // 서버 tmux·usagi-run 도 지금(모델 없이 되는 일이라 먼저)
   if (!modelWorkAllowed(cfg)) { bus.bubble({ id: "refresh", text: WAIT_SETUP, kind: "info", ttlMs: 10e3 }); return; }
   bus.bubble({ id: "refresh", text: phrase("refresh_prog"), kind: "info", ttlMs: 60e3 });
   const before = new Set(store.openTodos().map((t) => t.id));
@@ -606,14 +607,15 @@ const jobBackoff = hostBackoff(2 * 60e3); // 끊긴 서버는 4·8·16·30분 �
 const JOB_IDLE_N = 3, JOB_IDLE_MS = 10 * 60e3;
 const jobIdle = new Map<string, { n: number; last: number }>();
 let jobsBusy = false;
-async function pollJobHosts() {
+// force: 새로고침에서 부를 때 — 한가해서 늦춘 서버와 끊겨 미룬 서버도 지금 본다
+async function pollJobHosts(force = false) {
   if (jobsBusy) return;
   jobsBusy = true;
   try {
     for (const host of cfg.jobHosts) {
-      if (!jobBackoff.due(host)) continue;
+      if (!force && !jobBackoff.due(host)) continue;
       const idle = jobIdle.get(host);
-      if (idle && idle.n >= JOB_IDLE_N && Date.now() - idle.last < JOB_IDLE_MS - 60e3) continue;
+      if (!force && idle && idle.n >= JOB_IDLE_N && Date.now() - idle.last < JOB_IDLE_MS - 60e3) continue;
       try {
         const { done, running, tmux } = await pullJobs(host, undefined, cfg.jobDirs[host]);
         const quiet = !done.length && !running.length && !tmux.some((s) => s.running);
@@ -632,7 +634,7 @@ async function pollJobHosts() {
   } finally { jobsBusy = false; }
 }
 // 목록이 비어도 타이머는 건다(비면 바로 끝). 설정 화면에서 서버를 켜면 재시작 없이 다음 차례부터 돈다
-setTimeout(pollJobHosts, 15e3).unref(); setInterval(pollJobHosts, 2 * 60e3).unref();
+setTimeout(() => pollJobHosts(), 15e3).unref(); setInterval(() => pollJobHosts(), 2 * 60e3).unref();
 
 // ssh 서버의 작업 기록(ingest/remote-sessions.ts): sessionHosts 에서 늘어난 만큼 받아 와 이 맥 기록과 같이 읽는다
 const sessionHostDown = new Set<string>();
