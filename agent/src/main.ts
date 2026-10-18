@@ -249,7 +249,7 @@ await bus.listen(cfg.port, {
     };
   },
   researchProjectPut: (body) => { const r = putResearchProject(store, body); if ("ok" in r) bus.dashboardChanged(); return r; },
-  agentRules: async (path, apply) => agentRules(path, (await agent.dashboard()).researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)), apply),
+  agentRules: async (path, apply) => agentRules(path, (await agent.dashboard()).researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)), apply, undefined, cfg.jobDirs),
   jobForget: (id) => {
     const n = store.node(id);
     if (n?.kind !== "job" || n.props.running) return false;
