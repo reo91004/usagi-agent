@@ -12,7 +12,7 @@ import { cleanMergeQuestion, normalizeOpen } from './src/bubbles.js';
 import { createSSEParser, backoffDelay } from './src/sse.js';
 import { isSafeLink } from './src/bubbles.js';
 import { slackAppUrl } from './src/slack-link.js';
-import { contentMismatch, defaultPosition, dropPlacement, restorePosition } from './src/geometry.js';
+import { charCenter, contentMismatch, defaultPosition, dropPlacement, edgePlacement, nearestEdge, restorePosition } from './src/geometry.js';
 import { showOnCurrentSpace } from './src/spaces.js';
 import { normalizeSection, splitHost } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
@@ -357,6 +357,7 @@ async function refreshStatus() {
 // ---- 사용법 둘러보기(tour.js): 캐릭터 말풍선으로 하나씩. 설치를 마치면 한 번, 메뉴·설정 「사용법 다시 보기」로 언제든 ----
 let tour = null; // { steps, at }
 function startTour() {
+  if (state.characterHidden) setCharacterHidden(false); // 말풍선으로 하는 안내라 숨긴 캐릭터는 다시 보인다
   tour = { steps: tourSteps(brainNow(), charId), at: -1 };
   nextTour();
 }
@@ -475,11 +476,11 @@ function createWindow() {
   attachContentsDebug(win.webContents, 'renderer');
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.showInactive());
+  win.once('ready-to-show', () => { if (!state.characterHidden) win.showInactive(); });
   win.webContents.on('did-finish-load', () => {
     winLoaded = true;
     send('connection', { connected });
-    send('visibility', { hidden: state.bubblesHidden });
+    sendVisibility();
     send('flip', !!state.flip);
     // 화면이 뜨기 전에 온 말풍선(SSE 가 먼저 붙으면 데몬이 다시 보내는 승인·머지 말풍선)을 이제 보낸다 — 버리지 않게
     for (const [c, p] of early.splice(0)) send(c, p);
@@ -496,6 +497,9 @@ function send(channel, payload) {
   if (!winLoaded && (channel === 'bubble' || channel === 'state' || channel === 'clear' || channel === 'focus')) { early.push([channel, payload]); if (early.length > 50) early.shift(); return; }
   win.webContents.send(channel, payload);
 }
+
+// 말풍선 숨기기·가장자리에 숨기(메뉴 체크, 붙은 가장자리 'left'|'right'|'bottom')를 오버레이에 알린다
+const sendVisibility = () => send('visibility', { hidden: !!state.bubblesHidden, tuck: state.tucked ? state.tuckEdge : null });
 
 function sendPanel(channel, payload) {
   if (panel && !panel.isDestroyed() && panelReady) panel.webContents.send(channel, payload);
@@ -921,7 +925,7 @@ function menuIcon(symbol) {
 // 트레이 메뉴와 캐릭터 오른쪽 클릭 메뉴가 같은 템플릿(src/menu.js)을 쓴다
 function menuTemplate() {
   return buildMenuTemplate(
-    { name: who(), connected, brainLabel: brainNow().label, coder: coder(), bubblesHidden: !!state.bubblesHidden },
+    { name: who(), connected, brainLabel: brainNow().label, coder: coder(), bubblesHidden: !!state.bubblesHidden, tucked: !!state.tucked, characterHidden: !!state.characterHidden },
     {
       open: () => showPanel(null),
       session: openSessionMenu,
@@ -931,9 +935,17 @@ function menuTemplate() {
       toggleBubbles: () => {
         state.bubblesHidden = !state.bubblesHidden;
         saveState();
-        send('visibility', { hidden: state.bubblesHidden });
+        sendVisibility();
         rebuildTrayMenu();
       },
+      // 가장자리에 숨기: 켜면 가장 가까운 가장자리(왼쪽·오른쪽·아래)로 붙는다. 들어가고 나오는 건 렌더러(#stage.tucked)
+      toggleTuck: () => {
+        const c = win && charNow(); // 바꾸기 전 배치로 잰 캐릭터 자리
+        state.tucked = !state.tucked;
+        if (win) settlePos(c);
+        rebuildTrayMenu();
+      },
+      toggleCharacter: () => setCharacterHidden(!state.characterHidden),
       quit: () => app.quit(),
     },
     menuIcon,
@@ -970,9 +982,13 @@ function createTray() {
 // ---- 앱(Dock·Cmd+Tab·메뉴 막대) ----
 // Dock 아이콘은 기본으로 숨긴다(applyDock). 켜 두면 Cmd+Tab/Dock 으로 돌아올 때 대시보드 패널이 앞으로 온다.
 // 오버레이는 비활성 패널이라 앱 활성화와 상관없이 항상 위·모든 Space 에 그대로 있다.
-function toggleCharacter() {
+// 숨긴 상태는 다음 실행에도 이어진다(state.characterHidden)
+function setCharacterHidden(hidden) {
+  state.characterHidden = hidden;
+  saveState();
+  rebuildTrayMenu();
   if (!win) return;
-  if (win.isVisible()) win.hide();
+  if (hidden) win.hide();
   else win.showInactive();
 }
 
@@ -998,7 +1014,7 @@ function createAppMenu() {
         { label: '대시보드 열기', accelerator: 'CmdOrCtrl+0', click: () => showPanel(null) },
         { label: '작업 세션 열기', accelerator: 'CmdOrCtrl+Shift+S', click: openSessionMenu },
         { label: '도움 보내기', accelerator: 'CmdOrCtrl+Shift+D', registerAccelerator: false, click: () => showDebugWindow() },
-        { label: '캐릭터 보이기·숨기기', click: toggleCharacter },
+        { label: '캐릭터 보이기·숨기기', click: () => setCharacterHidden(!state.characterHidden) },
         { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => showPanel('settings') },
         { type: 'separator' },
         // ⌘W: 패널만 숨긴다(role: close 는 오버레이까지 닫아버림)
@@ -1239,18 +1255,30 @@ function endDrag() {
   drag = null;
   dragEpoch++;
   if (!win) return;
+  settlePos();
+  quietActivation(800); // 놓은 뒤 늦게 오는 활성화도 패널을 띄우지 않음
+}
+
+// 지금 캐릭터 가운데(화면 좌표)
+const charNow = () => charCenter(win.getPosition(), state.tucked ? state.tuckEdge : null, !!state.flip, SIZE);
+
+// 캐릭터가 있는 화면 작업영역에 맞춰 자리를 정하고 저장한다. 가장자리에 숨기면 가장 가까운 가장자리에 붙이고(geometry.js edgePlacement),
+// 아니면 화면 위쪽에 놓았을 때 뒤집어서 말풍선이 캐릭터 아래로 가게(dropPlacement)
+function settlePos(c = charNow()) {
+  const workArea = screen.getDisplayNearestPoint(c).workArea;
   const [x, y] = win.getPosition();
-  // 화면 위쪽에 놓았으면 뒤집어서 말풍선이 캐릭터 아래로 가게(geometry.js dropPlacement)
-  const p = dropPlacement(y, !!state.flip, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea, SIZE);
+  if (state.tucked) state.tuckEdge = nearestEdge(c, workArea);
+  // 끌 때 옆 가장자리였던 캐릭터는 창 가운데로 돌아가니 캐릭터가 그 자리에 남게 창을 옮긴다(놓을 땐 c.x = x + 창 폭/2 라 그대로)
+  const p = state.tucked ? edgePlacement(state.tuckEdge, c, y, !!state.flip, workArea, SIZE) : { x: Math.round(c.x - SIZE.width / 2), ...dropPlacement(y, !!state.flip, workArea, SIZE) };
   if (p.flip !== !!state.flip) send('flip', p.flip);
-  if (p.y !== y) {
-    if (process.platform === 'win32') win.setBounds({ x, y: p.y, ...SIZE });
-    else win.setPosition(x, p.y);
+  if (p.x !== x || p.y !== y) {
+    if (process.platform === 'win32') win.setBounds({ x: p.x, y: p.y, ...SIZE });
+    else win.setPosition(p.x, p.y);
   }
-  state.pos = { x, y: p.y };
+  state.pos = { x: p.x, y: p.y };
   state.flip = p.flip;
   saveState();
-  quietActivation(800); // 놓은 뒤 늦게 오는 활성화도 패널을 띄우지 않음
+  sendVisibility();
 }
 
 // 우리 창에서 온 IPC 만 받는다
@@ -2188,6 +2216,7 @@ if (SQUIRREL) {
     setupAppActivation();
     registerDebugShortcut();
     createWindow();
+    if (state.tucked) settlePos(); // 저장 자리를 잃었거나(모니터를 뺌) 작업영역이 바뀌었어도 가장자리에 다시 붙인다
     // 윈도우 로그오프·종료는 before-quit 을 안 거친다(창의 session-end 만 온다) → 집중 기록·데몬 끄기를 여기서 짧게
     if (process.platform === 'win32') win?.on('session-end', onSessionEnd);
     createTray();
@@ -2208,6 +2237,7 @@ if (SQUIRREL) {
         win.setPosition(p.x, p.y);
         state.flip = false;
         send('flip', false);
+        if (state.tucked) settlePos();
       }
     });
   });
