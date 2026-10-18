@@ -29,7 +29,7 @@ const raw = [
   { key: '/a', kind: 'research', name: 'poly', folders: [{ path: '/a' }, { path: '/b' }], url: 'javascript:x',
     subs: [{ venue: 'CHES 2026', stage: 'rejected', at: 'x' }, { venue: 'CHES 2027', stage: 'submitted', deadline: ymd(38), at: 'y' }],
     lastActive: new Date(NOW - 7200e3).toISOString(), running: [{ name: 't', host: 'h', kind: 'tmux', running: true, start: NOW / 1000 - 600 }, { name: 'claude', host: 'h', kind: 'tmux', ai: 'claude', cwd: '/w/dp', running: true, start: NOW / 1000 - 8 * 86400 }],
-    recent: { done: 3, failed: 1, lost: 0, items: [{ name: 'e', host: 'h', kind: 'job', start: NOW / 1000 - 5000, seconds: 60, code: 1, running: false }] },
+    recent: { done: 3, failed: 1, lost: 0, items: [{ id: 'job:h:1', name: 'e', host: 'h', kind: 'job', start: NOW / 1000 - 5000, seconds: 60, code: 1, running: false }] },
     sessions: [{ title: '# Files mentioned by the user: ## - docs/a.md', tool: 'claude', at: new Date(NOW - 3600e3).toISOString() }] },
   { key: '/p', kind: 'project', name: '', subs: [{ venue: 'X', stage: 'prep' }], running: [], recent: { done: 2, failed: 1 } },
   { key: '/c', kind: null },
@@ -38,6 +38,8 @@ const raw = [
 
 test('shapeResearchProjects: 목록 줄은 마지막 제출만, 프로젝트는 학회 칸 없음, 위험 주소는 버림', () => {
   const list = shapeResearchProjects(raw, NOW);
+  assert.equal(list.find((x) => x.recent.items.length).recent.items[0].id, 'job:h:1'); // 「지우기」가 쓰는 job 노드 id
+  assert.equal(shapeResearchProjects([{ key: '/q', kind: 'research', recent: { items: [{ id: 'evil', name: 'f', running: false }] } }], NOW)[0].recent.items[0].id, ''); // job 노드 id 가 아니면 비움
   assert.equal(list.length, 3);
   const [r, p, c] = list;
   assert.equal(r.chip, 'CHES 2027 · 제출함');

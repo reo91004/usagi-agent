@@ -56,6 +56,7 @@ test("서버 job·tmux 가 서버 세션 폴더와 같은 키로 묶이고 후�
   assert.deepEqual(c.running.map((e) => [e.kind, e.name]).sort(), [["job", "train.py"], ["tmux", "sweep"]]);
   assert.deepEqual([c.recent.done, c.recent.failed, c.recent.lost], [1, 1, 0]);
   assert.equal(c.recent.items[0].name, "train.py · e1");
+  assert.match(String(c.recent.items[0].id), /^job:/); // 패널 「지우기」가 쓰는 job 노드 id
   assert.equal(c.sessions[0].tool, "claude");
   assert.equal(d.projects[0].hiddenByResearch, undefined);
 

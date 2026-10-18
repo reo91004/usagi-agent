@@ -120,7 +120,7 @@ const sampleRP = () => [
     subs: [{ venue: 'CHES 2026', stage: 'rejected', deadline: ymd(-120), at: ago(60 * 24 * 100) }, { venue: 'CHES 2027', stage: 'submitted', deadline: ymd(38), at: ago(60 * 24 * 5) }],
     lastActive: ago(120), running: [{ name: 'train.py · exp7', host: 'pacl-208', kind: 'tmux', cwd: '/home/user/reo/experiments', cmd: 'python train.py --config exp7.yaml', start: Date.now() / 1000 - 7200, running: true },
       { name: 'claude', host: 'pacl-208', kind: 'tmux', ai: 'claude', cwd: '/home/user/reo/experiments', cmd: 'claude', start: Date.now() / 1000 - 8 * 86400, running: true }],
-    recent: { done: 6, failed: 1, lost: 0, items: [{ name: 'eval.py · exp6', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 90000, seconds: 5400, code: 0, running: false }, { name: 'ablation', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 200000, seconds: 60, code: 1, running: false }] },
+    recent: { done: 6, failed: 1, lost: 0, items: [{ id: 'job:pacl-reo:eval6', name: 'eval.py · exp6', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 90000, seconds: 5400, code: 0, running: false }, { id: 'job:pacl-reo:ablation', name: 'ablation', host: 'pacl-reo', kind: 'job', start: Date.now() / 1000 - 200000, seconds: 60, code: 1, running: false }] },
     sessions: [{ title: '# Files mentioned by the user: ## docs/fig3.md', tool: 'claude', at: ago(130) }, { title: '실험 스크립트 정리', tool: 'codex', at: ago(60 * 20) }] },
   { key: `${HOME}/notes-app`, kind: 'research', name: 'side-channel survey', folders: [{ path: `${HOME}/notes-app`, onMac: true }],
     subs: [{ venue: 'USENIX Security', stage: 'prep', deadline: ymd(15), at: ago(60 * 24 * 3) }],
@@ -673,6 +673,11 @@ const server = http.createServer(async (req, res) => {
   const body = await readJSON(req);
   if (body === null) return json(res, 400, { error: 'bad json' });
   // AI 지시 파일: POST 는 덧붙인 뒤 상태(GET 은 위쪽 읽기 경로에서)
+  if (req.method === 'POST' && p === '/research/jobs/forget') {
+    let hit = false;
+    for (const x of rps) if (x.recent?.items) { const n = x.recent.items.length; x.recent.items = x.recent.items.filter((e) => e.id !== body.id); hit ||= x.recent.items.length < n; }
+    return hit ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no job record' });
+  }
   if (req.method === 'POST' && p === '/research/projects/rules') {
     if (!rps.some((x) => x.kind && x.folders.some((f) => f.path === body.path))) return json(res, 400, { error: 'path must be a folder of a research or project' });
     rulesState[body.path] = { agents: 'added', claude: 'imports' };

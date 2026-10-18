@@ -13,6 +13,7 @@ export type Experiment = {
   name: string; host: string; kind: "job" | "tmux"; cwd?: string; cmd?: string; start?: number;
   seconds?: number; code?: number | null; lost?: boolean; running: boolean;
   ai?: string; // tmux 에서 도는 AI CLI(claude 등)면 도구 이름. 실험이 아니라 AI 작업이다
+  id?: string; // usagi-run 기록(job 노드 id) — 패널 「지우기」(POST /research/jobs/forget)
 };
 export type ResearchProject = {
   key: string; kind: "research" | "project" | null; name: string; folders: { path: string; onMac?: boolean }[];
@@ -102,7 +103,7 @@ export function buildResearchProjects(store: Store, dash: DashProject[], now: Da
     if (noise(key)) continue;
     const state = p.running && now.getTime() - Date.parse(j.updated) > LOST_AFTER ? "lost" : p.running ? "running" : p.lost ? "lost" : p.code !== null && p.code !== undefined && p.code !== 0 ? "failed" : "done";
     const exp: Experiment = {
-      name: expName({ name: j.label, cmd: p.cmd, cwd: p.cwd }), host, kind: "job", cwd: String(p.cwd), ...(p.cmd ? { cmd: String(p.cmd) } : {}),
+      id: j.id, name: expName({ name: j.label, cmd: p.cmd, cwd: p.cwd }), host, kind: "job", cwd: String(p.cwd), ...(p.cmd ? { cmd: String(p.cmd) } : {}),
       ...(Number(p.start) > 0 ? { start: Number(p.start) } : {}),
       ...(state === "done" || state === "failed" ? { seconds: Number(p.seconds) || 0, code: Number.isInteger(p.code) ? p.code : null } : {}),
       ...(state === "lost" ? { lost: true } : {}), running: state === "running",

@@ -36,7 +36,7 @@ function shapeExp(e, now) {
     ? (start ? `${durationText((now - start) / 1000)}째` : '')
     : [start && secs != null ? relativeTime(new Date(start + secs * 1000).toISOString(), now) : '', secs != null ? durationText(secs) : ''].filter(Boolean).join(' · ');
   const folder = str(e.cwd).split('/').filter(Boolean).at(-1) ?? '';
-  return { name: str(e.name), host: str(e.host), state, time, folder, ai: AI_LABEL[e.ai] ?? '', where: [str(e.cwd), str(e.cmd)].filter(Boolean).join(' · ') };
+  return { id: /^job:/.test(str(e.id)) ? str(e.id) : '', name: str(e.name), host: str(e.host), state, time, folder, ai: AI_LABEL[e.ai] ?? '', where: [str(e.cwd), str(e.cmd)].filter(Boolean).join(' · ') };
 }
 
 // 작업 기록 제목 앞의 #, -, *, > 와 「Files mentioned by the user:」 첨부 머리를 뗀다

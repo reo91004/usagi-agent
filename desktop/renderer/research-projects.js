@@ -9,6 +9,7 @@ export function createResearchProjects(ctx) {
   let detailKey = null; // 열어 본 항목(목록으로 돌아가면 null)
   let msg = null; // 마지막 저장 실패 { card, text }: 상세에서는 그 카드 안에 보인다
   let mergeOpen = false;
+  const forgetting = new Set(); // 지우는 중인 기록 id
   let candOpen = false; // 후보는 앞의 몇 개만 펼친다(다운로드·강의 폴더 같은 것이 섞인다)
   const CAND_SHOWN = 3;
   let renaming = false, linkOpen = false;
@@ -93,7 +94,16 @@ export function createResearchProjects(ctx) {
     toneChip(chip, tone),
     h('div.job-main', null,
       h('div.job-name', { text: e.name, title: e.where }),
-      h('div.muted.small.job-sub', { text: [e.host, e.time, e.folder].filter(Boolean).join(' · '), title: e.where })));
+      h('div.muted.small.job-sub', { text: [e.host, e.time, e.folder].filter(Boolean).join(' · '), title: e.where })),
+    e.id && e.state !== 'running' ? h('button.ghost.small', { type: 'button', text: forgetting.has(e.id) ? '지우는 중…' : '지우기', disabled: forgetting.has(e.id), title: '이 기록만 우사기에서 지워요(서버 파일은 이미 정리됐어요)', 'aria-label': `기록 지우기: ${e.name}`, onclick: () => forget(e.id) }) : null);
+  // 끝난 usagi-run 기록 지우기(서버 실험 카드의 「기록 지우기」와 같은 길)
+  async function forget(id) {
+    forgetting.add(id); ctx.render(true);
+    const r = await ctx.cy.researchJobForget(id).catch(() => ({ ok: false }));
+    forgetting.delete(id);
+    msg = !r?.ok && r?.status !== 404 ? { card: 'exp', text: `기록을 지우지 못했어요 — ${ctx.why(r)}` } : null;
+    ctx.loadSoon(); ctx.render(true);
+  }
   const jobRow = (e) => expRow({ running: '도는 중', done: '끝', failed: '실패', lost: '끊김' }[e.state], { running: 'warn', done: 'ok' }[e.state] ?? 'err', e);
 
   function head(p, vm) {
@@ -207,7 +217,7 @@ export function createResearchProjects(ctx) {
       sec('지금 돌고 있음', live.length ? live : h('div.muted.small', { text: '돌고 있는 실험이나 AI 작업이 없어요' })),
       sec('최근 실험', ...(p.recent.items.length
         ? [h('div.muted.small', { text: `최근 30일 · 끝 ${p.recent.done} · 실패 ${p.recent.failed}` }), p.recent.items.map(jobRow)]
-        : [h('div.muted.small', { text: 'usagi-run 으로 돌린 실험이 여기 모여요' })])),
+        : [h('div.muted.small', { text: 'usagi-run 으로 돌린 실험이 여기 모여요' })]), err('exp')),
       sec('작업 기록', p.sessions.length
         ? p.sessions.map((s) => h('div.rp-sess', null, s.tool ? h('span.chip.small', { text: s.tool }) : null, h('span.name', { text: s.title, title: s.title }), h('span.spacer'), h('span.muted.small', { text: s.rel })))
         : h('div.muted.small', { text: '최근 세션이 없어요' })),
