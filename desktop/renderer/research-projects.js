@@ -3,7 +3,7 @@
 import { h } from './h.js';
 import { ellipsize } from '../src/tool-view.js';
 import { splitHost } from '../src/dashboard.js';
-import { STAGES, STAGE_LABELS, venuesUsed, subsBody, withCurrent, withNextVenue } from '../src/research-projects.js';
+import { STAGES, STAGE_LABELS, venuesUsed, subsBody, withCurrent, withNextVenue, rulesChip } from '../src/research-projects.js';
 
 export function createResearchProjects(ctx) {
   let detailKey = null; // 열어 본 항목(목록으로 돌아가면 null)
@@ -39,7 +39,18 @@ export function createResearchProjects(ctx) {
     ctx.render(true);
   }
 
-  const open = (key) => { detailKey = key; msg = null; mergeOpen = renaming = linkOpen = false; subForm = null; ctx.render(true); };
+  // 폴더별 AI 지시 파일 상태 { st } | { busy } | { err }. 상세를 열 때 한 번 읽고 다시 열 때까지 기억한다
+  let rules = new Map();
+  const rulesCall = async (path, add) => {
+    const r = await ctx.cy.agentRules(path, add).catch(() => ({ ok: false }));
+    rules.set(path, r?.ok ? { st: r.data } : { st: rules.get(path)?.st, err: `AI 지시를 ${add ? '넣지' : '읽지'} 못했어요 — ${ctx.why(r)}` });
+    ctx.render(true);
+  };
+  const open = (key) => {
+    detailKey = key; msg = null; mergeOpen = renaming = linkOpen = false; subForm = null; rules = new Map();
+    for (const f of ctx.getRaw()?.researchProjects?.find((x) => x.key === key)?.folders ?? []) rulesCall(f.path, false);
+    ctx.render(true);
+  };
   const set = (fn) => () => { fn(); ctx.render(true); };
   const toneChip = (text, tone, title) => h(`span.chip${tone ? `.${tone}` : ''}`, { text, title });
   const err = (card) => (msg?.card === card ? h('div.result.err', { role: 'status', text: msg.text }) : null);
@@ -141,6 +152,15 @@ export function createResearchProjects(ctx) {
   }
 
   // ---- 코드와 연결 ----
+  // 「AI 지시 추가」: 완료면 ok 칩, 아니면 단추(상태를 읽기 전에는 숨김)
+  function rulesBtn(path) {
+    const s = rules.get(path), chip = rulesChip(s?.st);
+    if (chip) return toneChip(chip.text, 'ok', chip.title);
+    if (!s?.st) return null;
+    return h('button.ghost.small', { type: 'button', text: s.busy ? '넣는 중…' : 'AI 지시 추가', disabled: !!s.busy, title: 'AGENTS.md·CLAUDE.md 끝에 usagi-run 규칙을 덧붙여요(있는 내용은 그대로)',
+      onclick: () => { rules.set(path, { st: s.st, busy: true }); ctx.render(true); rulesCall(path, true); } });
+  }
+
   function folders(p, vm) {
     const rows = p.folders.map((f) => {
       const proj = projOf(f, vm);
@@ -148,7 +168,7 @@ export function createResearchProjects(ctx) {
         h('span.chip.small', { text: proj.where === 'mac' ? '이 Mac' : proj.host || '서버' }),
         h('span.mono.small.rp-path', { text: proj.dir || f.path, title: f.path }),
         h('span.spacer'),
-        ...openBtns(proj),
+        ...openBtns(proj), rulesBtn(f.path),
         f.path !== p.key ? h('button.ghost.small', { type: 'button', text: '풀기', 'aria-label': `프로젝트에서 빼기: ${f.path}`, title: '이 폴더를 이 프로젝트에서 빼요', onclick: () => save(f.path, { mergeInto: null }) }) : null);
     });
     const pick = ctx.pickFor();
@@ -176,7 +196,7 @@ export function createResearchProjects(ctx) {
           : p.url
             ? [h('a', { href: '#', text: '논문 열기 ↗', title: p.url, onclick: (ev) => { ev.preventDefault(); ctx.cy.openLink(p.url); } }), h('button.ghost.small', { type: 'button', text: '바꾸기', onclick: set(() => { linkOpen = true; }) })]
             : h('button.ghost.small', { type: 'button', text: '+ 논문·Overleaf 주소', onclick: set(() => { linkOpen = true; }) })),
-      err('code'), pm ? h('div.result.err', { role: 'status', text: pm }) : null);
+      err('code'), [...rules.values()].filter((x) => x.err).map((x) => h('div.result.err', { role: 'status', text: x.err })), pm ? h('div.result.err', { role: 'status', text: pm }) : null);
   }
 
   function detail(p, vm) {

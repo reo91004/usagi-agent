@@ -53,6 +53,7 @@ import { collectDay, sharedGit, summarizeDay, writeDay } from "./research-note.t
 import { awayAwareBriefing, hidIdleSec } from "./activity.ts";
 import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
+import { agentRules } from "./agent-rules.ts";
 import { directivesView } from "./directives.ts";
 import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
@@ -248,6 +249,7 @@ await bus.listen(cfg.port, {
     };
   },
   researchProjectPut: (body) => { const r = putResearchProject(store, body); if ("ok" in r) bus.dashboardChanged(); return r; },
+  agentRules: async (path, apply) => agentRules(path, (await agent.dashboard()).researchProjects.filter((p) => p.kind).flatMap((p) => p.folders.map((f) => f.path)), apply),
   jobForget: (id) => {
     const n = store.node(id);
     if (n?.kind !== "job" || n.props.running) return false;

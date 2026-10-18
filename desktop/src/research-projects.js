@@ -85,5 +85,11 @@ export const subsBody = (subs) => subs.map((s) => ({ venue: s.venue, stage: s.st
 // 마지막 제출만 바꾼 새 배열(지금 제출 편집)
 export const withCurrent = (subs, patch) => subs.map((s, i) => (i === subs.length - 1 ? { ...s, ...patch } : s));
 
+// GET·POST /research/projects/rules 의 { agents, claude } → 폴더 줄의 「AI 지시 ✓」 칩. 완료가 아니면 null(단추를 보인다)
+export function rulesChip(st) {
+  if (st?.agents !== 'added' || (st.claude !== 'added' && st.claude !== 'imports')) return null;
+  return { text: 'AI 지시 ✓', title: `AGENTS.md 에 usagi-run 규칙이 있고, CLAUDE.md ${st.claude === 'added' ? '에도 규칙이 있어요' : '는 @AGENTS.md 로 AGENTS.md 를 함께 읽어요'}` };
+}
+
 // 새 학회(기본 준비 중)를 마지막 제출 뒤에 쌓는다(거절·철회 뒤나 처음). 옛것은 그대로
 export const withNextVenue = (subs, venue, deadline, stage = 'prep') => [...subs, { venue, stage, ...(deadline ? { deadline } : {}) }];
