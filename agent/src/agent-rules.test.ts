@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentRules, RULES, type Rules } from "./agent-rules.ts";
+import { agentRules, RULES, rulesFor, usagiRunCmd, type Rules } from "./agent-rules.ts";
 import { Bus } from "./bus.ts";
 import type { RunSsh } from "./jobs.ts";
 
@@ -98,4 +98,19 @@ test("GET·POST /research/projects/rules: 헤더 필수, 목록 밖 경로는 40
   } finally {
     bus.close();
   }
+});
+
+test("넣을 글의 usagi-run 경로: 공용 계정(jobDirs)은 내 폴더의 전체 경로, 그 밖은 PATH 의 usagi-run", async () => {
+  assert.equal(usagiRunCmd("~/reo/.usagi-agent/jobs"), "~/reo/bin/usagi-run");
+  assert.equal(usagiRunCmd("~/Documents/Repository/.usagi-agent/jobs/"), "~/Documents/Repository/bin/usagi-run");
+  assert.equal(usagiRunCmd(undefined), "usagi-run");
+  assert.equal(usagiRunCmd("/odd/place"), "usagi-run");
+  assert.ok(rulesFor("~/reo/bin/usagi-run").includes("`~/reo/bin/usagi-run -n "));
+  assert.ok(!RULES.includes("~/"));
+  const sent: string[] = [];
+  const run = async (a: string[]) => { sent.push(a[2]); return "agents=added\nclaude=imports\n"; };
+  await agentRules("gpu1:/home/user/reo/dp", ["gpu1:/home/user/reo/dp"], true, run, { gpu1: "~/reo/.usagi-agent/jobs" });
+  await agentRules("gpu2:/home/me/x", ["gpu2:/home/me/x"], true, run, { gpu1: "~/reo/.usagi-agent/jobs" });
+  assert.ok(sent[0].includes("`~/reo/bin/usagi-run -n "));
+  assert.ok(sent[1].includes("`usagi-run -n ") && !sent[1].includes("~/reo/bin"));
 });
