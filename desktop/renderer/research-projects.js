@@ -50,6 +50,8 @@ export function createResearchProjects(ctx) {
     ?? { path: f.path, name: f.path, ...splitHost(f.path), where: splitHost(f.path).host ? 'server' : f.onMac === false ? 'unknown' : 'mac' };
   const codeBtn = (proj, label = 'VS Code') => h('button.ghost.small', { type: 'button', text: label, 'aria-label': `VS Code 로 열기: ${proj.path}`,
     onclick: (ev) => { ev.stopPropagation(); if (proj.where === 'unknown') ctx.pickHost(proj); else ctx.openFolder(proj, 'code'); } });
+  const finderBtn = (proj) => (proj.where === 'mac' ? h('button.ghost.small', { type: 'button', text: 'Finder', 'aria-label': `Finder 로 열기: ${proj.path}`, onclick: (ev) => { ev.stopPropagation(); ctx.openFolder(proj, 'finder'); } }) : null);
+  const openBtns = (proj) => [codeBtn(proj), finderBtn(proj)];
   const mainFolder = (p) => p.folders.find((f) => f.path === p.key) ?? { path: p.key };
 
   // 줄 전체가 상세로 가는 단추라 안에 VS Code 단추를 넣으려고 div + role=button 으로 둔다
@@ -62,7 +64,7 @@ export function createResearchProjects(ctx) {
         p.kind === 'research' && p.dday ? toneChip(p.dday.text, p.dday.tone) : null,
         h('span.spacer'),
         h('span.muted.small', { text: p.lastRel }),
-        codeBtn(projOf(mainFolder(p), vm))),
+        ...openBtns(projOf(mainFolder(p), vm))),
       h('div.muted.small.rp-l2', { text: p.line2, title: p.line2 }));
   }
 
@@ -97,7 +99,7 @@ export function createResearchProjects(ctx) {
         renaming
           ? [name, h('button.primary.small', { type: 'button', text: '저장', onclick: saveName }), h('button.ghost.small', { type: 'button', text: '취소', onclick: set(() => { renaming = false; }) })]
           : [h('span.rp-title', { text: p.name, title: p.name }), h('button.ghost.small', { type: 'button', text: '이름 바꾸기', onclick: set(() => { renaming = true; }) })],
-        h('span.spacer'), codeBtn(projOf(mainFolder(p), vm)), kinds,
+        h('span.spacer'), ...openBtns(projOf(mainFolder(p), vm)), kinds,
         h('button.ghost.small', { type: 'button', text: '아니에요', title: '목록에서 빼고 묶지 않은 폴더로 보내요', onclick: () => { open(null); save(p.key, { kind: 'none' }); } })),
       h('div.rp-fchips', null, p.folders.map((f) => h('span.mono.small.muted.rp-fchip', { text: where(f), title: f.path }))),
       err('head'));
@@ -146,8 +148,7 @@ export function createResearchProjects(ctx) {
         h('span.chip.small', { text: proj.where === 'mac' ? '이 Mac' : proj.host || '서버' }),
         h('span.mono.small.rp-path', { text: proj.dir || f.path, title: f.path }),
         h('span.spacer'),
-        codeBtn(proj),
-        proj.where === 'mac' ? h('button.ghost.small', { type: 'button', text: 'Finder', 'aria-label': `Finder 로 열기: ${f.path}`, onclick: () => ctx.openFolder(proj, 'finder') }) : null,
+        ...openBtns(proj),
         f.path !== p.key ? h('button.ghost.small', { type: 'button', text: '풀기', 'aria-label': `프로젝트에서 빼기: ${f.path}`, title: '이 폴더를 이 프로젝트에서 빼요', onclick: () => save(f.path, { mergeInto: null }) }) : null);
     });
     const pick = ctx.pickFor();
