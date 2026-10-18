@@ -447,15 +447,20 @@ html, body {
   height: 140px;
   flex: none;
   cursor: grab;
-  transition: opacity 0.6s ease, filter 0.6s ease;
+  transition: opacity 0.6s ease, filter 0.6s ease, width 0.35s ease, height 0.35s ease;
 }
 #char-wrap:active { cursor: grabbing; }
-/* 정지 그림(눈 뜬·감은)과 영상(공부 중·춤)은 같은 상자·같은 기준점에 겹쳐 둔다 */
+/* 정지 그림(눈 뜬·감은)과 영상(공부 중·춤)은 같은 상자·같은 기준점에 겹쳐 둔다.
+   몸은 상자 한쪽에 붙은 140px 고정이라 가장자리에 숨기(.tucked)로 상자가 줄면 몸이 함께 밀려나 가려진다 */
 #char-body {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 140px;
+  height: 140px;
   pointer-events: none;
   transform-origin: 50% 100%;
+  transition: transform 0.35s ease, top 0.35s ease, left 0.35s ease, right 0.35s ease;
 }
 #char, #char-closed, .char-video {
   position: absolute;
@@ -483,6 +488,23 @@ html, body {
 /* 사용자 캐릭터: 그림 비율대로 상자 안에 맞춘 크기(renderer.js fitEl) — 둥근 테두리가 그림에 딱 맞게 */
 #char.fit, #char-closed.fit, .char-video.fit { inset: auto; object-fit: fill; }
 #char.scene, #char-closed.scene { border-radius: 24px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22); }
+
+/* 가장자리에 숨기: 상자를 귀만큼만 남기고(잡히는 자리도 그만큼) 위에 뜨는 것들은 감춘다. 나오고 들어가는 때는 renderer.js syncTuck.
+   아래는 몸이 내려가고, 옆은 캐릭터가 창의 그 쪽 끝(= 화면 끝, geometry.js edgePlacement)에서 옆으로 누워 밀려나 귀가 안쪽을 본다 */
+#stage.edge-left, #stage.edge-left #stack { align-items: flex-start; } /* 말풍선·입력창도 캐릭터 쪽으로 */
+#stage.edge-right, #stage.edge-right #stack { align-items: flex-end; }
+#stage.edge-left #char-wrap { margin-left: -8px; }
+#stage.edge-right #char-wrap { margin-right: -8px; }
+#stage.edge-left #char-body { left: auto; right: 0; }
+#stage.edge-left #char-body, #stage.edge-right #char-body { transform-origin: 50% 50%; }
+#stage.tucked #char-wrap { overflow: hidden; }
+#stage.tucked:not(.edge-left, .edge-right) #char-wrap { height: 40px; }
+#stage.tucked:is(.edge-left, .edge-right) #char-wrap { width: 40px; }
+#stage.tucked #char-wrap #char-body { animation: none; } /* 숨어 있는 동안은 흔들지 않는다(졸림 #char-wrap.sleepy 보다 세게) */
+#stage.tucked.edge-left #char-body { transform: rotate(90deg); right: calc(-1 * var(--tuck-gap, 0px)); }
+#stage.tucked.edge-right #char-body { transform: rotate(-90deg); left: calc(-1 * var(--tuck-gap, 0px)); }
+#stage.tucked:not(.edge-left, .edge-right) #char-body { top: calc(-1 * var(--tuck-gap, 0px)); } /* --tuck-gap: 사용자 그림 위 빈 칸(renderer.js fitEl) */
+#stage.tucked #focus, #stage.tucked #doing, #stage.tucked #caption { visibility: hidden; }
 
 /* 쉬는 동안 계속 도는 애니메이션은 투명 창을 매 프레임 다시 그리게 해 CPU·배터리를 먹는다(가만히 있어도 15%).
    쉬는 상태(대기·연결 끊김·진행 중·집중 점)는 몇 번만 움직이고 멈춘다. 바쁨은 잠깐이라 그대로, 생각 중은 큐 대기처럼 길어질 수 있어 몇 번만 */
@@ -552,6 +574,7 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  #char-wrap { transition: none; }
   #char, #char-body, #char-wrap.sleepy #char-body, #dots i, #zzz, .sticker, .bubble, #focus, #focus-label::before, #doing, #doing-label::before { animation: none !important; }
 }
 

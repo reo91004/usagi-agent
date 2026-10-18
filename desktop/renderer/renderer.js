@@ -89,11 +89,12 @@ scheduleBlink();
 // ---- 사용자 캐릭터: 정사각형이 아닌 그림·영상도 비율대로 상자 안에(둥근 테두리가 그림 크기에 맞게) ----
 // 기본 캐릭터는 CSS 그대로(object-fit: contain)
 function fitEl(el, w, h, on) {
-  if (!on) { el.classList.remove('fit'); el.style.width = el.style.height = el.style.left = el.style.top = ''; return; }
+  if (!on) { el.classList.remove('fit'); el.style.width = el.style.height = el.style.left = el.style.top = ''; if (el === img) el.parentElement.style.removeProperty('--tuck-gap'); return; }
   const bw = el.parentElement.clientWidth, bh = el.parentElement.clientHeight;
   const f = fitBox(w, h, bw, bh);
   el.classList.add('fit');
   Object.assign(el.style, { width: `${f.w}px`, height: `${f.h}px`, left: `${Math.round((bw - f.w) / 2)}px`, top: `${bh - f.h}px` }); // 아래 가운데(기본 캐릭터와 같은 기준점)
+  if (el === img) el.parentElement.style.setProperty('--tuck-gap', `${bh - f.h}px`); // 가로로 넓은 그림 위의 빈 칸 — 가장자리에 숨기가 그만큼 더 밀어 귀(그림 윗부분)가 보이게
 }
 function fitStill() {
   const on = !!charA.custom;
@@ -916,6 +917,8 @@ function updateHover(el) {
     clearTimeout(hoverTimer);
     hoverTimer = null;
   }
+  hovering = onAsk || !!el?.closest('.hit'); // 집중하기·진행 중 단추 위도
+  syncTuck();
   // 입력 안 했는데 마우스가 떠나면 잠시 뒤 닫는다
   if (askOpen && !onAsk && !askInput.value && !tray.has() && !picking && !leaveTimer && !askPauseTimer) { // 잠깐 숨긴 동안은 닫지 않는다
     leaveTimer = setTimeout(() => { leaveTimer = null; if (!askInput.value && !tray.has() && !picking && !askPauseTimer) hideAsk(); }, LEAVE_HIDE);
@@ -925,15 +928,42 @@ function updateHover(el) {
   }
 }
 
-cy.onVisibility(({ hidden }) => {
+const stage = document.getElementById('stage');
+// tuck: 가장자리에 숨기로 붙은 가장자리('left'|'right'|'bottom'), 꺼져 있으면 null
+cy.onVisibility(({ hidden, tuck }) => {
   stack.classList.toggle('hidden', !!hidden);
+  tuckOn = !!tuck;
+  stage.classList.toggle('edge-left', tuck === 'left');
+  stage.classList.toggle('edge-right', tuck === 'right');
   requestAnimationFrame(recheckHit);
 });
 // 화면 위쪽에 놓으면 메인이 창을 뒤집는다(geometry.js dropPlacement): 캐릭터가 위, 입력창·말풍선은 아래
 cy.onFlip?.((on) => {
-  document.getElementById('stage').classList.toggle('flip', !!on);
+  stage.classList.toggle('flip', !!on);
   requestAnimationFrame(recheckHit);
 });
+
+// ---- 가장자리에 숨기(메뉴 체크): 할 말이 없으면 붙은 가장자리 밖으로 들어가 귀만 남는다(#stage.tucked) ----
+// 말풍선·입력창·답하는 중·끄는 중이면 바로, 마우스를 올리면 PEEK_MS 머문 뒤 나온다(지나가는 커서엔 안 나옴). 다 끝나고 TUCK_MS 뒤 들어간다
+const PEEK_MS = 250;
+const TUCK_MS = 1500;
+let tuckOn = false;
+let hovering = false; // 캐릭터·말풍선·입력창 위(updateHover)
+let tuckTimer = null;
+let tuckTo = null; // 예약된 쪽(true = 들어감)
+function syncTuck() {
+  const urgent = !tuckOn || askOpen || press.pressed || isBusy(chat) || (els.size > 0 && !stack.classList.contains('hidden'));
+  const to = !urgent && !hovering;
+  if (stage.classList.contains('tucked') === to) { clearTimeout(tuckTimer); tuckTimer = tuckTo = null; return; }
+  if (tuckTo === to) return;
+  clearTimeout(tuckTimer);
+  tuckTo = to;
+  tuckTimer = setTimeout(() => {
+    tuckTimer = tuckTo = null;
+    stage.classList.toggle('tucked', to);
+    requestAnimationFrame(recheckHit); // 잡히는 자리가 바뀐다
+  }, urgent ? 0 : to ? TUCK_MS : PEEK_MS);
+}
 
 // ---- 클릭 투과: 캐릭터/말풍선 위에서만 마우스 받기 ----
 let interactive = false;
@@ -949,7 +979,7 @@ function setInteractive(v) {
 }
 
 function recheckHit() {
-  if (press.pressed) return;
+  if (press.pressed) return syncTuck();
   if (!last) {
     updateHover(null);
     return setInteractive(false);

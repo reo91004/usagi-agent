@@ -42,3 +42,22 @@ test('contentMismatch: 페이지가 창보다 좁게 그려졌으면 true, 확�
   assert.equal(contentMismatch([1000, 711], { width: 900, height: 640 }, 0.9), false);
   assert.equal(contentMismatch(null, { width: 900, height: 640 }), false);
 });
+
+test('가장자리에 숨기: 캐릭터 가운데, 가까운 가장자리, 붙인 자리', async () => {
+  const { charCenter, nearestEdge, edgePlacement } = await import('../src/geometry.js');
+  const s = { width: 420, height: 580 };
+  const area = { x: 0, y: 39, width: 1800, height: 1076 }; // 아래 1115
+  // 캐릭터는 보통 창 가운데 아래(위·아래 여백 4), 옆 가장자리면 창 그 쪽 끝
+  assert.deepEqual(charCenter([100, 200], null, false, s), { x: 310, y: 200 + 580 - 4 - 70 });
+  assert.deepEqual(charCenter([100, 200], 'left', true, s), { x: 170, y: 274 });
+  assert.deepEqual(charCenter([100, 200], 'right', false, s), { x: 450, y: 706 });
+  assert.equal(nearestEdge({ x: 60, y: 500 }, area), 'left');
+  assert.equal(nearestEdge({ x: 1750, y: 500 }, area), 'right');
+  assert.equal(nearestEdge({ x: 900, y: 1000 }, area), 'bottom');
+  assert.equal(nearestEdge({ x: 900, y: 80 }, area), 'left'); // 위는 고르지 않는다
+  // 아래: 캐릭터를 c.x 에 두고 창 아랫변을 작업영역 아래에, 뒤집기 풀기
+  assert.deepEqual(edgePlacement('bottom', { x: 900, y: 600 }, 100, true, area, s), { x: 690, y: 1115 - 580, flip: false });
+  // 옆: 창을 화면 안 그 쪽 끝에, 위아래는 dropPlacement(화면 위쪽이면 뒤집기)
+  assert.deepEqual(edgePlacement('left', { x: 50, y: 600 }, 300, false, area, s), { x: 0, y: 300, flip: false });
+  assert.deepEqual(edgePlacement('right', { x: 1750, y: 600 }, -300, false, area, s), { x: 1380, y: 132, flip: true }); // 캐릭터 윗변 -300+436=136 그대로
+});

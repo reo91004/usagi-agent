@@ -1,5 +1,5 @@
 // 캐릭터 오른쪽 클릭 메뉴와 메뉴 막대 메뉴가 같이 쓰는 템플릿. 순수 로직 — 동작·아이콘은 main 이 넘긴다.
-// s: { name, connected, brainLabel, coder, bubblesHidden }, a: { open, session, briefing, settings, tour, toggleBubbles, quit }, icon(symbol) → NativeImage | undefined
+// s: { name, connected, brainLabel, coder, bubblesHidden, tucked, characterHidden }, a: { open, session, briefing, settings, tour, toggleBubbles, toggleTuck, toggleCharacter, quit }, icon(symbol) → NativeImage | undefined
 export function menuTemplate(s, a, icon = () => undefined) {
   const it = (label, symbol, click) => {
     const img = icon(symbol);
@@ -17,6 +17,8 @@ export function menuTemplate(s, a, icon = () => undefined) {
     it('사용법 다시 보기', 'questionmark.circle', a.tour),
     { type: 'separator' },
     { label: '말풍선 숨기기', type: 'checkbox', checked: !!s.bubblesHidden, click: a.toggleBubbles },
+    { label: '가장자리에 숨기', type: 'checkbox', checked: !!s.tucked, click: a.toggleTuck },
+    { label: '캐릭터 숨기기', type: 'checkbox', checked: !!s.characterHidden, click: a.toggleCharacter },
     { type: 'separator' },
     it(`${s.name} 끄기`, 'power', a.quit),
   ];
