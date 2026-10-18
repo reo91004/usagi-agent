@@ -622,39 +622,6 @@ const server = http.createServer(async (req, res) => {
     const a = answers[b.id];
     return a ? json(res, 200, { ok: true, answer: { id: b.id, ...a } }) : json(res, 400, { error: 'unknown id' });
   }
-  // AI 지시 파일 상태: 폴더마다 {agents,claude}. POST 는 덧붙인 뒤 상태
-  if ((req.method === 'GET' || req.method === 'POST') && p === '/research/projects/rules') {
-    const path = req.method === 'POST' ? body.path : url.searchParams.get('path');
-    if (!rps.some((x) => x.kind && x.folders.some((f) => f.path === path))) return json(res, 400, { error: 'path must be a folder of a research or project' });
-    if (req.method === 'POST') rulesState[path] = { agents: 'added', claude: 'imports' };
-    return json(res, 200, rulesState[path] ?? { agents: 'missing', claude: 'missing' });
-  }
-  if (req.method === 'PUT' && p === '/research/projects') {
-    const cur = rps.find((x) => x.key === body.key);
-    if (!cur && body.mergeInto !== null) return json(res, 404, { error: 'no such project' });
-    if (cur && body.kind === 'none') rps = rps.filter((x) => x !== cur); // cur 없음 = 합친 폴더 풀기
-    else if (cur) {
-      if (body.kind) cur.kind = body.kind;
-      if (body.name !== undefined) cur.name = body.name ?? cur.folders[0].path.split('/').pop();
-      if (Array.isArray(body.subs)) cur.subs = body.subs.map((x) => ({ at: new Date().toISOString(), ...x }));
-      if (body.url !== undefined) { if (body.url) cur.url = body.url; else delete cur.url; }
-    }
-    if (typeof body.mergeInto === 'string') {
-      const into = rps.find((x) => x.key === body.mergeInto);
-      if (!into) return json(res, 400, { error: 'mergeInto must be another project' });
-      into.folders.push(...cur.folders);
-      rps = rps.filter((x) => x !== cur);
-    } else if (body.mergeInto === null) {
-      const host = rps.find((x) => x.folders.some((f) => f.path === body.key));
-      if (host && host.key !== body.key) {
-        const f = host.folders.find((y) => y.path === body.key);
-        host.folders = host.folders.filter((y) => y !== f);
-        rps.push({ key: f.path, kind: null, name: f.path.split('/').pop(), folders: [f], subs: [], lastActive: null, running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] });
-      }
-    }
-    json(res, 200, { ok: true });
-    return emit('dashboard', {});
-  }
   if (req.method === 'PUT' && p === '/settings') {
     const b = (await readJSON(req)) ?? {};
     if (b.brain?.provider) { fakeCfg.provider = b.brain.provider; fakeCfg.ready = true; }
@@ -690,7 +657,13 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && fakeRuns.handle(req, res, url, null)) return;
   if (req.method === 'GET' && await fakeActions.handle(req, res, url, json)) return;
-  if (req.method !== 'POST') return json(res, 404, { error: 'not found' });
+  // AI 지시 파일 상태: 폴더마다 {agents,claude}
+  if (req.method === 'GET' && p === '/research/projects/rules') {
+    const path = url.searchParams.get('path');
+    if (!rps.some((x) => x.kind && x.folders.some((f) => f.path === path))) return json(res, 400, { error: 'path must be a folder of a research or project' });
+    return json(res, 200, rulesState[path] ?? { agents: 'missing', claude: 'missing' });
+  }
+  if (req.method !== 'POST' && req.method !== 'PUT') return json(res, 404, { error: 'not found' });
 
   // 진짜 데몬과 같은 규칙: 헤더 필수, Origin 있으면 거부
   if (req.headers['x-cy-agent'] !== '1' || req.headers.origin) {
@@ -699,6 +672,38 @@ const server = http.createServer(async (req, res) => {
   }
   const body = await readJSON(req);
   if (body === null) return json(res, 400, { error: 'bad json' });
+  // AI 지시 파일: POST 는 덧붙인 뒤 상태(GET 은 위쪽 읽기 경로에서)
+  if (req.method === 'POST' && p === '/research/projects/rules') {
+    if (!rps.some((x) => x.kind && x.folders.some((f) => f.path === body.path))) return json(res, 400, { error: 'path must be a folder of a research or project' });
+    rulesState[body.path] = { agents: 'added', claude: 'imports' };
+    return json(res, 200, rulesState[body.path]);
+  }
+  if (req.method === 'PUT' && p === '/research/projects') {
+    const cur = rps.find((x) => x.key === body.key);
+    if (!cur && body.mergeInto !== null) return json(res, 404, { error: 'no such project' });
+    if (cur && body.kind === 'none') rps = rps.filter((x) => x !== cur); // cur 없음 = 합친 폴더 풀기
+    else if (cur) {
+      if (body.kind) cur.kind = body.kind;
+      if (body.name !== undefined) cur.name = body.name ?? cur.folders[0].path.split('/').pop();
+      if (Array.isArray(body.subs)) cur.subs = body.subs.map((x) => ({ at: new Date().toISOString(), ...x }));
+      if (body.url !== undefined) { if (body.url) cur.url = body.url; else delete cur.url; }
+    }
+    if (typeof body.mergeInto === 'string') {
+      const into = rps.find((x) => x.key === body.mergeInto);
+      if (!into) return json(res, 400, { error: 'mergeInto must be another project' });
+      into.folders.push(...cur.folders);
+      rps = rps.filter((x) => x !== cur);
+    } else if (body.mergeInto === null) {
+      const host = rps.find((x) => x.folders.some((f) => f.path === body.key));
+      if (host && host.key !== body.key) {
+        const f = host.folders.find((y) => y.path === body.key);
+        host.folders = host.folders.filter((y) => y !== f);
+        rps.push({ key: f.path, kind: null, name: f.path.split('/').pop(), folders: [f], subs: [], lastActive: null, running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] });
+      }
+    }
+    json(res, 200, { ok: true });
+    return emit('dashboard', {});
+  }
   if (handleFocus(fakeFocus, req, res, url, json)) return;
   if (fakeRuns.handle(req, res, url, body)) return;
   if (fakeThreads.handle(req, res, url, body, json, findTodo)) return;
