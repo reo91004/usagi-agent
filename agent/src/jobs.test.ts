@@ -217,6 +217,19 @@ test("usagi-run: 프로세스가 끝 기록 없이 죽으면 표시만 남고 pu
   assert.deepEqual(readdirSync(join(home, ".usagi-agent", "jobs")), []);
 });
 
+test("공용 계정: PATH 의 한 사본으로 돌려도 작업 폴더 위의 .usagi-agent(내 폴더)에 남기고, 다른 폴더에서 돌린 것은 홈으로", () => {
+  const home = mkdtempSync(join(tmpdir(), "usagi-run-"));
+  mkdirSync(join(home, "reo", "dp", "src"), { recursive: true });
+  mkdirSync(join(home, "reo", ".usagi-agent"));
+  mkdirSync(join(home, "kim"));
+  const env = { ...process.env, HOME: home, CY_AGENT_PORT: "9" };
+  assert.equal(spawnSync("sh", [SCRIPT, "-n", "내 실험", "--", "true"], { env, cwd: join(home, "reo", "dp", "src") }).status, 0);
+  assert.equal(spawnSync("sh", [SCRIPT, "-n", "남의 실험", "--", "true"], { env, cwd: join(home, "kim") }).status, 0);
+  const names = (dir: string) => readdirSync(dir).map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")).name);
+  assert.deepEqual(names(join(home, "reo", ".usagi-agent", "jobs")), ["내 실험"]);
+  assert.deepEqual(names(join(home, ".usagi-agent", "jobs")), ["남의 실험"]);
+});
+
 test("공용 계정: 개인 폴더의 usagi-run(~/reo/bin)은 ~/reo/.usagi-agent/jobs 에 남기고, pullJobs 는 jobDirs 의 그 폴더만 본다", async () => {
   const home = mkdtempSync(join(tmpdir(), "usagi-shared-"));
   const mine = join(home, "reo");

@@ -24,10 +24,6 @@ esc() { printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\t\r\n' '   
 
 start=$(date +%s)
 ID="$(date +%Y%m%d-%H%M%S)-$$"
-# 공용 계정이면 개인 폴더에 둔다: 이 파일 위 폴더에 .usagi-agent 가 있으면 거기에 남긴다(~/reo/bin/usagi-run → ~/reo/.usagi-agent/jobs).
-# 맥의 config.json "jobDirs" 에 그 서버의 폴더를 적어 둔다(README 「혼자 쓰는 서버와 공용 계정 서버」)
-TOP=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd -P)
-if [ -n "$TOP" ] && [ -d "$TOP/.usagi-agent" ]; then DIR=$TOP/.usagi-agent/jobs; else DIR=$HOME/.usagi-agent/jobs; fi
 CWD=$(pwd -P 2>/dev/null || pwd)
 if [ -n "$PID" ]; then
   case $PID in *[!0-9]*) echo "usagi-run: --pid 에는 숫자를 주세요" >&2; exit 2 ;; esac
@@ -41,6 +37,21 @@ else
   [ -n "$NAME" ] || NAME="$*"
   CMD="$*"
 fi
+
+# 공용 계정이면 개인 폴더에 둔다. 맥의 config.json "jobDirs" 에 그 서버의 폴더를 적어 둔다(README 「혼자 쓰는 서버와 공용 계정 서버」)
+#   1) 이 파일 위 폴더에 .usagi-agent 가 있으면 거기(~/reo/bin/usagi-run → ~/reo/.usagi-agent/jobs)
+#   2) 아니면 작업 폴더에서 홈 바로 아래까지 올라가며 처음 만나는 .usagi-agent(PATH 의 한 사본 ~/.local/bin 으로 ~/reo/dp 에서 돌려도 내 폴더로,
+#      다른 사람 폴더에서 돌린 것은 홈으로 가서 섞이지 않는다)
+#   3) 아니면 ~/.usagi-agent/jobs
+TOP=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd -P)
+DIR=""
+if [ -n "$TOP" ] && [ -d "$TOP/.usagi-agent" ]; then DIR=$TOP/.usagi-agent/jobs; fi
+d=$CWD
+while [ -z "$DIR" ] && [ -n "$d" ] && [ "$d" != / ] && [ "$d" != "$HOME" ]; do
+  [ -d "$d/.usagi-agent" ] && DIR=$d/.usagi-agent/jobs
+  d=$(dirname "$d")
+done
+[ -n "$DIR" ] || DIR=$HOME/.usagi-agent/jobs
 
 # 도는 중 표시(맥의 우사기가 가져가 「돌고 있는 실험」에 보여 준다). 바뀐 파일을 찾을 때 시작 시각 기준으로도 쓴다
 MARK="$DIR/$ID.running"
