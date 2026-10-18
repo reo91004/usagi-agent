@@ -12,6 +12,7 @@ import { ACTION_STATUSES, type ActionStatus, type ConfirmOut } from "./actions.t
 import type { GuidelinesApi } from "./guidelines.ts";
 import { FOCUS_CMDS, DAY_RE, type FocusApi, type FocusCmd } from "./focus.ts";
 import { parseJobDone, type JobDone } from "./jobs.ts";
+import type { Rules } from "./agent-rules.ts";
 import { createReadStream, statSync } from "node:fs";
 import { extname } from "node:path";
 import { ATTACH_ID, attachmentInput, attachmentRef, type Attachment, type ContentBlock } from "./attachments.ts";
@@ -43,6 +44,7 @@ export type BusHandlers = {
   // 연구 탭 「기록 지우기」: usagi-run 의 끝·실패·끊김 기록 하나를 이 맥에서 지운다(서버 파일은 읽을 때 이미 지워짐). 모르는·도는 중이면 false → 404. 없으면 503
   jobForget?(id: string): boolean;
   researchNote?(day: string): string | null;
+  agentRules?(path: unknown, apply: boolean): Promise<Rules | { error: string }>; // 폴더의 AI 지시 파일 상태·덧붙이기(agent-rules.ts). { error } → 400
   researchProjectPut?(body: unknown): { ok: true } | { error: string }; // 연구 프로젝트 메타 저장(research-projects.ts). { error } → 400
   // 이 Mac 의 캘린더·미리알림(eventkit.ts): 상태 · 연결(macOS 권한을 묻고 기다리는 동안 pending) · 해제. 없으면 503
   apple?: { status(): Promise<unknown>; connect(o: { calendar: boolean; reminders: boolean }): unknown; disconnect(o: { calendar: boolean; reminders: boolean }): unknown };
@@ -551,6 +553,14 @@ export class Bus {
       if (!h.researchProjectPut) return json(res, 503, { error: "research projects unavailable" });
       const r = h.researchProjectPut(await readJson(req));
       return "ok" in r ? json(res, 200, r) : json(res, 400, r);
+    }
+    // 폴더의 AGENTS.md·CLAUDE.md 에 usagi-run 규칙: GET 은 상태, POST 는 덧붙이기. 서버 폴더는 ssh 라 읽기도 헤더 필수
+    if ((req.method === "GET" || req.method === "POST") && url.pathname === "/research/projects/rules") {
+      if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
+      if (!h.agentRules) return json(res, 503, { error: "agent rules unavailable" });
+      const post = req.method === "POST";
+      const r = await h.agentRules(post ? (await readJson(req))?.path : url.searchParams.get("path"), post);
+      return json(res, "error" in r ? 400 : 200, r);
     }
     if (req.method === "PUT" && url.pathname === "/settings") {
       if (req.headers["x-cy-agent"] !== "1" || (req.headers.origin && !req.headers.origin.startsWith("file://"))) return json(res, 403, { error: "forbidden" });
