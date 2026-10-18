@@ -1596,6 +1596,8 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-row { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 10px 6px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; font: inherit; cursor: pointer; border-radius: 8px; min-width: 0; }
 .rp-row:first-child { border-top: 0; }
 .rp-row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.rp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rp-l1 button { flex: none; padding-block: 0; }
 .rp-l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rp-l1 .chip { flex: none; }
 .rp-l2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

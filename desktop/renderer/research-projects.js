@@ -45,14 +45,24 @@ export function createResearchProjects(ctx) {
   const err = (card) => (msg?.card === card ? h('div.result.err', { role: 'status', text: msg.text }) : null);
   const showsDetail = (p, tab) => !!p?.kind && (p.kind === 'research') === (tab === 'research');
 
-  function listRow(p) {
-    return h('button.rp-row', { type: 'button', 'aria-label': `${p.name} 열기`, onclick: () => open(p.key) },
+  // 폴더 → 작업 폴더 줄과 같은 모양의 열기 대상(7일 밖이라 작업 폴더 목록에 없어도 연다)
+  const projOf = (f, vm) => vm.projects.concat(vm.hiddenProjects).find((x) => x.path === f.path)
+    ?? { path: f.path, name: f.path, ...splitHost(f.path), where: splitHost(f.path).host ? 'server' : f.onMac === false ? 'unknown' : 'mac' };
+  const codeBtn = (proj, label = 'VS Code') => h('button.ghost.small', { type: 'button', text: label, 'aria-label': `VS Code 로 열기: ${proj.path}`,
+    onclick: (ev) => { ev.stopPropagation(); if (proj.where === 'unknown') ctx.pickHost(proj); else ctx.openFolder(proj, 'code'); } });
+  const mainFolder = (p) => p.folders.find((f) => f.path === p.key) ?? { path: p.key };
+
+  // 줄 전체가 상세로 가는 단추라 안에 VS Code 단추를 넣으려고 div + role=button 으로 둔다
+  function listRow(p, vm) {
+    const go = () => open(p.key);
+    return h('div.rp-row', { role: 'button', tabindex: '0', 'aria-label': `${p.name} 열기`, onclick: go, onkeydown: (ev) => { if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } } },
       h('div.rp-l1', null,
         h('span.name', { text: p.name }),
         p.kind === 'research' ? toneChip(p.chip, p.cur?.tone, p.cur?.deadline ? `마감 ${p.cur.deadline}` : '') : null,
         p.kind === 'research' && p.dday ? toneChip(p.dday.text, p.dday.tone) : null,
         h('span.spacer'),
-        h('span.muted.small', { text: p.lastRel })),
+        h('span.muted.small', { text: p.lastRel }),
+        codeBtn(projOf(mainFolder(p), vm))),
       h('div.muted.small.rp-l2', { text: p.line2, title: p.line2 }));
   }
 
@@ -73,7 +83,7 @@ export function createResearchProjects(ctx) {
       h('div.muted.small.job-sub', { text: [e.host, e.time, e.folder].filter(Boolean).join(' · '), title: e.where })));
   const jobRow = (e) => expRow({ running: '도는 중', done: '끝', failed: '실패', lost: '끊김' }[e.state], { running: 'warn', done: 'ok' }[e.state] ?? 'err', e);
 
-  function head(p) {
+  function head(p, vm) {
     const name = h('input', { type: 'text', value: p.name, maxlength: '80', 'aria-label': '이름' });
     const saveName = () => { renaming = false; save(p.key, { name: name.value.trim() || null }); };
     name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveName(); });
@@ -87,7 +97,7 @@ export function createResearchProjects(ctx) {
         renaming
           ? [name, h('button.primary.small', { type: 'button', text: '저장', onclick: saveName }), h('button.ghost.small', { type: 'button', text: '취소', onclick: set(() => { renaming = false; }) })]
           : [h('span.rp-title', { text: p.name, title: p.name }), h('button.ghost.small', { type: 'button', text: '이름 바꾸기', onclick: set(() => { renaming = true; }) })],
-        h('span.spacer'), kinds,
+        h('span.spacer'), codeBtn(projOf(mainFolder(p), vm)), kinds,
         h('button.ghost.small', { type: 'button', text: '아니에요', title: '목록에서 빼고 묶지 않은 폴더로 보내요', onclick: () => { open(null); save(p.key, { kind: 'none' }); } })),
       h('div.rp-fchips', null, p.folders.map((f) => h('span.mono.small.muted.rp-fchip', { text: where(f), title: f.path }))),
       err('head'));
@@ -131,13 +141,12 @@ export function createResearchProjects(ctx) {
   // ---- 코드와 연결 ----
   function folders(p, vm) {
     const rows = p.folders.map((f) => {
-      const proj = vm.projects.concat(vm.hiddenProjects).find((x) => x.path === f.path)
-        ?? { path: f.path, name: f.path, ...splitHost(f.path), where: splitHost(f.path).host ? 'server' : f.onMac === false ? 'unknown' : 'mac' };
+      const proj = projOf(f, vm);
       return h('div.rp-folder', null,
         h('span.chip.small', { text: proj.where === 'mac' ? '이 Mac' : proj.host || '서버' }),
         h('span.mono.small.rp-path', { text: proj.dir || f.path, title: f.path }),
         h('span.spacer'),
-        h('button.ghost.small', { type: 'button', text: 'VS Code', 'aria-label': `VS Code 로 열기: ${f.path}`, onclick: () => (proj.where === 'unknown' ? ctx.pickHost(proj) : ctx.openFolder(proj, 'code')) }),
+        codeBtn(proj),
         proj.where === 'mac' ? h('button.ghost.small', { type: 'button', text: 'Finder', 'aria-label': `Finder 로 열기: ${f.path}`, onclick: () => ctx.openFolder(proj, 'finder') }) : null,
         f.path !== p.key ? h('button.ghost.small', { type: 'button', text: '풀기', 'aria-label': `프로젝트에서 빼기: ${f.path}`, title: '이 폴더를 이 프로젝트에서 빼요', onclick: () => save(f.path, { mergeInto: null }) }) : null);
     });
@@ -172,7 +181,7 @@ export function createResearchProjects(ctx) {
   function detail(p, vm) {
     const live = [...p.experiments.map(jobRow), ...p.ais.map((e) => expRow(e.ai, 'info', e))];
     return [
-      head(p),
+      head(p, vm),
       p.kind === 'research' ? submissions(p, vm) : null,
       sec('지금 돌고 있음', live.length ? live : h('div.muted.small', { text: '돌고 있는 실험이나 AI 작업이 없어요' })),
       sec('최근 실험', ...(p.recent.items.length
@@ -194,12 +203,12 @@ export function createResearchProjects(ctx) {
     const fail = msg ? h('div.result.err', { role: 'status', text: msg.text }) : null;
     if (tab === 'projects') {
       const project = list.filter((p) => p.kind === 'project');
-      return [fail, project.length ? [h('h2', null, h('span', { text: '프로젝트' })), h('div.card.rp-list', null, project.map(listRow))] : null];
+      return [fail, project.length ? [h('h2', null, h('span', { text: '프로젝트' })), h('div.card.rp-list', null, project.map((p) => listRow(p, vm)))] : null];
     }
     const research = list.filter((p) => p.kind === 'research'), cand = list.filter((p) => p.kind == null);
     return [
       fail,
-      research.length ? [h('h2', null, h('span', { text: '연구' })), h('div.card.rp-list', null, research.map(listRow))] : null,
+      research.length ? [h('h2', null, h('span', { text: '연구' })), h('div.card.rp-list', null, research.map((p) => listRow(p, vm)))] : null,
       cand.length ? [h('h2', null, h('span', { text: '연구로 볼까요?' }), h('span.muted.small', { text: ' 최근 실험이나 작업이 있던 폴더예요' })),
         h('div.card.rp-list', null, (candOpen ? cand : cand.slice(0, CAND_SHOWN)).map(candidateRow),
           cand.length > CAND_SHOWN ? h('button.ghost.small.rp-more', { type: 'button', text: candOpen ? '접기' : `후보 ${cand.length - CAND_SHOWN}개 더 보기`, 'aria-expanded': String(candOpen), onclick: () => { candOpen = !candOpen; ctx.render(true); } }) : null)] : null,

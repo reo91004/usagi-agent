@@ -3387,7 +3387,7 @@ cy.onConnection(({ connected: c }) => {
 });
 
 // ↻ 새로고침: 화면 다시 그리기 + 데몬이 슬랙·메일을 지금 다시 읽어 새 할 일을 넣는다(결과는 캐릭터 말풍선)
-$('refresh').addEventListener('click', () => { cy.refreshSources?.(); load(); loadThreads(); if (selectedId) { loadMessages(); loadAgents(); } });
+$('refresh').addEventListener('click', () => { cy.refreshSources?.(); load(); loadThreads(); if (selectedId) { loadMessages(); loadAgents(); } if (section === 'research' && gpu.hosts) loadGpu(); }); // 서버 tmux·usagi-run 은 데몬이 지금 확인하고 대시보드를 다시 보낸다
 $('open-session')?.addEventListener('click', () => cy.openSession?.());
 // 이 컴퓨터에 Claude Code 가 없으면(Gemini·GPT 키·로컬) 코드 관련 버튼(작업 세션)은 숨긴다
 function applyCaps(c) {
