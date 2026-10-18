@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { shapeDashboard, SECTIONS } from '../src/dashboard.js';
-import { shapeResearchProjects, cleanTitle, deadlineChip, venuesUsed, subsBody, withCurrent, withNextVenue } from '../src/research-projects.js';
+import { shapeResearchProjects, cleanTitle, deadlineChip, venuesUsed, subsBody, withCurrent, withNextVenue, rulesChip } from '../src/research-projects.js';
 import { ipcHandlers, buildHandler } from './helpers/main-calls.js';
 
 const NOW = new Date(2026, 9, 18, 12, 0).getTime();
@@ -94,6 +94,30 @@ test('IPC research-project-save: 보낸 창 확인 · 모양 거르기 · PUT /r
   const electron = { contextBridge: { exposeInMainWorld: (_n, o) => { api = o; } }, ipcRenderer: { invoke: (...x) => x, on() {}, send() {}, removeListener() {} } };
   vm.runInNewContext(readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8'), { require: () => electron, process, console });
   assert.deepEqual(api.researchProjectSave({ key: 'k' }), ['research-project-save', { key: 'k' }]);
+});
+
+test('IPC agent-rules: 보낸 창 확인 · 모양 거르기 · 상태는 GET, 넣기는 POST · preload 연결', async () => {
+  const src = ipcHandlers().get('agent-rules');
+  assert.match(src, /fromOurs\(e\)/);
+  const sent = [];
+  const fn = buildHandler(src, { fromOurs: () => true, denied: () => 'denied', request: async (...a) => { sent.push(a); return { ok: true }; } });
+  assert.equal(await fn({}, '', false), 'denied');
+  assert.equal(await fn({}, 5, false), 'denied');
+  assert.equal(await fn({}, '/a', 'yes'), 'denied');
+  await fn({}, 'srv:/a b', false);
+  await fn({}, '/a', true);
+  assert.deepEqual(sent, [['GET', '/research/projects/rules?path=srv%3A%2Fa%20b', undefined, 30000], ['POST', '/research/projects/rules', { path: '/a' }, 30000]]);
+  let api;
+  const electron = { contextBridge: { exposeInMainWorld: (_n, o) => { api = o; } }, ipcRenderer: { invoke: (...x) => x, on() {}, send() {}, removeListener() {} } };
+  vm.runInNewContext(readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8'), { require: () => electron, process, console });
+  assert.deepEqual(api.agentRules('/a', 1), ['agent-rules', '/a', true]);
+});
+
+test('rulesChip: AGENTS 에 있고 CLAUDE 가 규칙을 갖거나 가져올 때만 완료 칩', () => {
+  assert.equal(rulesChip({ agents: 'added', claude: 'imports' }).text, 'AI 지시 ✓');
+  assert.match(rulesChip({ agents: 'added', claude: 'imports' }).title, /@AGENTS\.md/);
+  assert.match(rulesChip({ agents: 'added', claude: 'added' }).title, /CLAUDE\.md 에도/);
+  for (const st of [null, {}, { agents: 'missing', claude: 'added' }, { agents: 'absent', claude: 'imports' }, { agents: 'added', claude: 'missing' }, { agents: 'added', claude: 'absent' }]) assert.equal(rulesChip(st), null, JSON.stringify(st));
 });
 
 test('IPC folder-open: 7일 활동이 없어도 연구 프로젝트의 폴더면 열 수 있다', async () => {

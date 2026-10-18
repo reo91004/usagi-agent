@@ -133,6 +133,7 @@ const sampleRP = () => [
   { key: 'pacl-208:/home/user/reo/experiments', kind: null, name: 'experiments', folders: [{ path: 'pacl-208:/home/user/reo/experiments', onMac: false }], subs: [], lastActive: ago(60 * 30), running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] },
 ];
 let rps = D.researchProjects ?? sampleRP();
+const rulesState = { [`${HOME}/notes-app`]: { agents: 'added', claude: 'imports' } }; // 나머지 폴더는 아직 안 넣은 상태
 
 let todos = D.todos ?? [
   { id: 'mail:1', title: '디자인 리뷰 전에 피그마 코멘트 3개 정리', source: 'mail', link: 'https://outlook.office.com/mail/', priority: 1, note: '코멘트는 #design 스레드에', userEdited: true, today: today() },
@@ -620,6 +621,13 @@ const server = http.createServer(async (req, res) => {
     }
     const a = answers[b.id];
     return a ? json(res, 200, { ok: true, answer: { id: b.id, ...a } }) : json(res, 400, { error: 'unknown id' });
+  }
+  // AI 지시 파일 상태: 폴더마다 {agents,claude}. POST 는 덧붙인 뒤 상태
+  if ((req.method === 'GET' || req.method === 'POST') && p === '/research/projects/rules') {
+    const path = req.method === 'POST' ? body.path : url.searchParams.get('path');
+    if (!rps.some((x) => x.kind && x.folders.some((f) => f.path === path))) return json(res, 400, { error: 'path must be a folder of a research or project' });
+    if (req.method === 'POST') rulesState[path] = { agents: 'added', claude: 'imports' };
+    return json(res, 200, rulesState[path] ?? { agents: 'missing', claude: 'missing' });
   }
   if (req.method === 'PUT' && p === '/research/projects') {
     const cur = rps.find((x) => x.key === body.key);

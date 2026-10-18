@@ -1730,6 +1730,11 @@ function setupIPC() {
     if (b.subs != null) body.subs = b.subs.map((s) => ({ venue: s.venue, stage: s.stage, ...(s.deadline ? { deadline: s.deadline } : {}), ...(s.at ? { at: s.at } : {}) }));
     return request('PUT', '/research/projects', body);
   });
+  // 폴더의 AI 지시 파일 상태(add=false)·usagi-run 규칙 덧붙이기(add=true). 연구·프로젝트 폴더인지는 데몬이 가린다. 서버 폴더는 ssh 라 넉넉히 기다린다
+  ipcMain.handle('agent-rules', (e, id, add) => {
+    if (!fromOurs(e) || typeof id !== 'string' || !id || id.length > 1000 || typeof add !== 'boolean') return denied();
+    return add ? request('POST', '/research/projects/rules', { path: id }, 30000) : request('GET', `/research/projects/rules?path=${encodeURIComponent(id)}`, undefined, 30000);
+  });
   // 작업 폴더: ssh 서버 목록(~/.ssh/config 별칭) · VS Code/Finder 로 열기. 경로는 대시보드 목록에 있는 것만 받는다
   const sshHosts = () => { try { return sshConfigHosts(fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8')); } catch { return []; } };
   const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };

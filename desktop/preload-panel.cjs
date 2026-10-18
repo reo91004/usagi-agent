@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('cy', {
   projectHide: (path, hide) => ipcRenderer.invoke('project-hide', String(path), !!hide),
   // 연구 프로젝트 저장(PUT /research/projects): { key, kind?, name?, subs?, url?, mergeInto? }
   researchProjectSave: (body) => ipcRenderer.invoke('research-project-save', body),
+  // 폴더의 AGENTS.md·CLAUDE.md 에 usagi-run 규칙: add=false 면 상태 읽기, true 면 덧붙이기 → { agents, claude }
+  agentRules: (path, add) => ipcRenderer.invoke('agent-rules', String(path), !!add),
   folderHosts: () => ipcRenderer.invoke('folder-hosts'), // ~/.ssh/config 서버 별칭 [{ host, user }]
   folderOpen: (path, how, host) => ipcRenderer.invoke('folder-open', String(path), String(how), host ? String(host) : null), // how: code | finder
   // 할 일 규칙: 목록 · 켜기/끄기·글 고치기({ enabled?, text? }) · 지우기
