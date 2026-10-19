@@ -102,15 +102,16 @@ export function keyMove(todos, id, key) {
   return null;
 }
 
-// 마감 칩: 지남(빨강) · 오늘 마감 · 「10/21 마감」. 날짜는 이 맥의 시간대 기준, 마감이 없으면 null
+// 미리알림 날짜 칩: 지남(빨강) · 「오늘」 · 「10/21」, 시각이 있으면 「오늘 14:00」처럼 붙인다(미리알림 앱처럼, 날짜만 있는 일을 마감처럼 보이지 않게).
+// 자정이면 날짜만 있는 것(데몬 eventkit.ts dueOp 와 같은 기준). 날짜는 이 맥의 시간대 기준, 없으면 null
 export function dueChip(due, now = Date.now()) {
   const t = Date.parse(due);
   if (!Number.isFinite(t)) return null;
   const d = new Date(t), n = new Date(now);
   const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   if (day(d) < day(n)) return { text: '지남', kind: 'late' };
-  if (day(d) === day(n)) return { text: '오늘 마감', kind: 'today' };
-  return { text: `${d.getMonth() + 1}/${d.getDate()} 마감`, kind: 'soon' };
+  const hm = d.getHours() || d.getMinutes() ? ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  return day(d) === day(n) ? { text: `오늘${hm}`, kind: 'today' } : { text: `${d.getMonth() + 1}/${d.getDate()}${hm}`, kind: 'soon' };
 }
 
 // ---- 상세(펼침) ----

@@ -1768,10 +1768,10 @@ function todoRow(t) {
   return open ? h('div.todo-wrap', null, row, todoDetailView(t)) : row;
 }
 
-// 마감 칩(「10/21 마감」·「오늘 마감」·「지남」). 마감이 없으면 null
+// 미리알림 날짜 칩(「10/21」·「오늘 14:00」·「지남」). 날짜가 없으면 null
 function dueBadge(t) {
   const d = t.due && dueChip(t.due);
-  return d ? h(`span.chip.due.due-${d.kind}`, { text: d.text, title: '미리알림 마감' }) : null;
+  return d ? h(`span.chip.due.due-${d.kind}`, { text: d.text, title: '미리알림 날짜' }) : null;
 }
 
 function onRowKey(t, e) {
