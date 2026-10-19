@@ -235,6 +235,26 @@ html, body {
   cursor: pointer;
 }
 .bubble button.primary { background: var(--accent); color: #fff; }
+/* 닫기 ✕(renderer.js buildEl): 말풍선 오른쪽 위 모서리에 걸친 작은 원. 오른쪽 가장자리에 붙었으면 왼쪽 위(창 밖으로 잘리지 않게) */
+.bubble button.b-close {
+  display: none;
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--bubble-border);
+  background: var(--bubble-bg);
+  color: var(--bubble-muted);
+  font-size: 10px;
+  line-height: 18px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.bubble.closable button.b-close { display: block; }
+.bubble button.b-close:hover { color: var(--bubble-fg); }
+#stage.edge-right .bubble button.b-close { right: auto; left: -7px; }
 /* AI 없이 고르는 질문 칩(quick-ask.js): 둥근 칩, 마지막 「AI 연결하기」만 강조 */
 .bubble .meta.quick-bar { gap: 5px; }
 .bubble button.chip { border-radius: 999px; padding: 4px 11px; }
