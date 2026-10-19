@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { Store } from "./store.ts";
-import { autoBlock, autoId, collectDay, formatDay, notePath, plain, sharedGit, summarizeDay, summaryPrompt, writeNote, type DayNote } from "./research-note.ts";
+import { REPORT_EVERY_MS, autoBlock, autoId, collectDay, formatDay, noteFrozen, notePath, plain, reportDay, reportInput, sharedGit, writeNote, type DayNote } from "./research-note.ts";
 import type { ExecFileLike } from "./providers.ts";
 
 const cfg = { repoRoots: [], gitAuthor: { name: "me", email: "me@x" }, onboarded: true, readSessions: true };
@@ -25,7 +25,7 @@ test("plain: 한 줄로, 링크·임베드·매크로·태그 문법은 살지 �
   assert.equal(plain("x".repeat(10), 5), "xxxx…");
 });
 
-test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것 빼고)·회의·끝낸/새 할 일·집중·커밋", async () => {
+test("collectDay·autoBlock: 그날 세션(숨긴·임시 폴더 빼고, 요청·마지막 답 포함)·실험(도는 것 빼고)·일정·할 일·집중·커밋을 보고서 모양으로", async () => {
   const store = new Store(":memory:");
   store.upsertNode("session:a", "session", "학습 스크립트 고치기", { tool: "claude", cwd: "gpu1:/home/me/exp", turns: 3, lastPrompt: "다시 돌려줘", files: ["a.py", "b.py"] }, at("10:00"));
   store.upsertNode("session:f1", "session", "You are auditing the repository in the current directory (read-only; do NOT modify any file)", { tool: "codex", cwd: "gpu1:/home/me/exp", turns: 1 }, at("10:10"));
@@ -66,12 +66,12 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
     ], recentCommits: [] }];
   };
   const n = await collectDay(cfg, store, "2026-10-17", { git, focus: { stats: () => ({ from: "", to: "", total: 4000, days: [{ date: "2026-10-17", seconds: 4000, longest: 1800 }] }) } });
-  assert.deepEqual(n.sessions[0].items[0], { title: "학습 스크립트 고치기", tool: "Claude Code", turns: 3, files: 2 });
+  assert.deepEqual(n.sessions[0].items[0], { title: "학습 스크립트 고치기", tool: "Claude Code", turns: 3, files: 2, ask: "다시 돌려줘" });
   assert.deepEqual(n.jobs, [
-    { name: "resnet 학습", seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] },
-    { name: "우사기 확인", seconds: 1, code: 0, host: "gpu1", cwd: "/home/me", cmd: "sleep 1" },
-    { name: "빨리 죽은 것", seconds: 2, code: 1, host: "gpu1" },
-    { name: "죽은 것", seconds: 0, code: null, host: "gpu1", lost: true },
+    { id: "job:gpu1:1", name: "resnet 학습", seconds: 3725, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py", files: ["out/m.json"] },
+    { id: "job:gpu1:q1", name: "우사기 확인", seconds: 1, code: 0, host: "gpu1", cwd: "/home/me", cmd: "sleep 1" },
+    { id: "job:gpu1:q2", name: "빨리 죽은 것", seconds: 2, code: 1, host: "gpu1" },
+    { id: "job:gpu1:3", name: "죽은 것", seconds: 0, code: null, host: "gpu1", lost: true },
   ]);
   assert.deepEqual(n.meetings, [{ time: "14:00", title: "랩 미팅" }]);
   assert.deepEqual(n.sessions.map((p) => p.project), ["gpu1:/home/me/exp", "/r/app"]);
@@ -80,23 +80,23 @@ test("collectDay: 그날 세션(숨긴·임시 폴더 빼고)·실험(도는 것
   assert.deepEqual(n.added, ["교수님께 결과 보내기"]);
   assert.deepEqual(n.focus, { seconds: 4000, longest: 1800 });
   assert.deepEqual(n.commits, [{ repo: "app", path: "/r/app", sha: "abc1234", subject: "fix: 그림" }]);
-  assert.equal(n.summary, undefined);
+  assert.equal(n.report, undefined);
 
   const md = `${autoBlock(n)}\n`;
   assert.equal(md, [
     "- ## 오늘 한 일", `  id:: ${autoId("2026-10-17")}`,
-    "\t- 집중 **1시간 6분**(가장 길게 30분) · 작업 세션 **4** · 실험 **3** · 커밋 **1** · 끝낸 일 **2**",
+    "\t- 집중 1시간 6분(최장 30분) · 실험 3건 · 작업 세션 4건 · 커밋 1건 · 할 일 완료 2건",
     "\t- ### 실험",
-    "\t\t- **resnet 학습** `gpu1` · 1시간 2분 · 끝", "\t\t\t- 폴더 `/home/me/exp` · 명령 `python train.py`", "\t\t\t- 바뀐 파일 `out/m.json`",
-    "\t\t- **빨리 죽은 것** `gpu1` · 2초 · ==실패(종료 코드 1)==",
-    "\t\t- **죽은 것** `gpu1` · ==끊김(끝 기록 없이 사라짐)==",
-    "\t\t- 짧은 작업 1건(10초 미만, 모두 끝)",
-    "\t- ### 회의", "\t\t- **14:00** 랩 미팅",
-    "\t- ### 코드",
-    "\t\t- [[exp]] `gpu1`", "\t\t\t- 학습 스크립트 고치기 · Claude Code · 3턴 · 파일 2개",
-    "\t\t\t- You are auditing the repository in the current di… · Codex · 세션 2개 · 3턴",
-    "\t\t- [[app]]", "\t\t\t- `abc1234` fix: 그림", "\t\t\t- \u200bTODO 목록 정리 · Claude Code · 2턴",
-    "\t- ### 할 일", "\t\t- DONE 논문 그림 2 고치기", "\t\t- DONE 생겼다 끝낸 일", "\t\t- CANCELED 김호은 DM 확인 답장", "\t\t- 새로 생김", "\t\t\t- 교수님께 결과 보내기",
+    "\t\t- **resnet 학습** · `gpu1` · 1시간 2분 · 완료", "\t\t\t- 명령 `python train.py`", // 보고서가 없으면 명령만(폴더·바뀐 파일은 싣지 않는다)
+    "\t\t- **빨리 죽은 것** · `gpu1` · 2초 · ==실패(종료 코드 1)==",
+    "\t\t- **죽은 것** · `gpu1` · ==중단(종료 기록 없음)==",
+    "\t\t- 짧은 작업 1건(10초 미만, 모두 완료)",
+    "\t- ### 작업",
+    "\t\t- [[exp]] `gpu1`", "\t\t\t- 학습 스크립트 고치기 진행",
+    "\t\t\t- You are auditing the repository in the current directory (r… 진행",
+    "\t\t- [[app]]", "\t\t\t- `abc1234` fix: 그림", "\t\t\t- \u200bTODO 목록 정리 진행",
+    "\t- ### 일정", "\t\t- **14:00** 랩 미팅",
+    "\t- ### 할 일", "\t\t- 완료", "\t\t\t- 논문 그림 2 고치기", "\t\t\t- 생겼다 끝낸 일", "\t\t- 불필요로 종료", "\t\t\t- 김호은 DM 확인 답장", "\t\t- 신규", "\t\t\t- 교수님께 결과 보내기",
     "",
   ].join("\n"));
 
@@ -112,7 +112,7 @@ const graphDir = (edn = "{}") => {
 };
 const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], skipped: [], added: [], commits: [] };
 const one: DayNote = { ...empty, done: ["a"] };
-const oneBlock = `- ## 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 끝낸 일 **1**\n\t- ### 할 일\n\t\t- DONE a`;
+const oneBlock = `- ## 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일 완료 1건\n\t- ### 할 일\n\t\t- 완료\n\t\t\t- a`;
 
 test("notePath: config.edn 의 저널 폴더·파일 이름 형식, 없으면 Logseq 기본", () => {
   assert.match(notePath(graphDir(), "2026-10-17"), /\/journals\/2026_10_17\.md$/);
@@ -184,9 +184,10 @@ test("writeNote: 우사기 블록 안을 고치거나 블록을 지웠으면 그
   const store = new Store(":memory:");
   const path = notePath(graph, "2026-10-17");
   writeNote(store, graph, one);
-  const edited = readFileSync(path, "utf8").replace("DONE a", "DONE a (내가 고침)");
+  const edited = readFileSync(path, "utf8").replace("\t\t\t- a", "\t\t\t- a (내가 고침)");
   writeFileSync(path, `- 내 블록\n${edited}`);
   assert.equal(writeNote(store, graph, { ...one, done: ["a", "b"] }), "edited");
+  assert.equal(noteFrozen(store, graph, "2026-10-17"), true, "고친 날은 보고서도 안 쓴다");
   assert.equal(readFileSync(path, "utf8"), `- 내 블록\n${edited}`);
 
   const g2 = graphDir();
@@ -194,34 +195,68 @@ test("writeNote: 우사기 블록 안을 고치거나 블록을 지웠으면 그
   writeNote(store, g2, one);
   writeFileSync(p2, "- 내 블록만\n");
   assert.equal(writeNote(store, g2, { ...one, done: ["a", "c"] }), "removed");
+  assert.equal(noteFrozen(store, g2, "2026-10-17"), true);
+  assert.equal(noteFrozen(store, g2, "2026-10-18"), false);
   assert.equal(readFileSync(p2, "utf8"), "- 내 블록만\n");
 });
 
-test("summarizeDay: 끝난 날 한 번만, 뇌 답을 3줄로 잘라 저장하고 페이지 맨 위에. 재료 없거나 이미 있거나 뇌가 없으면 안 부른다", async () => {
+test("reportDay: 재료가 바뀌었을 때만, 오늘은 3시간에 한 번까지, 끝난 날은 끝난 뒤 한 번. 답의 i 를 실험 id·레포에 잇고 노트에 개조식으로", async () => {
   const store = new Store(":memory:");
-  const n: DayNote = { ...empty, jobs: [{ name: "resnet", seconds: 60, code: 0, host: "gpu1" }], done: ["그림 고치기"] };
+  const n: DayNote = {
+    ...empty,
+    jobs: [{ id: "job:gpu1:1", name: "resnet", seconds: 3600, code: 0, host: "gpu1", cwd: "/home/me/exp", cmd: "python train.py" }, { id: "job:gpu1:q", name: "확인", seconds: 1, code: 0 }],
+    sessions: [{ project: "gpu1:/home/me/exp", items: [{ title: "학습 결과 보기", tool: "Claude Code", turns: 4, files: 1, ask: "결과 정리해줘", result: "top-1 76.1% 확인 ghp_abcdefghijklmnopqrstuvwxyz0123" }] }],
+    done: ["그림 고치기"],
+  };
   let calls = 0, prompt = "";
+  let answer: unknown = { summary: ["ResNet 학습 완료, top-1 76.1% 확인"], experiments: [{ i: 0, line: "ResNet 1시간 학습, 정상 종료" }, { i: 7, line: "없는 실험" }], projects: [{ i: 0, lines: ["학습 결과 정리 완료"] }], next: ["그림 반영 필요"] };
   const execFile: ExecFileLike = async (_f, args, o) => {
     calls++;
     prompt = String(o?.input ?? args.join(" "));
-    return { stdout: `{"type":"item.completed","item":{"type":"agent_message","text":${JSON.stringify(JSON.stringify({ lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] }))}}}\n`, stderr: "" };
+    return { stdout: `{"type":"item.completed","item":{"type":"agent_message","text":${JSON.stringify(JSON.stringify(answer))}}}\n`, stderr: "" };
   };
   const ccfg = { brain: { provider: "codex" }, models: { general: "x" }, onboarded: true } as any;
   const deps = { codex: { execFile, commandExists: () => true }, exists: () => true };
-  assert.equal(await summarizeDay(ccfg, store, empty, deps), null);
-  assert.equal(await summarizeDay({ ...ccfg, onboarded: false }, store, n, deps), null);
+  const t0 = new Date("2026-10-17T10:00:00+09:00").getTime();
+  assert.equal(await reportDay(ccfg, store, empty, deps, t0), null);
+  assert.equal(await reportDay({ ...ccfg, onboarded: false }, store, n, deps, t0), null);
   assert.equal(calls, 0);
-  assert.deepEqual(await summarizeDay(ccfg, store, n, deps), { lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] });
-  assert.equal(calls, 1);
+  const r = await reportDay(ccfg, store, n, deps, t0);
+  assert.deepEqual(r, { summary: ["ResNet 학습 완료, top-1 76.1% 확인"], experiments: { "job:gpu1:1": "ResNet 1시간 학습, 정상 종료" }, projects: { "gpu1:/home/me/exp": ["학습 결과 정리 완료"] }, next: ["그림 반영 필요"] });
   assert.match(prompt, /"resnet"/);
-  assert.equal(await summarizeDay(ccfg, store, n, deps), null); // 이미 있음
+  assert.match(prompt, /결과 정리해줘/);
+  assert.ok(!prompt.includes("ghp_abc"), "세션 글의 비밀값은 가린다");
+  assert.ok(!reportInput(n).prompt.includes('"확인"'), "짧은 성공 작업은 재료에서 뺀다");
+  assert.equal(await reportDay(ccfg, store, { ...n, focus: { seconds: 3000, longest: 3000 } }, deps, t0 + 4 * 3600e3), null, "집중 시간만 바뀌면 안 부른다");
+  const more = { ...n, done: ["그림 고치기", "메일 답장"] };
+  assert.equal(await reportDay(ccfg, store, more, deps, t0 + 3600e3), null, "3시간 안에는 다시 안 쓴다");
   assert.equal(calls, 1);
-  assert.ok(!summaryPrompt({ ...n, summary: { lines: ["x"], next: [] } }).includes('"summary"'));
+  assert.ok(await reportDay(ccfg, store, more, deps, t0 + REPORT_EVERY_MS));
+  assert.equal(calls, 2);
+  const next = new Date("2026-10-18T01:00:00+09:00").getTime(); // 끝난 날: 재료가 바뀌었으면 한 번 더(final), 그 뒤로는 안 부른다
+  const last = { ...more, added: ["논문 읽기"] };
+  assert.ok(await reportDay(ccfg, store, last, deps, next));
+  assert.equal(await reportDay(ccfg, store, { ...last, added: ["논문 읽기", "또"] }, deps, next + REPORT_EVERY_MS), null);
+  assert.equal(calls, 3);
+
+  answer = { summary: [], experiments: [{ i: 9, line: "없는 실험" }], projects: [], next: ["x"] }; // 빈 답은 실패로(저장하면 같은 재료로 다시 안 부른다)
+  const fresh = new Store(":memory:");
+  await assert.rejects(reportDay(ccfg, fresh, n, deps, t0), /빈 답/);
+  assert.equal(fresh.node("note-report:2026-10-17"), undefined);
+  assert.equal(await reportDay(ccfg, fresh, { ...empty, focus: { seconds: 3600, longest: 3600 }, jobs: [{ name: "확인", seconds: 1, code: 0 }] }, deps, t0), null, "집중·짧은 작업만 있으면 보고할 거리가 없다");
+  const big: DayNote = { ...n, sessions: [{ project: "/r/app", items: Array.from({ length: 40 }, (_, k) => ({ title: `세션 ${k}`, tool: "Codex", turns: k, files: 0, ask: "가".repeat(300), result: "나".repeat(500) })) }] };
+  const inp = reportInput(big);
+  assert.ok(inp.prompt.length < 16000, String(inp.prompt.length));
+  assert.doesNotThrow(() => JSON.parse(inp.prompt.slice(inp.prompt.indexOf("\n") + 1)), "길어도 JSON 이 깨지지 않는다");
+  assert.notEqual(reportInput({ ...big, done: ["다른 일"] }).fp, inp.fp);
 
   const day = await collectDay({ ...cfg, readSessions: false }, store, "2026-10-17", { git: async () => [] });
-  assert.deepEqual(day.summary, { lines: ["resnet 학습을 끝냈다", "그림을 고쳤다"], next: ["결과 파일 확인"] });
-  const md = autoBlock({ ...n, summary: day.summary });
-  assert.match(md, /- ## 오늘 한 일\n  id:: 75736167-6900-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\n\t- 실험 \*\*1\*\* · 끝낸 일 \*\*1\*\*\n\t- ### 요약\n\t\t- resnet 학습을 끝냈다\n\t\t- 그림을 고쳤다\n\t\t- \*\*다음\*\*\n\t\t\t- 결과 파일 확인\n\t- ### 실험\n/);
+  assert.equal(day.report!.experiments["job:gpu1:1"], "ResNet 1시간 학습, 정상 종료");
+  const md = autoBlock({ ...n, report: day.report });
+  assert.ok(md.includes("\t- ### 요약\n\t\t- ResNet 학습 완료, top-1 76.1% 확인\n\t- ### 실험\n\t\t- **resnet** · `gpu1` · 1시간 · 완료\n\t\t\t- ResNet 1시간 학습, 정상 종료\n"), md);
+  assert.ok(md.includes("\t\t- [[exp]] `gpu1`\n\t\t\t- 학습 결과 정리 완료\n"), md);
+  assert.ok(md.endsWith("\t- ### 향후 계획\n\t\t- 그림 반영 필요"), md);
+  assert.ok(!md.includes("ghp_"));
 });
 
 test("sharedGit: 어제·오늘 노트가 git 을 한 번만 부르고 날짜로 나눈다", async () => {

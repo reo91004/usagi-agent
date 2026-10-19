@@ -48,8 +48,8 @@ export function researchSummary(cfg: Pick<Config, "sshHosts" | "jobHosts" | "tin
   if (cfg.tineGraph) {
     const today = localDay(now.getTime());
     const yday = localDay(dayStart(today) - 12 * 3600e3);
-    const s = store.node(`note-summary:${yday}`);
-    const lines = strs(s?.props.lines, 3), next = strs(s?.props.next, 3);
+    const s = store.node(`note-report:${yday}`);
+    const lines = strs(s?.props.summary, 4), next = strs(s?.props.next, 3);
     note = { day: today, exists: hasAuto(notePath(cfg.tineGraph, today)), ...(lines.length || next.length ? { yesterday: { day: yday, lines, next } } : {}) };
   }
   return { hosts, jobs, tmux, ...(note ? { note } : {}) };
