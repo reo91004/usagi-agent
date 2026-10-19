@@ -100,7 +100,7 @@ export function sanitizeSettingsPatch(p) {
   }
   // 알림을 끈 Slack 채널 id: 목록 통째로(빈 목록 = 전부 다시 받음)
   if (p.slackMuted !== undefined) {
-    if (!Array.isArray(p.slackMuted) || p.slackMuted.length > 2000 || !p.slackMuted.every((x) => typeof x === 'string' && /^[CG][A-Z0-9]{2,20}$/.test(x))) return null;
+    if (!Array.isArray(p.slackMuted) || p.slackMuted.length > 2000 || !p.slackMuted.every((x) => typeof x === 'string' && /^[CDG][A-Z0-9]{2,20}$/.test(x))) return null;
     out.slackMuted = [...new Set(p.slackMuted)];
   }
   // 나·커밋 작성자·Tine 그래프·채팅용 MCP·연결: 모양만 거르고 값 검사는 데몬(settings.ts)이 한다

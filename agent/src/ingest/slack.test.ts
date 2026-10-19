@@ -52,6 +52,8 @@ function slackWorld(w: World) {
           users: args.user_ids.filter((id: string) => w.users[id]).map((id: string) => ({ id, name: w.users[id].name, real_name: `${w.users[id].name[0].toUpperCase()}${w.users[id].name.slice(1)}  Kim`, email: null, is_bot: !!w.users[id].bot, deleted: false, team_id: "T1" })),
           user_ids_not_found: args.user_ids.filter((id: string) => !w.users[id]),
         };
+      case "slack_list_users":
+        return { users: Object.entries(w.users).map(([id, u]) => ({ id, name: u.name, real_name: `${u.name[0].toUpperCase()}${u.name.slice(1)}  Kim` })) };
       case "slack_get_channel_info": {
         const c = conv(args.channel_id) ?? { id: args.channel_id, name: "ops" };
         return { id: c.id, name: c.name ?? "", is_private: false, is_archived: false, is_member: !!conv(args.channel_id), is_shared: false, is_im: false, is_mpim: false, user: null, topic: null, purpose: null, num_members: null };
@@ -316,7 +318,7 @@ test("ingestErrorText: 이름 찾기·연결 실패는 인터넷 문제로, 그 
   assert.equal(ingestErrorText({ errors: 2, calls: 9 }, "invalid_auth"), "Slack 호출 2/9회 실패: invalid_auth");
 });
 
-test("무시 채널: history 를 요청하지 않고, 이미 모은 글도 attentionSince 에서 빠지고, 다시 빼면 들어온다", async () => {
+test("무시 채널·DM: history 를 요청하지 않고, 이미 모은 글도 attentionSince 에서 빠지고, 다시 빼면 들어온다", async () => {
   const store = new Store(":memory:");
   const w = baseWorld();
   const run = async (muted: string[]) => {
@@ -329,21 +331,28 @@ test("무시 채널: history 를 요청하지 않고, 이미 모은 글도 atten
 
   assert.ok(histOf(await run([]), "C1") > 0);
   assert.ok(attentionSince(store, since).some((i) => i.channel === "C1"));
-  assert.deepEqual(slackChannels(store).map((c) => c.name), ["dev", "random"]);
+  // 채널 → 그룹 DM(참여자 실명, 나는 빼고) → DM(상대 이름)
+  assert.deepEqual(slackChannels(store).map((c) => [c.id, c.name, c.type]),
+    [["C1", "dev", "public"], ["C2", "random", "public"], ["G1", "Alice Kim, Bob Kim", "mpim"], ["D1", "Alice Kim", "im"]]);
 
   // 끄면 이미 저장된 글도 안 보인다
   await run(["C1"]);
   assert.equal(attentionSince(store, since).some((i) => i.channel === "C1"), false);
   assert.ok(attentionSince(store, since).some((i) => i.channel === "D1"));
 
-  // 처음부터 꺼 둔 채널은 history 를 요청하지 않고(C2 는 그대로) 글도 저장하지 않는다
+  // DM 도 같은 방식으로 꺼진다
+  await run(["D1"]);
+  assert.equal(attentionSince(store, since).some((i) => i.channel === "D1"), false);
+
+  // 처음부터 꺼 둔 채널·DM 은 history 를 요청하지 않고(C2 는 그대로) 글도 저장하지 않는다
   const fresh = new Store(":memory:");
   const f2 = fakeDirect(slackWorld(w));
-  await new SlackIngester({ ...cfg, slackMuted: ["C1"] }, fresh, deps(f2.direct)).run();
+  await new SlackIngester({ ...cfg, slackMuted: ["C1", "D1"] }, fresh, deps(f2.direct)).run();
   assert.equal(histOf(f2.calls, "C1"), 0);
   assert.ok(histOf(f2.calls, "C2") > 0);
   assert.equal(attentionSince(fresh, since).some((i) => i.channel === "C1"), false);
-  assert.equal(fresh.db.prepare("SELECT count(*) n FROM nodes WHERE kind = 'message' AND json_extract(props, '$.channel') = 'C1'").get()!.n, 0);
+  for (const ch of ["C1", "D1"]) assert.equal(fresh.db.prepare("SELECT count(*) n FROM nodes WHERE kind = 'message' AND json_extract(props, '$.channel') = ?").get(ch)!.n, 0, ch);
+  assert.ok(Number(fresh.db.prepare("SELECT count(*) n FROM nodes WHERE kind = 'message' AND json_extract(props, '$.channel') = 'G1'").get()!.n) > 0);
 
   // 다시 켜면 모아 둔 글이 다시 보인다
   new SlackIngester({ ...cfg, slackMuted: [] }, store, deps(null as any));

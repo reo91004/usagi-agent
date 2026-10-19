@@ -802,30 +802,93 @@ async function addAutoMerge() {
 $('am-add').addEventListener('click', addAutoMerge);
 $('am-add-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addAutoMerge(); } });
 
-// ---- Slack 채널 켜기·끄기 (데몬이 아는 공개·비공개 채널. 목록은 GET /settings 에만 오고 저장 응답에는 없다) ----
+// ---- Slack 채널·DM 켜기·끄기 (데몬이 아는 채널·그룹 DM·DM. 목록은 GET /settings 에만 오고 저장 응답에는 없다) ----
+// 묶음마다 접는 상자 + 머리줄 스위치(찾는 중이면 찾은 것만) 로 한꺼번에 켜고 끈다
 let slackChannels = [];
+const SK_GROUPS = [['채널', ['public', 'private'], 'hash'], ['그룹 DM', ['mpim'], 'users'], ['DM', ['im'], 'user']];
+const SK_ICON = { public: 'hash', private: 'lock', mpim: 'users', im: 'user' };
+const skOpen = new Set(['채널']);
+const skMuted = () => new Set(settings?.slackMuted ?? []);
+function saveMuted(ids, on) {
+  const next = skMuted();
+  for (const id of ids) if (on) next.delete(id); else next.add(id);
+  return save({ slackMuted: [...next] });
+}
+function renderSkSum() {
+  const muted = skMuted();
+  const off = slackChannels.filter((c) => muted.has(c.id)).length;
+  $('sk-sum').textContent = off ? `${slackChannels.length}개 중 ${off}개 꺼 둠` : `${slackChannels.length}개 모두 받는 중`;
+}
 function renderSlackChannels() {
   const box = $('sk-list');
   box.replaceChildren();
   $('sk-card').hidden = !slackChannels.length;
-  const q = $('sk-search').value.trim().toLowerCase().replace(/^#/, '');
-  const muted = new Set(settings?.slackMuted ?? []);
-  for (const c of slackChannels.filter((x) => !q || x.name.toLowerCase().includes(q))) {
-    const row = el('label', `gl-row${muted.has(c.id) ? ' off' : ''}`);
-    const on = el('input');
-    on.type = 'checkbox';
-    on.checked = !muted.has(c.id);
-    on.title = on.checked ? '끄면 이 채널은 안 받아요' : '켜면 다시 받아요';
-    on.addEventListener('change', async () => {
-      on.disabled = true;
-      const next = new Set(settings.slackMuted ?? []);
-      if (on.checked) next.delete(c.id); else next.add(c.id);
-      if (await save({ slackMuted: [...next] })) renderSlackChannels();
-      else { on.checked = !on.checked; on.disabled = false; }
-    });
-    row.append(on, el('span', 'gl-text', `#${c.name}${c.type === 'private' ? ' (비공개)' : ''}`));
-    box.append(row);
+  renderSkSum();
+  const q = $('sk-search').value.trim().toLowerCase().replace(/^[#@]/, '');
+  const shown = slackChannels.filter((x) => !q || x.name.toLowerCase().includes(q));
+  for (const [title, types, icon] of SK_GROUPS) {
+    const items = shown.filter((c) => types.includes(c.type));
+    if (items.length) box.append(slackGroup(title, icon, items, !!q));
   }
+  if (!shown.length) box.append(el('div', 'sk-empty', `「${q}」 이름이 없어요`));
+}
+function slackGroup(title, icon, items, searching) {
+  const g = el('section', 'sk-group');
+  const fold = el('button', 'sk-fold');
+  fold.type = 'button';
+  const count = el('span', 'sk-gcount');
+  fold.append(el('span', 'sk-caret', '›'), navIcon(icon), el('span', 'sk-gtitle', title), count);
+  const all = el('input', 'switch');
+  all.type = 'checkbox';
+  all.setAttribute('role', 'switch');
+  all.setAttribute('aria-label', `${title} ${searching ? '찾은 것' : ''} 모두 켜기·끄기`);
+  all.title = searching ? `찾은 ${items.length}개를 한꺼번에 켜고 꺼요` : `${title} ${items.length}개를 한꺼번에 켜고 꺼요`;
+  const head = el('div', 'sk-ghead');
+  head.append(fold, all);
+  const list = el('div', 'sk-rows');
+  const setOpen = (open) => { list.hidden = !open; fold.setAttribute('aria-expanded', String(open)); };
+  setOpen(searching || skOpen.has(title));
+  const paint = () => {
+    const boxes = [...list.querySelectorAll('input')];
+    const on = boxes.filter((b) => b.checked).length;
+    all.checked = on === boxes.length;
+    all.indeterminate = on > 0 && on < boxes.length;
+    count.textContent = on === boxes.length ? `${boxes.length}` : on ? `${boxes.length}개 중 ${boxes.length - on}개 꺼짐` : `${boxes.length}개 모두 꺼짐`;
+    count.classList.toggle('some-off', on < boxes.length);
+    renderSkSum();
+  };
+  list.append(...items.map((c) => slackRow(c, paint)));
+  fold.addEventListener('click', () => {
+    setOpen(list.hidden);
+    if (!searching) { if (list.hidden) skOpen.delete(title); else skOpen.add(title); }
+  });
+  all.addEventListener('change', async () => {
+    const want = all.checked;
+    all.disabled = true;
+    if (await saveMuted(items.map((c) => c.id), want)) for (const b of list.querySelectorAll('input')) b.checked = want;
+    all.disabled = false;
+    paint();
+  });
+  paint();
+  g.append(head, list);
+  return g;
+}
+function slackRow(c, after) {
+  const row = el('label', 'sk-row');
+  const on = el('input', 'switch');
+  on.type = 'checkbox';
+  on.setAttribute('role', 'switch');
+  on.checked = !skMuted().has(c.id);
+  on.addEventListener('change', async () => {
+    on.disabled = true;
+    if (!(await saveMuted([c.id], on.checked))) on.checked = !on.checked;
+    on.disabled = false;
+    after();
+  });
+  const name = el('span', 'sk-name', c.type === 'public' || c.type === 'private' ? `#${c.name}` : c.name);
+  name.title = name.textContent;
+  row.append(navIcon(SK_ICON[c.type]), name, on);
+  return row;
 }
 $('sk-search').addEventListener('input', renderSlackChannels);
 

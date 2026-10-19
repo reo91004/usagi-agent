@@ -78,11 +78,22 @@ export function syncMuted(store: Store, ids: readonly string[]) {
 export function mutedJson(store: Store): string {
   try { return (store.db.prepare("SELECT value FROM slack_meta WHERE key = 'muted'").get() as any)?.value ?? "[]"; } catch { return "[]"; } // 수집 전엔 표가 없다
 }
-// 설정 화면 Slack 칸: 내가 들어가 있는 채널(공개·비공개, DM 제외)을 이름순으로
+// 설정 화면 Slack 칸: 내가 들어가 있는 채널(공개·비공개) → 그룹 DM(참여자) → DM(상대 이름), 묶음 안은 이름순
+const CONV_ORDER: Record<string, number> = { public: 0, private: 0, mpim: 1, im: 2 };
 export function slackChannels(store: Store): { id: string; name: string; type: string }[] {
   try {
-    return (store.db.prepare("SELECT id, coalesce(name, id) AS name, type FROM slack_convs WHERE type IN ('public', 'private') AND next_sync != '9999' ORDER BY lower(coalesce(name, id))").all() as any[])
-      .map((r) => ({ id: r.id, name: r.name, type: r.type }));
+    const meta = (k: string) => (store.db.prepare("SELECT value FROM slack_meta WHERE key = ?").get(k) as any)?.value as string | undefined;
+    const me = meta("me");
+    const handles: Record<string, [string, string]> = JSON.parse(meta("handles") ?? "{}");
+    // 그룹 DM(mpdm-<핸들>--…-1): 핸들을 실명으로, 나는 빼고. 이름을 바꾼 그룹 DM 은 그 이름 그대로
+    const group = (name: string | null) => !name?.startsWith("mpdm-") ? mpimLabel(name)
+      : mpimLabel(name).split(", ").filter((h) => handles[h]?.[0] !== me).map((h) => handles[h]?.[1] ?? h).join(", ");
+    const rows = store.db.prepare(`SELECT c.id, c.type, c.name, c.user, p.label AS person FROM slack_convs c
+      LEFT JOIN nodes p ON p.id = 'person:' || c.user WHERE c.next_sync != '9999'`).all() as any[];
+    const nameOf = (r: any): string => r.type === "im" ? (r.user && r.user === me ? "나" : r.person ?? r.user ?? r.id)
+      : r.type === "mpim" ? group(r.name) || r.id : r.name ?? r.id;
+    return rows.map((r) => ({ id: r.id as string, name: nameOf(r), type: r.type as string }))
+      .sort((a, b) => (CONV_ORDER[a.type] ?? 3) - (CONV_ORDER[b.type] ?? 3) || a.name.localeCompare(b.name, "ko"));
   } catch { return []; } // 수집 전엔 표가 없다
 }
 // 데스크탑이 Slack permalink 를 앱 주소(slack://)로 바꿀 때 쓰는 워크스페이스. 모르면 null
@@ -349,7 +360,7 @@ export class SlackRun {
     this.historyLeft = ing.deps.maxHistory;
     // 내 id·채널 목록을 이미 알면 첫 묶음부터 검색·history를 같이 낸다(턴 수 절약)
     this.stages = [
-      () => { this.discover(); if (this.me) this.searches(); if (!this.listing) this.histories(); },
+      () => { this.discover(); if (this.listing) this.listUsers(); if (this.me) this.searches(); if (!this.listing) this.histories(); },
       () => { if (!this.searched) this.searches(); if (!this.historied) this.histories(); },
       () => this.threads(), // 검색으로 새로 잡힌 스레드까지 포함
       () => this.resolveNames(),
@@ -403,6 +414,15 @@ export class SlackRun {
     }
     const listed = Number(this.ing.meta("channelsListedAt") ?? 0);
     if (this.ing.deps.now() - listed > CHANNELS_TTL_MS) { this.listing = true; this.listChannels(); }
+  }
+
+  // 설정 화면에서 그룹 DM 을 실명으로 보이게 핸들 → [id, 실명]을 둔다. 보통 수집이 채널 목록을 새로 받을 때(6시간마다)만, 1000명까지
+  protected listUsers(cursor?: string, acc: Record<string, [string, string]> = {}, n = 1) {
+    this.push("slack_list_users", { limit: 200, ...(cursor ? { cursor } : {}) }, (d) => {
+      for (const u of d?.users ?? []) if (u?.id && u.name) acc[u.name] = [u.id, oneLine(String(u.real_name || u.name))];
+      if (d?.next_cursor && n < 5) this.listUsers(d.next_cursor, acc, n + 1);
+      else if (Object.keys(acc).length) this.ing.setMeta("handles", JSON.stringify(acc));
+    }, true);
   }
 
   protected listChannels(cursor?: string, seen = new Set<string>()) {

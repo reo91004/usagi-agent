@@ -23,8 +23,8 @@ test('sanitizeSettingsPatch: 모델 역할·출처만, 이상하면 null', () =>
 
 test('자동 머지 레포: 저장 본문(owner/name 목록만) · 입력 글 다듬기 · 넣기/빼기', () => {
   assert.deepEqual(sanitizeSettingsPatch({ autoMerge: ['example/speaker', 'example/speaker'] }), { autoMerge: ['example/speaker'] });
-  assert.deepEqual(sanitizeSettingsPatch({ slackMuted: ['C01ABC', 'C01ABC'] }), { slackMuted: ['C01ABC'] });
-  for (const bad of [{ slackMuted: 'C01ABC' }, { slackMuted: ['학생-식사'] }, { slackMuted: ['D01ABC'] }]) assert.equal(sanitizeSettingsPatch(bad), null, JSON.stringify(bad));
+  assert.deepEqual(sanitizeSettingsPatch({ slackMuted: ['C01ABC', 'C01ABC', 'D01ABC'] }), { slackMuted: ['C01ABC', 'D01ABC'] });
+  for (const bad of [{ slackMuted: 'C01ABC' }, { slackMuted: ['학생-식사'] }, { slackMuted: ['U01ABC'] }]) assert.equal(sanitizeSettingsPatch(bad), null, JSON.stringify(bad));
   assert.deepEqual(sanitizeSettingsPatch({ autoMerge: [] }), { autoMerge: [] });
   for (const bad of [{ autoMerge: 'a/b' }, { autoMerge: ['a b/c'] }, { autoMerge: ['../x'] }, { autoMerge: [3] }]) assert.equal(sanitizeSettingsPatch(bad), null, JSON.stringify(bad));
   assert.equal(repoSlugFrom(' https://github.com/example/speaker/pull/3 '), 'example/speaker');

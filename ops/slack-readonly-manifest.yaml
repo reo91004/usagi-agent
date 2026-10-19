@@ -2,7 +2,7 @@
 # 봇·버튼·캔버스가 필요 없으면 이쪽이 권한이 가장 적다(관리자 승인을 받을 때 설명하기 쉽다). docs/connect/slack.md 참고
 # https://api.slack.com/apps → Create New App → From a manifest → 이 파일 내용 붙여넣기 → Install to Workspace
 #   설치하면 "User OAuth Token"(xoxp-…) 하나가 생긴다 → 우사기 설치 마법사 「더 연결하기」 → Slack 에 붙여 넣는다
-#   agent/src/ingest/slack-api.ts 가 auth.test · users.conversations · conversations.history/replies/info · search.messages · users.info 만 부른다(쓰기 메서드는 코드에서 막힘)
+#   agent/src/ingest/slack-api.ts 가 auth.test · users.conversations · conversations.history/replies/info · search.messages · users.info · users.list 만 부른다(쓰기 메서드는 코드에서 막힘)
 display_information:
   name: usagi-reader
   description: 내 DM과 나를 멘션한 글을 내 컴퓨터에서 읽기만 합니다

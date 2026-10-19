@@ -9,6 +9,7 @@
 //   slack_get_thread_replies       → conversations.replies     { messages, next_cursor }
 //   slack_search_messages          → search.messages           { matches:[{ts, channel_id, user_id, text, permalink}], next_cursor(=다음 page), total }
 //   slack_get_users                → users.info × n            { users }
+//   slack_list_users               → users.list                { users, next_cursor } (그룹 DM 핸들 → 실명)
 //   slack_get_channel_info         → conversations.info        { …channel }
 //
 // 필요한 사용자 스코프(읽기만): channels:history groups:history im:history mpim:history
@@ -25,7 +26,7 @@ export function slackWebClient(token: string): SlackWebLike {
   return new WebClient(token, { rejectRateLimitedCalls: true, retryConfig: { retries: 1 } }) as unknown as SlackWebLike;
 }
 
-const READ_METHODS = new Set(["auth.test", "users.conversations", "conversations.history", "conversations.replies", "search.messages", "users.info", "conversations.info"]);
+const READ_METHODS = new Set(["auth.test", "users.conversations", "conversations.history", "conversations.replies", "search.messages", "users.info", "users.list", "conversations.info"]);
 
 // 오류를 SlackRun 이 읽는 문자열로(레이트리밋은 isRateLimit/retryAfterMs 가 알아보게)
 export function slackErrorText(e: any): string {
@@ -106,6 +107,10 @@ export class SlackApiTransport implements SlackDirect {
           }
         }
         return { users };
+      }
+      case "slack_list_users": {
+        const r = await this.api("users.list", { limit: n(a.limit, 200), ...(cursor ? { cursor } : {}) });
+        return { users: (r.members ?? []).map((u: any) => ({ id: u.id, name: u.name, real_name: u.real_name || u.profile?.real_name || u.profile?.display_name })), next_cursor: s(r.response_metadata?.next_cursor) };
       }
       case "slack_get_channel_info": {
         const r = await this.api("conversations.info", { channel: a.channel_id });

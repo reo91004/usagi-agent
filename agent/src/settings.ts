@@ -127,7 +127,7 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
     out.directiveFrom = [...new Set(b.directiveFrom as string[])];
   }
   if (b.slackMuted !== undefined) {
-    if (!Array.isArray(b.slackMuted) || b.slackMuted.length > 2000 || !b.slackMuted.every((x) => typeof x === "string" && /^[CG][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("slackMuted: Slack 채널 id(C… G…) 목록, 2000개까지");
+    if (!Array.isArray(b.slackMuted) || b.slackMuted.length > 2000 || !b.slackMuted.every((x) => typeof x === "string" && /^[CDG][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("slackMuted: Slack 채널·DM id(C… D… G…) 목록, 2000개까지");
     out.slackMuted = [...new Set(b.slackMuted as string[])];
   }
   for (const k of ["sshHosts", "sessionHosts"] as const) {

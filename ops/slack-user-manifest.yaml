@@ -3,7 +3,7 @@
 #  - 봇 부분은 ops/slack-manifest.yaml 과 같다(봇 DM·버튼·캔버스, Socket Mode라 공개 URL 불필요)
 #  - 사용자 스코프는 읽기만: 설치하면 "User OAuth Token"(xoxp-…)이 생긴다 → connectors.slack.userToken
 #    agent/src/ingest/slack-api.ts 가 이 토큰으로 auth.test · users.conversations · conversations.history/replies/info
-#    · search.messages · users.info 만 부른다(쓰기 메서드는 코드에서 막힘)
+#    · search.messages · users.info · users.list 만 부른다(쓰기 메서드는 코드에서 막힘)
 display_information:
   name: cy
   description: 내 PC에 상주하는 개인 비서 (브리핑 · 승인 · 자동 수정)

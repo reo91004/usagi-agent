@@ -84,7 +84,7 @@ type Bubble = {
 - `todayReminder{mode,everyHours,times}`, `calendarAlert{minutesBefore[]}`
 - `brain{provider,model,keys{gemini,openai,anthropic: boolean}}`
 - `sshHosts[]`(GPU·tmux·작업 결과를 볼 서버), `sessionHosts[]`(작업 기록을 받을 서버), `jobDirs{서버: 결과 폴더}`(config.json 과 같은 키)
-- `slackMuted[]`(끈 Slack 채널 id), `slackChannels[{id,name,type}]`(GET 에만, 내가 들어간 공개·비공개 채널 이름순)
+- `slackMuted[]`(끈 Slack 채널·DM id), `slackChannels[{id,name,type}]`(GET 에만, 내가 들어간 채널(public·private) → 그룹 DM(mpim, 참여자 실명) → DM(im, 상대 이름), 묶음 안은 이름순)
 - `slackTeam{url,id}`(GET 에만, Slack 워크스페이스 주소와 팀 id. 앱이 permalink 를 slack:// 로 바꿀 때 씀. 모르면 null)
 - `user{name?}`, `repoRoots[]`, `configPath`
 - `onboarded`(설치 마법사를 마쳤나), `readSessions`(이 맥의 Claude Code·Codex 작업 기록을 읽나)
@@ -98,7 +98,7 @@ type Bubble = {
   "briefing": { "exclude": ["mail"] },                    // mail·calendar·slack·issues·sessions
   "phrases": { "<키>": ["줄", "…"] | null },              // null = 기본값
   "autoMerge": ["owner/name"],
-  "slackMuted": ["C01ABC"],                                // 끈 채널은 수집·할 일·브리핑·반응·지시사항·지식그래프에서 뺀다(멘션 포함). 빈 목록 = 전부 받음
+  "slackMuted": ["C01ABC", "D02DEF"],                      // 끈 채널·DM 은 수집·할 일·브리핑·반응·지시사항·지식그래프에서 뺀다(멘션 포함). 빈 목록 = 전부 받음
   "sshHosts": ["gpu1"], "sessionHosts": ["gpu1"],           // ~/.ssh/config 별칭 목록(통째로, 50개까지). 바로 반영: 새 서버는 30초쯤 뒤 첫 확인
   "jobDirs": { "gpu1": "~/reo/.usagi-agent/jobs" },        // 공용 계정이면 <내 폴더>/.usagi-agent/jobs (통째로). 그 폴더 아래 tmux·결과·기록만 내 것
   "brain": { "provider": "gemini", "keys": { "gemini": "…" | null }, "model": "gemini-2.5-flash" | null },
