@@ -344,7 +344,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     slackAppToken: env.SLACK_APP_TOKEN ?? (f.slackAppToken as string),
     slackUserId: env.SLACK_USER_ID ?? (f.slackUserId as string),
     directiveFrom: Array.isArray(f.directiveFrom) ? [...new Set((f.directiveFrom as unknown[]).filter((x): x is string => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x)))].slice(0, 20) : [],
-    slackMuted: Array.isArray(f.slackMuted) ? [...new Set((f.slackMuted as unknown[]).filter((x): x is string => typeof x === "string" && /^[CG][A-Z0-9]{2,20}$/.test(x)))].slice(0, 2000) : [],
+    slackMuted: Array.isArray(f.slackMuted) ? [...new Set((f.slackMuted as unknown[]).filter((x): x is string => typeof x === "string" && /^[CDG][A-Z0-9]{2,20}$/.test(x)))].slice(0, 2000) : [],
     briefingIntervalMin: minutesOf("briefingIntervalMin", f.briefingIntervalMin, 60, notes),
     ingestIntervalMin: minutesOf("ingestIntervalMin", f.ingestIntervalMin, 10, notes),
     slackIngestIntervalMin: minutesOf("slackIngestIntervalMin", f.slackIngestIntervalMin, 5, notes),

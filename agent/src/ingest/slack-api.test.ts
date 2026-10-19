@@ -73,6 +73,7 @@ function fakeWeb(w: World) {
           if (!u) throw Object.assign(new Error("An API error occurred: user_not_found"), { code: "slack_webapi_platform_error", data: { ok: false, error: "user_not_found" } });
           return { ok: true, user: { id: a.user, name: u.name, real_name: `${u.name[0].toUpperCase()}${u.name.slice(1)} Kim`, is_bot: !!u.bot } };
         }
+        case "users.list": return { ok: true, members: Object.entries(w.users).map(([id, u]) => ({ id, name: u.name, real_name: `${u.name[0].toUpperCase()}${u.name.slice(1)} Kim` })) };
         case "conversations.info": return { ok: true, channel: { id: a.channel, name: conv(a.channel)?.name ?? "ops", is_member: !!conv(a.channel) } };
       }
       throw new Error("unexpected " + method);
@@ -108,7 +109,7 @@ const baseWorld = (): World => ({
   },
 });
 
-const READ_ONLY = new Set(["auth.test", "users.conversations", "conversations.history", "conversations.replies", "search.messages", "users.info", "conversations.info"]);
+const READ_ONLY = new Set(["auth.test", "users.conversations", "conversations.history", "conversations.replies", "search.messages", "users.info", "users.list", "conversations.info"]);
 const mk = (store: Store, w: World) => {
   const f = fakeWeb(w);
   const ing = new SlackIngester(cfg, store, { direct: new SlackApiTransport(f.web), now: () => NOW });

@@ -120,10 +120,13 @@
           </div>
           <div class="set-pane" data-tab="notify" hidden>
       <section id="sk-card" class="card" aria-labelledby="h-sk">
-        <h2 id="h-sk">Slack 채널</h2>
-        <p class="hint">끄면 그 채널은 받지도 않고 할 일·브리핑·캐릭터 알림·지시사항·지식그래프에도 안 써요. 나를 @멘션한 글도 같이 빠져요. 다시 켜면 모아 둔 글이 돌아와요. DM 은 여기서 끌 수 없어요.</p>
-        <input id="sk-search" type="text" placeholder="채널 이름 찾기" aria-label="Slack 채널 이름 찾기">
-        <div id="sk-list" class="gl-list"></div>
+        <h2 id="h-sk">Slack 채널·DM</h2>
+        <p class="hint">끄면 그 대화는 받지도 않고 할 일·브리핑·캐릭터 알림·지시사항·지식그래프에도 안 써요. 채널을 끄면 거기서 나를 @멘션한 글도 같이 빠져요. 다시 켜면 모아 둔 글이 돌아와요.</p>
+        <div class="sk-bar">
+          <input id="sk-search" type="search" placeholder="이름 찾기" aria-label="Slack 채널·DM 이름 찾기">
+          <span id="sk-sum" class="sk-sum"></span>
+        </div>
+        <div id="sk-list" class="sk-groups"></div>
       </section>
       <section class="card" aria-labelledby="h-rem">
         <h2 id="h-rem">오늘 할 일 알림</h2>

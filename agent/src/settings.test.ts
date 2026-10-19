@@ -296,10 +296,10 @@ test("config: calendarAlert 읽기, 이상한 값은 빼고 모양이 틀리면 
   assert.deepEqual(cfgOf({ calendarAlert: { minutesBefore: [] } }).calendarAlert, { minutesBefore: [] });
 });
 
-test("validatePatch slackMuted: Slack 채널 id 목록만, 모르는 모양은 거절", () => {
-  assert.deepEqual(validatePatch({ slackMuted: ["C01ABC", "C01ABC", "G02XYZ"] }, cfgOf()), { slackMuted: ["C01ABC", "G02XYZ"] });
+test("validatePatch slackMuted: Slack 채널·DM id 목록만, 모르는 모양은 거절", () => {
+  assert.deepEqual(validatePatch({ slackMuted: ["C01ABC", "C01ABC", "G02XYZ", "D03DM"] }, cfgOf()), { slackMuted: ["C01ABC", "G02XYZ", "D03DM"] });
   assert.deepEqual(validatePatch({ slackMuted: [] }, cfgOf()), { slackMuted: [] });
-  for (const bad of [{ slackMuted: "C01ABC" }, { slackMuted: ["학생-식사"] }, { slackMuted: ["D01ABC"] }, { slackMuted: [1] }])
+  for (const bad of [{ slackMuted: "C01ABC" }, { slackMuted: ["학생-식사"] }, { slackMuted: ["U01ABC"] }, { slackMuted: [1] }])
     assert.throws(() => validatePatch(bad, cfgOf()), SettingsError, JSON.stringify(bad));
 });
 

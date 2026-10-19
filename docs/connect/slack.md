@@ -131,7 +131,7 @@ slack이 `api`가 아니면 "Slack 수집이 꺼져 있어요"라는 메시지�
 
 ### api 모드가 하는 일과 안 하는 일
 
-- 부르는 Web API는 `auth.test` · `users.conversations` · `conversations.history` · `conversations.replies` · `conversations.info` · `search.messages` · `users.info`입니다. 이 목록 밖의 메서드(쓰기 메서드 포함)는 코드에서 거부합니다(`agent/src/ingest/slack-api.ts`).
+- 부르는 Web API는 `auth.test` · `users.conversations` · `conversations.history` · `conversations.replies` · `conversations.info` · `search.messages` · `users.info` · `users.list`입니다. 이 목록 밖의 메서드(쓰기 메서드 포함)는 코드에서 거부합니다(`agent/src/ingest/slack-api.ts`).
 - 사용자 토큰은 내가 볼 수 있는 것만 읽습니다. 내가 들어가 있지 않은 비공개 채널이나 남의 DM은 볼 수 없습니다.
 - 봇 DM·버튼·캔버스는 봇 토큰으로 따로 돌아갑니다(위 표 참고).
 

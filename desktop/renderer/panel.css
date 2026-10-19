@@ -1453,7 +1453,6 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 /* 행동 지침 */
 #sec-settings .gl-list { display: grid; gap: 6px; }
 #sec-settings .gl-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); }
-#sec-settings #sk-list { max-height: 280px; overflow-y: auto; margin-top: 8px; }
 #sec-settings .gl-row.sv-row { grid-template-columns: minmax(80px, 1fr) auto auto minmax(140px, 1.4fr); }
 #sec-settings .sv-opt { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; white-space: nowrap; }
 #sec-settings .sv-opt input { margin: 0; accent-color: var(--accent); }
@@ -1467,6 +1466,41 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .gl-edit, #sec-settings .gl-add input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
 #sec-settings .gl-empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
 #sec-settings .gl-add { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+
+/* Slack 채널·DM: 찾기 줄 + 묶음(채널·그룹 DM·DM)마다 접는 상자. 머리줄 = 펼치기 · 개수 · 한꺼번에 스위치 */
+#sec-settings .sk-bar { display: flex; align-items: center; gap: var(--s3); }
+#sec-settings #sk-search { flex: 1; max-width: 260px; padding: 6px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
+#sec-settings #sk-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#sec-settings .sk-sum { margin-left: auto; color: var(--faint); font-size: var(--fs-xs); white-space: nowrap; }
+#sec-settings .sk-groups { display: grid; gap: var(--s2); margin-top: var(--s3); }
+#sec-settings .sk-group { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+#sec-settings .sk-ghead { display: flex; align-items: center; gap: var(--s2); padding: 4px 12px 4px 4px; }
+#sec-settings .sk-fold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px; background: none; border: 0; border-radius: var(--r-md); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#sec-settings .sk-fold:hover { background: var(--hover); }
+#sec-settings .sk-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#sec-settings .sk-caret { width: 10px; color: var(--faint); text-align: center; transition: transform 0.15s; }
+#sec-settings .sk-fold[aria-expanded="true"] .sk-caret { transform: rotate(90deg); }
+#sec-settings .sk-fold .nav-ico { color: var(--muted); }
+#sec-settings .sk-gtitle { font-weight: 600; }
+#sec-settings .sk-gcount { color: var(--faint); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+#sec-settings .sk-gcount.some-off { color: var(--warn-fg); }
+#sec-settings .sk-rows { max-height: 300px; overflow-y: auto; border-top: 1px solid var(--line); }
+#sec-settings .sk-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 26px; cursor: pointer; }
+#sec-settings .sk-row + .sk-row { border-top: 1px solid var(--line); }
+#sec-settings .sk-row:hover { background: var(--hover); }
+#sec-settings .sk-row .nav-ico { width: 15px; height: 15px; color: var(--faint); }
+#sec-settings .sk-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sec-settings .sk-row:has(.switch:not(:checked)) :is(.sk-name, .nav-ico) { opacity: 0.45; }
+#sec-settings .sk-empty { padding: 14px 12px; color: var(--faint); font-size: var(--fs-sm); border: 1px dashed var(--line); border-radius: var(--r-lg); }
+#sec-settings .switch { appearance: none; flex: none; position: relative; width: 30px; height: 18px; margin: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--faint) 45%, transparent); cursor: pointer; transition: background 0.15s; }
+#sec-settings .switch::before { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+#sec-settings .switch:checked { background: var(--accent); }
+#sec-settings .switch:checked::before { transform: translateX(12px); }
+#sec-settings .switch:indeterminate { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+#sec-settings .switch:indeterminate::before { transform: translateX(6px); }
+#sec-settings .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#sec-settings .switch:disabled { opacity: 0.6; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { #sec-settings .switch, #sec-settings .switch::before, #sec-settings .sk-caret { transition: none; } }
 
 /* 문구 */
 #sec-settings .card code { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 0 4px; border-radius: 4px; }
