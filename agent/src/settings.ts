@@ -4,6 +4,7 @@
 // config.json 의 다른 키(토큰·repoRoots…)는 그대로 둔다. 쓰기는 임시 파일 → rename(원자적). 파일이 깨져 있으면 덮어쓰지 않는다.
 import { todayReminderOf, validateTodayReminder, type TodayReminder } from "./daily-plan.ts";
 import { calendarAlertOf, validateCalendarAlert, type CalendarAlertConfig } from "./calendar-alert.ts";
+import { IMPORTANT_DAYS, importantDaysOf } from "./eventkit.ts";
 import { readFileSync, renameSync, writeFileSync, mkdirSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -63,6 +64,7 @@ export type SettingsView = {
   autoMerge: string[]; // ✓ 없이 머지까지 하는 레포(owner/name)
   todayReminder: TodayReminder; // 오늘 할 일 알림(auto: 아침 + N시간마다·지정 시각 / off)
   calendarAlert: CalendarAlertConfig; // 일정 알림: 몇 분 전에 알릴지([] = 끔)
+  importantDays: number; // 중요 일정 D-day 를 며칠 앞까지(IMPORTANT_DAYS 중 하나)
   // 뇌: 키는 절대 내보내지 않는다 — 있나 없나만
   brain: { provider: BrainProvider; model: string; fallback: BrainFallback[]; keys: Record<BrainKey, boolean> };
   // 캐릭터(characters.ts): 그림·영상·말투·고정 문구 기본값이 바뀐다
@@ -101,6 +103,7 @@ export type SettingsPatch = {
   brain?: BrainPatch; user?: { name?: string | null; aliases?: string[] }; repoRoots?: string[]; todayReminder?: TodayReminder;
   onboarded?: boolean; readSessions?: boolean;
   calendarAlert?: CalendarAlertConfig;
+  importantDays?: number;
   character?: CharacterId;
   directiveFrom?: string[];
   slackMuted?: string[];
@@ -120,7 +123,7 @@ export class ConfigFileError extends Error {}
 export function validatePatch(body: unknown, cfg: Pick<Config, "models">): SettingsPatch {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new SettingsError("json object required");
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "character", "directiveFrom", "slackMuted", "sshHosts", "sessionHosts", "jobDirs", "gitAuthor", "tineGraph", "allowMcp", "connectors"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
+  for (const k of Object.keys(b)) if (!["models", "briefing", "phrases", "autoMerge", "brain", "user", "repoRoots", "todayReminder", "onboarded", "readSessions", "calendarAlert", "importantDays", "character", "directiveFrom", "slackMuted", "sshHosts", "sessionHosts", "jobDirs", "gitAuthor", "tineGraph", "allowMcp", "connectors"].includes(k)) throw new SettingsError(`unknown key: ${k}`);
   const out: SettingsPatch = {};
   if (b.directiveFrom !== undefined) {
     if (!Array.isArray(b.directiveFrom) || b.directiveFrom.length > 20 || !b.directiveFrom.every((x) => typeof x === "string" && /^[UW][A-Z0-9]{2,20}$/.test(x))) throw new SettingsError("directiveFrom: Slack 사용자 id(U…) 목록, 20개까지");
@@ -195,6 +198,10 @@ export function validatePatch(body: unknown, cfg: Pick<Config, "models">): Setti
   }
   if (b.calendarAlert !== undefined) {
     try { out.calendarAlert = validateCalendarAlert(b.calendarAlert); } catch (e: any) { throw new SettingsError(String(e?.message ?? e)); }
+  }
+  if (b.importantDays !== undefined) {
+    if (!IMPORTANT_DAYS.includes(b.importantDays as number)) throw new SettingsError(`importantDays must be one of ${IMPORTANT_DAYS.join(", ")}`);
+    out.importantDays = b.importantDays as number;
   }
   if (b.character !== undefined) {
     if (!isCharacterId(b.character)) throw new SettingsError(`character must be one of ${characterOptions().map((c) => c.id).join(", ")}`);
@@ -426,6 +433,7 @@ export function mergeConfigFile(path: string, patch: SettingsPatch): Record<stri
   if (patch.onboarded !== undefined) next.onboarded = patch.onboarded;
   if (patch.readSessions !== undefined) next.readSessions = patch.readSessions;
   if (patch.calendarAlert) next.calendarAlert = patch.calendarAlert; // [] 도 그대로 쓴다(끔)
+  if (patch.importantDays) next.importantDays = patch.importantDays;
   if (patch.character) next.character = patch.character;
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -491,6 +499,7 @@ export class Settings {
       autoMerge: [...(c.autoMerge ?? [])],
       todayReminder: todayReminderOf(c.todayReminder),
       calendarAlert: calendarAlertOf(c.calendarAlert),
+      importantDays: importantDaysOf(c.importantDays),
       brain: {
         provider: c.brain?.provider ?? "claude-code", model: c.models.general, fallback: (c.brain?.fallback ?? []).map((e) => ({ ...e })),
         // genspark: 설정에 키가 있거나, Genspark 를 고른 채 gsk login 파일에 키가 있으면 true(키 값은 내보내지 않는다).
@@ -571,6 +580,7 @@ export class Settings {
     if (patch.readSessions !== undefined) this.cfg.readSessions = patch.readSessions;
     if (patch.todayReminder) this.cfg.todayReminder = { ...patch.todayReminder, times: [...patch.todayReminder.times] }; // main 이 1분마다 cfg 를 읽으니 바로
     if (patch.calendarAlert) this.cfg.calendarAlert = { minutesBefore: [...patch.calendarAlert.minutesBefore] }; // CalendarSync 가 확인할 때마다 cfg 를 읽으니 바로
+    if (patch.importantDays) this.cfg.importantDays = patch.importantDays; // main 의 onChange 가 바로 다시 읽는다
     if (patch.character) { this.cfg.character = patch.character; setCharacter(patch.character); } // 다음 말풍선·답부터(앱은 SSE state 로 그림을 바꾼다)
     this.onChange?.(Object.keys(patch));
     const locked = Object.keys(patch.models ?? {}).filter((r) => !!this.env[MODEL_ENV[r as ModelRole]]);

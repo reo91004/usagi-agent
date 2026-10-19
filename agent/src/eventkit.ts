@@ -63,12 +63,15 @@ export function eventkitSource(run: EkRun = ekRun): CalendarSource {
   };
 }
 
-// 「중요 일정」(#279): 이름에 「중요」가 든 캘린더의 오늘 0시부터 1년 안 일정 → 개요 D-day. 되풀이 일정은 가장 가까운 한 번만,
+// 「중요 일정」(#279): 이름에 「중요」가 든 캘린더의 오늘 0시부터 days 일 안 일정 → 개요 D-day. 되풀이 일정은 가장 가까운 한 번만,
 // 취소·끝난 것은 뺀다. 이름 거르기는 도우미가 하지만 옛 도우미(이름 인자를 모름)도 맞게 여기서 한 번 더. 실패면 null(예전 것 유지)
 export const IMPORTANT_CAL = "중요";
+// 범위(config importantDays, 설정 › 알림 「중요 일정」). EventKit 은 한 번에 4년까지만 찾아서 2년까지
+export const IMPORTANT_DAYS = [30, 90, 180, 365, 730];
+export const importantDaysOf = (x: unknown) => (IMPORTANT_DAYS.includes(x as number) ? (x as number) : 365);
 export type ImportantEvent = { id: string; title: string; start: string; end: string; allDay: boolean };
-export async function importantEvents(run: EkRun = ekRun, now = new Date()): Promise<ImportantEvent[] | null> {
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()), to = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+export async function importantEvents(run: EkRun = ekRun, now = new Date(), days = 365): Promise<ImportantEvent[] | null> {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()), to = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
   const r = await run(["events", from.toISOString(), to.toISOString(), IMPORTANT_CAL]).catch(() => null);
   if (!r?.ok) return null;
   const seen = new Set<string>(), out: ImportantEvent[] = [];

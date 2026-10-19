@@ -257,6 +257,29 @@ test("Settings: 오늘 할 일 알림: 기본은 아침 한 번, 고치면 파�
   assert.equal(cfg.todayReminder?.mode, "off", "잘못된 값은 아무것도 안 바꾼다");
 });
 
+test("Settings: 중요 일정 범위: 기본 1년, 고른 값만, 파일·메모리·onChange, 잘못된 값은 400", () => {
+  const dir = tmp();
+  const p = join(dir, "config.json");
+  writeFileSync(p, JSON.stringify({ slackBotToken: "xoxb-keep" }));
+  const cfg = cfgOf();
+  const changed: string[][] = [];
+  const s = new Settings(cfg, { path: p, env: {}, onChange: (k) => changed.push(k) });
+  assert.equal(s.view().importantDays, 365);
+  assert.equal(s.put({ importantDays: 730 }).ok, true);
+  assert.equal(cfg.importantDays, 730);
+  assert.deepEqual(changed.at(-1), ["importantDays"]);
+  const file = JSON.parse(readFileSync(p, "utf8"));
+  assert.equal(file.importantDays, 730);
+  assert.equal(cfgOf(file).importantDays, 730, "다시 켜도 같은 값");
+  assert.equal(cfgOf({ importantDays: 9999 }).importantDays, 365, "파일의 이상한 값은 기본으로");
+  for (const bad of [0, 31, 1461, "365", null]) {
+    const e = s.put({ importantDays: bad });
+    assert.equal(e.ok, false, JSON.stringify(bad));
+    if (!e.ok) assert.equal(e.status, 400);
+  }
+  assert.equal(cfg.importantDays, 730);
+});
+
 test("Settings: 일정 알림: 기본 10분 전, 여러 번·끔, 파일·메모리에 바로, 잘못된 값은 400", () => {
   const dir = tmp();
   const p = join(dir, "config.json");
