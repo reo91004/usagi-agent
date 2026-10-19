@@ -63,6 +63,24 @@ export function eventkitSource(run: EkRun = ekRun): CalendarSource {
   };
 }
 
+// 「중요 일정」(#279): 이름에 「중요」가 든 캘린더의 오늘 0시부터 1년 안 일정 → 개요 D-day. 되풀이 일정은 가장 가까운 한 번만,
+// 취소·끝난 것은 뺀다. 이름 거르기는 도우미가 하지만 옛 도우미(이름 인자를 모름)도 맞게 여기서 한 번 더. 실패면 null(예전 것 유지)
+export const IMPORTANT_CAL = "중요";
+export type ImportantEvent = { id: string; title: string; start: string; end: string; allDay: boolean };
+export async function importantEvents(run: EkRun = ekRun, now = new Date()): Promise<ImportantEvent[] | null> {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()), to = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+  const r = await run(["events", from.toISOString(), to.toISOString(), IMPORTANT_CAL]).catch(() => null);
+  if (!r?.ok) return null;
+  const seen = new Set<string>(), out: ImportantEvent[] = [];
+  for (const e of [...(r.events ?? [])].sort((a, b) => Date.parse(a?.start) - Date.parse(b?.start))) {
+    const key = String(e?.uid ?? e?.id ?? "");
+    if (!key || seen.has(key) || e.cancelled || !String(e.calendar ?? "").includes(IMPORTANT_CAL) || !(Date.parse(e.end) > now.getTime())) continue;
+    seen.add(key);
+    out.push({ id: `ek:${e.id}`, title: norm(e.title) || "(제목 없음)", start: new Date(e.start).toISOString(), end: new Date(e.end).toISOString(), allDay: !!e.allDay });
+  }
+  return out.slice(0, 50);
+}
+
 // ── 미리알림 → 할 일 ──────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, "0");
 // 날짜가 있으면 날짜로(오늘까지·지난 것 P1, 7일 안 P2, 그 뒤 P3), 없으면 중요도로(「높음」·「보통」 P2, 나머지 P3).
@@ -91,8 +109,17 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
 const AUTO_NOTE = /^미리알림 「[^」]*」(?: · 마감 \d+월 \d+일(?: \d\d:\d\d)?)?/;
 const freshNote = (cur?: string, note?: string) => (note && cur && AUTO_NOTE.test(cur) ? cur.replace(AUTO_NOTE, () => note) : undefined);
 
-export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number };
+export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number; urgent?: UrgentReminder[] };
 export const TWO_WAY_LIST = "우사기 비서";
+// 긴급(#279, 개요 「긴급 미리알림」): 우선순위 「높음」(Apple 1~4)이거나 목록·제목에 「긴급」. EventKit 은 깃발·태그를 내주지 않는다.
+// 우사기가 쓴 목록은 뺀다(할 일 우선순위를 옮겨 적은 것이라). id 는 그 미리알림의 할 일
+export type UrgentReminder = { id: string; list: string; high: boolean };
+export function urgentReminders(open: any[]): UrgentReminder[] {
+  return (open ?? []).filter((x) => x?.id && x.list !== TWO_WAY_LIST).flatMap((x) => {
+    const high = x.priority >= 1 && x.priority <= 4;
+    return high || /긴급/.test(`${x.list ?? ""} ${x.title ?? ""}`) ? [{ id: `reminder:${x.id}`, list: String(x.list ?? ""), high }] : [];
+  });
+}
 const PUSH_PER_RUN = 100; // 처음 켤 때 할 일이 많아도 도우미 인자 크기·한 번 걸리는 시간을 묶어 둔다(나머지는 다음 번에)
 // 양방향 짝: 할 일 ↔ 미리알림 id, 마지막으로 맞춘 제목·끝냄·마감, 우사기가 넣은 미리알림인지(pushed). 지난번과 달라진 쪽을 다른 쪽에 옮긴다
 type Link = { todo_id: string; rid: string; title: string; done: number; due: string | null; pushed: number };
@@ -199,7 +226,7 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     const fail = (w.results ?? []).find((res: any) => res && !res.ok && !res.missing);
     if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, edited, added_: added };
   }
-  return { added: added.length, done, ok: true, wrote, trashed, edited, added_: added };
+  return { added: added.length, done, ok: true, wrote, trashed, edited, urgent: urgentReminders(r.open), added_: added };
 }
 
 // config.json 에 켜고 끄기: calendar → connectors.calendar.local(ICS 주소는 그대로), reminders → appleReminders(끄면 양방향도), twoWay → remindersTwoWay.

@@ -90,6 +90,7 @@ export function groupTodos(todos, todayDate = '') {
       ...(str(t.progress) ? { progress: t.progress, progressAt: str(t.progressAt) } : {}), // 어디까지 됐는지(데몬 진행 확인)
       ...(typeof t.doing === 'boolean' ? { doing: t.doing } : {}), // 사용자가 누른 (진행중) 토글
       ...(str(t.today) ? { today: t.today } : {}), // 오늘 할 일로 고른 날(KST)
+      ...(t.urgent && typeof t.urgent === 'object' ? { urgent: { list: str(t.urgent.list), high: t.urgent.high === true } } : {}), // 긴급 미리알림(#279)
     });
   }
   return [...groups.entries()]
@@ -191,6 +192,33 @@ export function shapeMeetings(list, now = Date.now()) {
       link: str(m.link) && isSafeLink(m.link) ? m.link : null, past: Number.isFinite(toMs(m.end)) && toMs(m.end) < now, startMs: toMs(m.start),
     }))
     .sort((x, y) => x.startMs - y.startMs);
+}
+
+// 개요 「중요 일정」(#279): 데몬 important(이 Mac 의 「중요」 캘린더, 1년 안). D-day 는 이 맥의 날짜로 — 오늘 시작 D-DAY, 전에 시작해 아직 안 끝난 일정은 「진행 중」.
+// tone: now(오늘·진행 중) · near(3일 안) · soon(2주 안) · far. 끝이 0시(종일 일정 등)면 그 전날이 마지막 날이라 1ms 빼서 센다
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const dayStart = (ms) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+const dateKo = (ms, now) => { const d = new Date(ms); return `${d.getFullYear() !== new Date(now).getFullYear() ? `${d.getFullYear()}년 ` : ''}${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`; };
+export function shapeImportant(list, now = Date.now()) {
+  return arr(list)
+    .filter((e) => e && str(e.title) && Number.isFinite(toMs(e.start)) && toMs(e.end) > now)
+    .map((e) => {
+      const start = toMs(e.start), last = toMs(e.end) - 1;
+      const days = Math.round((dayStart(start) - dayStart(now)) / DAY);
+      const range = dayStart(last) > dayStart(start) ? ` ~ ${dateKo(last, now)}` : e.allDay ? '' : ` · ${clockTime(e.start)}`;
+      return {
+        id: str(e.id), title: e.title, startMs: start, when: `${dateKo(start, now)}${range}`,
+        label: days > 0 ? `D-${days}` : days === 0 ? 'D-DAY' : '진행 중',
+        tone: days <= 0 ? 'now' : days <= 3 ? 'near' : days <= 14 ? 'soon' : 'far',
+      };
+    })
+    .sort((a, b) => a.startMs - b.startMs);
+}
+
+// 개요 「긴급 미리알림」: 할 일 중 데몬이 긴급으로 표시한 것(urgent). 날짜 이른 순(날짜 없으면 뒤), 같으면 「높음」 먼저
+export function urgentTodos(groups) {
+  const due = (t) => (t.due ? Date.parse(t.due) : Infinity);
+  return groups.flatMap((g) => g.items).filter((t) => t.urgent).sort((a, b) => due(a) - due(b) || b.urgent.high - a.urgent.high);
 }
 
 // 연구 카드(#40): 데몬 research(연구 연결이 있을 때만). 작업 한 줄 = 상태 칩 · 이름 @서버 · 시간 글, 채팅에 물어볼 글
@@ -330,6 +358,8 @@ export function shapeDashboard(raw, now = Date.now()) {
     today: { date: todayDate },
     todayDone,
     meetings: shapeMeetings(r.meetings, now),
+    important: shapeImportant(r.important, now),
+    urgent: urgentTodos(todoGroups),
     research: shapeResearch(r.research, now),
     researchProjects: shapeResearchProjects(r.researchProjects, now),
     directives: shapeDirectives(r.directives, now),

@@ -1,7 +1,7 @@
 // 우사기 EventKit 도우미(#53): 이 Mac 의 캘린더·미리알림을 JSON 한 줄로 낸다. 데몬(agent/src/eventkit.ts)이 부른다.
 //   usagi-eventkit status                       권한 상태
 //   usagi-eventkit request                      캘린더·미리알림 권한을 묻는다(처음 한 번 macOS 창)
-//   usagi-eventkit events <from ISO> <to ISO>   그 기간 일정(메모 본문은 내지 않고 회의 링크만 뽑는다)
+//   usagi-eventkit events <from ISO> <to ISO> [이름]  그 기간 일정(메모 본문은 내지 않고 회의 링크만 뽑는다). 이름을 주면 그 글자가 든 캘린더만
 //   usagi-eventkit reminders <since ISO> [id…]  안 끝난 미리알림 전부 + since 뒤에 끝낸 것 + 이어 둔 id 의 지금 모습(linked, 없어진 것은 빠진다)
 //   usagi-eventkit write <ops JSON>             미리알림 쓰기(add·set·delete)를 차례로 하고 한 번에 저장한다
 // 캘린더는 쓰지 않는다. 미리알림 쓰기는 write 하나뿐이고 데몬은 양방향을 켰을 때만 부른다.
@@ -56,8 +56,10 @@ func joinUrl(_ texts: [String?]) -> String? {
   return nil
 }
 
-func events(_ from: Date, _ to: Date) -> [[String: Any]] {
-  let pred = store.predicateForEvents(withStart: from, end: to, calendars: store.calendars(for: .event))
+func events(_ from: Date, _ to: Date, _ name: String?) -> [[String: Any]] {
+  let cals = store.calendars(for: .event).filter { name == nil || $0.title.contains(name!) }
+  if cals.isEmpty { return [] } // 빈 목록을 넘기면 모든 캘린더로 읽힐 수 있다
+  let pred = store.predicateForEvents(withStart: from, end: to, calendars: cals)
   return store.events(matching: pred).map { e in
     var d: [String: Any] = [
       "id": e.eventIdentifier ?? e.calendarItemIdentifier,
@@ -138,7 +140,7 @@ case "request":
 case "events":
   guard args.count >= 4, let from = parseIso(args[2]), let to = parseIso(args[3]) else { emit(["ok": false, "error": "usage: events <from> <to>"]); exit(2) }
   guard granted(.event) else { emit(["ok": false, "error": "not-granted", "calendar": statusName(.event)]); exit(0) }
-  emit(["ok": true, "events": events(from, to)])
+  emit(["ok": true, "events": events(from, to, args.count > 4 ? args[4] : nil)])
 case "reminders":
   guard args.count >= 3, let since = parseIso(args[2]) else { emit(["ok": false, "error": "usage: reminders <since>"]); exit(2) }
   guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
