@@ -198,6 +198,12 @@ test("syncReminders 양방향: 마감은 바뀐 쪽, 긴 제목은 잘리지 않
   await syncReminders(store, f.run, NOW, true);
   assert.equal(f.state.size, before, "합쳐진 할 일을 미리알림에 또 넣지 않는다");
   assert.equal((store.db.prepare("SELECT rid FROM reminder_links WHERE todo_id = ?").get(c.id) as any).rid, "P1");
+  // 그렇게 이어진 미리알림은 사용자 것이라 할 일을 영구 삭제해도 지우지 않는다(끝냄까지만)
+  store.trashTodo(c.id);
+  await syncReminders(store, f.run, NOW, true);
+  store.purgeTodo(c.id);
+  await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([f.state.has("P1"), f.state.get("P1").completed], [true, true]);
 });
 
 test("syncReminders 양방향: 한꺼번에 많이 사라지면(iCloud 로그아웃 등) 지우지 않고, id 만 바뀐 같은 미리알림은 다시 잇는다", async () => {
