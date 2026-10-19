@@ -291,7 +291,11 @@ function buildEl(b) {
   const meta = document.createElement('div');
   meta.className = 'meta';
   const askRow = buildMergeAsk(b.id);
-  bubble.append(text, detail, meta, askRow);
+  // ✕: 패널을 열지 않고 이 말풍선만 닫는다(누르면 패널이 열리는 말풍선도). 오른쪽 위, 오른쪽 가장자리에 붙었으면 왼쪽 위(style.css)
+  const close = button('✕', 'b-close', () => dismiss(b.id));
+  close.title = '닫기';
+  close.setAttribute('aria-label', '말풍선 닫기');
+  bubble.append(text, detail, meta, askRow, close);
   bubble.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
     if (a) { e.preventDefault(); e.stopPropagation(); cy.openLink(a.getAttribute('href')); return; } // 메인이 스킴을 다시 확인
@@ -353,6 +357,7 @@ function fillEl(item, b) {
   bubble.classList.toggle('no-text', !b.text);
   bubble.classList.toggle('has-detail', !!b.detail);
   bubble.classList.toggle('clickable', !!b.open);
+  bubble.classList.toggle('closable', !isWaitingApproval(b) && !b.tour); // 승인·둘러보기는 단추로 정한다
   const wide = isListBubble(b);
   bubble.classList.toggle('wide', wide);
   setRich(bubble.querySelector('.text'), b.text);

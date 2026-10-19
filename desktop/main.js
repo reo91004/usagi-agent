@@ -1298,6 +1298,8 @@ function setupIPC() {
   });
   ipcMain.on('set-interactive', (_e, on) => {
     if (!win) return;
+    // 말풍선을 눌러 닫으면 그 클릭의 앱 활성화(50ms 뒤 확인)보다 먼저 hot 이 꺼진다 — 그 활성화로 패널이 뜨지 않게 잠깐 조용히
+    if (overlayHot && !on) quietActivation(400);
     overlayHot = !!on;
     if (on) win.setIgnoreMouseEvents(false);
     else if (!drag) win.setIgnoreMouseEvents(true, { forward: true });
