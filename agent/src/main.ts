@@ -55,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
 import { agentRules } from "./agent-rules.ts";
 import { directivesView } from "./directives.ts";
-import { appleStatus, ekRun, eventkitAvailable, importantEvents, setAppleFlags, syncReminders, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
+import { appleStatus, ekRun, eventkitAvailable, importantDaysOf, importantEvents, setAppleFlags, syncReminders, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { agyPrewarm, agyWarm, BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
@@ -181,6 +181,7 @@ const settings = new Settings(cfg, { onChange: (keys) => {
   if (keys.includes("onboarded") && modelWorkAllowed(cfg)) setTimeout(() => onboardedNow(), 0); // 마법사를 막 마침 → 첫 정리
   else if (keys.includes("readSessions") && sessionsAllowed(cfg)) setTimeout(() => ingest(), 0);
   if (keys.includes("slackMuted")) syncMuted(store, cfg.slackMuted);
+  if (keys.includes("importantDays")) void syncImportant();
   if (keys.some((k) => k === "sshHosts" || k === "jobDirs")) { jobIdle.clear(); setTimeout(pollJobHosts, 30e3).unref(); } // 새 서버는 2분을 기다리지 않고 곧 한 번
   if (keys.some((k) => k === "sessionHosts" || k === "jobDirs")) setTimeout(pollSessionHosts, 30e3).unref();
   if (keys.includes("connectors")) reloadConnectors(); // 연결(MCP 서버·캘린더 시간대)은 다시 읽어 데몬을 다시 켠다(launchd 아래일 때)
@@ -213,7 +214,7 @@ let urgent = new Map<string, UrgentReminder>(), important: ImportantEvent[] = []
 const calLocal = () => conns.calendar.mode === "api" && !!(conns.calendar as any).local;
 async function syncImportant() {
   if (!calLocal() || !eventkitAvailable()) return;
-  const next = await importantEvents();
+  const next = await importantEvents(undefined, undefined, importantDaysOf(cfg.importantDays));
   if (next && JSON.stringify(next) !== JSON.stringify(important)) { important = next; bus.dashboardChanged(); }
 }
 async function syncRemindersNow() {

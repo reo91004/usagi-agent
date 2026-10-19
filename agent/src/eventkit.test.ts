@@ -45,6 +45,8 @@ test("importantEvents: 「중요」 캘린더만, 되풀이는 가장 가까운 
   assert.deepEqual([cmd, name], ["events", IMPORTANT_CAL]);
   assert.equal(new Date(from).getTime(), new Date(2026, 9, 17).getTime()); // 이 맥의 오늘 0시
   assert.equal(new Date(to).getTime(), new Date(2027, 9, 17).getTime());
+  await importantEvents(run, NOW, 30);
+  assert.equal(new Date(calls[1][2]).getTime(), new Date(2026, 10, 16).getTime(), "범위(30일)");
   assert.equal(await importantEvents(async () => ({ ok: false, error: "not-granted" }), NOW), null);
   assert.equal(await importantEvents(async () => { throw new Error("x"); }, NOW), null);
 });

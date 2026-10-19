@@ -717,6 +717,16 @@ async function saveTimes() {
 $('rem-times-save').addEventListener('click', saveTimes);
 $('rem-times').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); saveTimes(); } });
 
+// ---- 중요 일정 D-day 범위(데몬 importantDays, 바꾸면 데몬이 바로 다시 읽는다) ----
+const IMPORTANT_RANGE = [[30, '1개월'], [90, '3개월'], [180, '6개월'], [365, '1년'], [730, '2년']];
+function renderImportant() {
+  if (!settings) return;
+  const sel = $('imp-days');
+  sel.replaceChildren(...IMPORTANT_RANGE.map(([d, label]) => { const o = el('option', null, label); o.value = String(d); return o; }));
+  sel.value = String(settings.importantDays ?? 365);
+}
+$('imp-days').addEventListener('change', async (e) => { await save({ importantDays: Number(e.target.value) }); renderImportant(); });
+
 // ---- 일정 알림 ----
 const calAlert = () => cleanCalendarAlert(settings?.calendarAlert) ?? ALERT_DEFAULT;
 let lastAlertOn = null; // 끄기 전 목록(다시 켜면 그것으로, 없으면 기본 10분)
@@ -1241,7 +1251,7 @@ function applySnapshot(data, { first = false } = {}) {
   if (Array.isArray(data.slackChannels)) slackChannels = data.slackChannels;
   if (first || !settings) {
     settings = data;
-    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderMe(); renderTine(); renderMcp(); renderPhrases(); renderCharacter(); loadCharacters();
+    renderBrains(); renderModels(); renderSources(); renderLocal(); renderReminder(); renderCalAlert(); renderImportant(); renderAutoMerge(); renderSlackChannels(); renderServers(); renderMe(); renderTine(); renderMcp(); renderPhrases(); renderCharacter(); loadCharacters();
     return;
   }
   const { phrases, todayReminder, calendarAlert, character, characters } = settings;

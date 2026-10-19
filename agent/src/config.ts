@@ -11,6 +11,7 @@ import { autoMergeList } from "./auto-merge.ts";
 import { todayReminderOf, type TodayReminder } from "./daily-plan.ts";
 import { isNewStyle, onboardedOf, readSessionsOf } from "./onboarding.ts";
 import { calendarAlertOf, type CalendarAlertConfig } from "./calendar-alert.ts";
+import { importantDaysOf } from "./eventkit.ts";
 import { START_CHARACTER } from "./characters.ts";
 import { okJobDir, okJobHost } from "./jobs.ts";
 
@@ -48,6 +49,8 @@ export type Config = {
   todayReminder?: TodayReminder;
   // 일정 알림(설정 「일정 알림」): 일정 몇 분 전에 알릴지. 없으면 10분 전 한 번, minutesBefore: [] 이면 끔(calendar-alert.ts)
   calendarAlert?: CalendarAlertConfig;
+  // 중요 일정 D-day 를 며칠 앞까지 보일지(설정 › 알림 「중요 일정」, eventkit.ts IMPORTANT_DAYS 중 하나). 없으면 365
+  importantDays?: number;
   // 끝난 긴 작업(usagi-run)을 2분마다 가져올 ssh 서버(jobs.ts). ~/.ssh/config 별칭이나 user@host. sshHosts 도 들어간다
   jobHosts: string[];
   // 서버마다 usagi-run 결과 폴더. 공용 계정이면 개인 폴더(예: { "pacl-208": "~/reo/.usagi-agent/jobs" }), 없으면 ~/.usagi-agent/jobs
@@ -362,6 +365,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     autoMerge: autoMergeList(f.autoMerge),
     todayReminder: todayReminderOf(f.todayReminder, notes),
     calendarAlert: calendarAlertOf(f.calendarAlert),
+    importantDays: importantDaysOf(f.importantDays),
     jobHosts: [...new Set([...sshHostsOf("jobHosts", f.jobHosts, notes), ...sshHostsOf("sshHosts", f.sshHosts, [])])], // 실험 서버의 끝난 작업도 가져온다
     sshHosts: sshHostsOf("sshHosts", f.sshHosts, notes),
     sessionHosts: sshHostsOf("sessionHosts", f.sessionHosts, notes),
