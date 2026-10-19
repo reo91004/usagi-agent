@@ -220,9 +220,12 @@ async function syncRemindersNow() {
   } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
   finally { remindersBusy = false; if (remindersAgain) { remindersAgain = false; void syncRemindersNow(); } }
 }
-let remindersSoon: ReturnType<typeof setTimeout> | undefined;
-agent.onChange(() => { // 패널·채팅·Slack 에서 할 일을 고치면 곧 미리알림에도(여러 번 고쳐도 마지막 뒤 5초에 한 번)
+let remindersSoon: ReturnType<typeof setTimeout> | undefined, todosSig = "";
+agent.onChange(() => { // 패널·채팅·Slack 에서 할 일을 고치면 곧 미리알림에도(여러 번 고쳐도 마지막 뒤 5초에 한 번). 채팅 글 같은 다른 변화는 건너뛴다
   if (!cfg.remindersTwoWay) return;
+  const sig = JSON.stringify(store.db.prepare("SELECT count(*) n, max(coalesce(updated, created)) u FROM todos").get());
+  if (sig === todosSig) return;
+  todosSig = sig;
   clearTimeout(remindersSoon);
   remindersSoon = setTimeout(() => void syncRemindersNow(), 5e3);
   remindersSoon.unref();

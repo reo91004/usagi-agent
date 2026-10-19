@@ -103,20 +103,29 @@ func reminderDict(_ r: EKReminder) -> [String: Any] {
   return d
 }
 
-// write 의 add 가 넣는 목록: 이름이 같은 쓸 수 있는 목록, 없으면 기본 목록과 같은 계정에 만든다
+// write 의 add 가 넣는 목록: 이름이 같은 쓸 수 있는 목록, 없으면 기본 목록과 같은 계정에 만든다(만들기 실패는 한 번만 해 본다)
 var listsByName: [String: EKCalendar] = [:]
+var listError: Error?
 func reminderList(_ name: String) throws -> EKCalendar {
   if let c = listsByName[name] { return c }
+  if let e = listError { throw e }
   if let c = store.calendars(for: .reminder).first(where: { $0.title == name && $0.allowsContentModifications }) { listsByName[name] = c; return c }
   guard let src = store.defaultCalendarForNewReminders()?.source else { throw NSError(domain: "usagi", code: 1, userInfo: [NSLocalizedDescriptionKey: "기본 미리알림 목록이 없어요"]) }
   let c = EKCalendar(for: .reminder, eventStore: store)
   c.title = name
   c.source = src
-  try store.saveCalendar(c, commit: true)
+  do { try store.saveCalendar(c, commit: true) } catch { listError = error; throw error }
   listsByName[name] = c
   return c
 }
 func reminder(_ id: Any?) -> EKReminder? { (id as? String).flatMap { store.calendarItem(withIdentifier: $0) as? EKReminder } }
+// 마감: ISO 면 그 날(dueHasTime 이면 시각까지), null 이면 지운다
+func setDue(_ r: EKReminder, _ o: [String: Any]) {
+  guard o.keys.contains("due") else { return }
+  r.dueDateComponents = (o["due"] as? String).flatMap(parseIso).map {
+    Calendar.current.dateComponents(o["dueHasTime"] as? Bool == true ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: $0)
+  }
+}
 
 let args = CommandLine.arguments
 switch args.count > 1 ? args[1] : "" {
@@ -139,7 +148,7 @@ case "reminders":
   let linked = args.dropFirst(3).compactMap { reminder($0) }
   emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict)])
 case "write":
-  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?} | {op:"delete", id}] → results 같은 순서
+  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서
   guard args.count >= 3, let ops = (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [[String: Any]] else { emit(["ok": false, "error": "usage: write <ops JSON>"]); exit(2) }
   guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
   var results: [[String: Any]] = []
@@ -152,9 +161,7 @@ case "write":
         r.calendar = try reminderList(o["list"] as? String ?? "우사기 비서")
         r.title = o["title"] as? String ?? ""
         if let p = o["priority"] as? Int { r.priority = p }
-        if let due = (o["due"] as? String).flatMap(parseIso) {
-          r.dueDateComponents = Calendar.current.dateComponents(o["dueHasTime"] as? Bool == true ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: due)
-        }
+        setDue(r, o)
         if let u = (o["url"] as? String).flatMap(URL.init(string:)) { r.url = u }
         try store.save(r, commit: false)
         made.append((results.count, r))
@@ -163,6 +170,7 @@ case "write":
         guard let r = reminder(o["id"]) else { results.append(["ok": false, "missing": true]); continue }
         if let t = o["title"] as? String { r.title = t }
         if let d = o["done"] as? Bool { r.isCompleted = d }
+        setDue(r, o)
         try store.save(r, commit: false)
         results.append(["ok": true])
       case "delete":

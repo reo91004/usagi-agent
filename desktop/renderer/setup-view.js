@@ -362,8 +362,8 @@ function twoWayToggle(on, onConnect, onDisconnect) {
   return h('div.setup-twoway', null,
     h('label.setup-check', null, box, h('span', { text: '미리알림과 양방향으로 맞추기' })),
     h('p.setup-blurb', { id: 'rem-2way-hint', text: on
-      ? '우사기 할 일이 미리알림 「우사기 비서」 목록에도 있어요. 어느 쪽에서 끝내거나 제목을 고치거나 지워도 다른 쪽이 따라가요. 지운 할 일은 우사기 휴지통에서 30일 동안 되살릴 수 있어요.'
-      : '켜면 우사기 할 일을 미리알림 「우사기 비서」 목록에도 넣고, 어느 쪽에서 끝내거나 제목을 고치거나 지워도 다른 쪽이 따라가요.' }));
+      ? '우사기 할 일이 미리알림 「우사기 비서」 목록에도 있어요. 어느 쪽에서 끝내거나 제목·마감을 고쳐도 다른 쪽이 따라가요. 미리알림에서 지우면 우사기 휴지통으로 가고(30일 동안 되살릴 수 있어요), 우사기에서 지우면 미리알림은 끝냄으로 바뀌어요.'
+      : '켜면 우사기 할 일을 미리알림 「우사기 비서」 목록에도 넣고, 어느 쪽에서 끝내거나 제목·마감을 고치거나 지워도 다른 쪽이 따라가요.' }));
 }
 
 function extrasView({ done = {}, repos = [], coder = true, readSessions = false, servers = {}, calendars = [], apple = null, onOpen, onDisconnect, onCopy, onAddCalendar, onRemoveCalendar, onAppleConnect, onAppleDisconnect, onOpenPrivacy, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish, onBack }) {

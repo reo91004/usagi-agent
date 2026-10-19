@@ -95,6 +95,7 @@ function fakeReminders(items: Record<string, any> = {}) {
       if (!x) return { ok: false, missing: true };
       if (o.title !== undefined) x.title = o.title;
       if (o.done !== undefined) x.completed = o.done;
+      if ("due" in o) { if (o.due) x.due = o.due; else delete x.due; }
       return { ok: true };
     });
     return { ok: true, results };
@@ -145,14 +146,58 @@ test("syncReminders 양방향: 끝냄·다시 엶·제목·마감·지움이 서
   f.state.get("N1").completed = true;
   await syncReminders(store, f.run, NOW, true);
   assert.equal(store.getTodo(mine.id)!.status, "done");
-  // 우사기에서 지움 → 미리알림도 지움 / 미리알림에서 지움 → 우사기 휴지통
+  // 우사기 휴지통 → 미리알림은 끝냄으로만(지우지 않음), 되살리면 다시 열림 / 미리알림에서 지움 → 우사기 휴지통
   store.trashTodo("reminder:R1");
   f.state.delete("R2");
   const c = await syncReminders(store, f.run, NOW, true);
-  assert.equal(f.state.has("R1"), false);
+  assert.deepEqual([f.state.has("R1"), f.state.get("R1").completed], [true, true]);
   assert.equal(c.trashed, 1);
   assert.ok(store.trashedTodo("reminder:R2"));
-  assert.equal(store.db.prepare("SELECT count(*) n FROM reminder_links").get()!.n, 1, "남은 짝은 보고서 하나");
+  store.restoreTodo("reminder:R1");
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(f.state.get("R1").completed, false);
+  // 영구 삭제: 우사기가 넣은 것만 미리알림에서 지우고, 미리알림에서 온 것은 남긴다
+  store.trashTodo("reminder:R1"); store.trashTodo(mine.id);
+  await syncReminders(store, f.run, NOW, true);
+  store.purgeTodo("reminder:R1"); store.purgeTodo(mine.id);
+  await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([f.state.has("R1"), f.state.has("N1")], [true, false]);
+  assert.equal(store.db.prepare("SELECT count(*) n FROM reminder_links").get()!.n, 0);
+});
+
+test("syncReminders 양방향: 마감은 바뀐 쪽, 긴 제목은 잘리지 않고, 끝낸 짝이 사라지면 조용히 놓고, 합쳐진 미리알림은 그 할 일과 잇는다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders();
+  const long = "가".repeat(230);
+  const a = store.addTodo({ title: long });
+  const b = store.addTodo({ title: "세미나 발표" });
+  await syncReminders(store, f.run, NOW, true);
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(store.getTodo(a.id)!.title, long, "200자 넘는 제목을 미리알림 쪽으로 자르지 않는다");
+  assert.ok(!store.getTodo(a.id)!.userEdited?.includes("title"));
+  // 우사기 쪽 마감(원본이 바꿈) → 미리알림, 미리알림 쪽 마감 → 우사기
+  const d1 = new Date(2026, 9, 22, 0, 0).toISOString(), d2 = new Date(2026, 9, 23, 15, 30).toISOString();
+  store.setTodoDue(a.id, d1);
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(Date.parse(f.state.get("N1").due), Date.parse(d1));
+  f.state.get("N2").due = d2;
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(Date.parse(store.getTodo(b.id)!.due!), Date.parse(d2));
+  assert.equal(Date.parse(f.state.get("N1").due), Date.parse(d1), "핑퐁 없음");
+  // 끝낸 짝: 미리알림에서 끝낸 것을 정리해도 우사기 할 일은 휴지통으로 가지 않는다
+  store.editTodo(b.id, { status: "done" });
+  await syncReminders(store, f.run, NOW, true);
+  f.state.delete("N2");
+  const r = await syncReminders(store, f.run, NOW, true);
+  assert.equal(r.trashed, 0);
+  assert.equal(store.getTodo(b.id)!.status, "done");
+  // 휴대폰에서 같은 제목으로 만든 미리알림 → 열린 할 일로 합쳐지고 그 할 일과 이어진다(또 넣지 않음)
+  const c = store.addTodo({ title: "장보기" });
+  f.state.set("P1", { id: "P1", title: "장보기", list: "개인", completed: false });
+  const before = f.state.size;
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(f.state.size, before, "합쳐진 할 일을 미리알림에 또 넣지 않는다");
+  assert.equal((store.db.prepare("SELECT rid FROM reminder_links WHERE todo_id = ?").get(c.id) as any).rid, "P1");
 });
 
 test("syncReminders 양방향: 한꺼번에 많이 사라지면(iCloud 로그아웃 등) 지우지 않고, id 만 바뀐 같은 미리알림은 다시 잇는다", async () => {
@@ -170,6 +215,16 @@ test("syncReminders 양방향: 한꺼번에 많이 사라지면(iCloud 로그아
   await syncReminders(store, f.run, NOW, true);
   assert.equal(store.openTodos().length, 5);
   assert.equal((store.db.prepare("SELECT rid FROM reminder_links WHERE todo_id = 'reminder:E'").get() as any).rid, "E2");
+});
+
+test("syncReminders 양방향: linked 를 모르는 옛 도우미면 아무것도 지우지 않고 멈춘다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문" } });
+  await syncReminders(store, f.run, NOW, true);
+  const old: EkRun = async (args) => { const r = await f.run(args); delete r.linked; return r; };
+  const r = await syncReminders(store, old, NOW, true);
+  assert.equal(r.ok, false);
+  assert.ok(store.getTodo("reminder:R1"));
 });
 
 test("syncReminders 양방향: 쓰기가 실패하면 짝을 바꾸지 않고 다음에 다시 한다", async () => {

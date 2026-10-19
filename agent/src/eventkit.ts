@@ -90,22 +90,27 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
 export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number };
 export const TWO_WAY_LIST = "우사기 비서";
 const PUSH_PER_RUN = 100; // 처음 켤 때 할 일이 많아도 도우미 인자 크기·한 번 걸리는 시간을 묶어 둔다(나머지는 다음 번에)
-// 양방향 짝: 할 일 ↔ 미리알림 id, 마지막으로 맞춘 제목·끝냄. 지난번과 달라진 쪽을 다른 쪽에 옮긴다
-type Link = { todo_id: string; rid: string; title: string; done: number };
-const LINKS = "CREATE TABLE IF NOT EXISTS reminder_links (todo_id TEXT PRIMARY KEY, rid TEXT NOT NULL UNIQUE, title TEXT NOT NULL, done INTEGER NOT NULL)";
+// 양방향 짝: 할 일 ↔ 미리알림 id, 마지막으로 맞춘 제목·끝냄·마감. 지난번과 달라진 쪽을 다른 쪽에 옮긴다
+type Link = { todo_id: string; rid: string; title: string; done: number; due: string | null };
+const LINKS = "CREATE TABLE IF NOT EXISTS reminder_links (todo_id TEXT PRIMARY KEY, rid TEXT NOT NULL UNIQUE, title TEXT NOT NULL, done INTEGER NOT NULL, due TEXT)";
 const norm = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
 const sameTime = (a?: string | null, b?: string | null) => (a ? Date.parse(a) : NaN) === (b ? Date.parse(b) : NaN) || (!a && !b);
+const iso = (s?: string | null) => (s ? new Date(s).toISOString() : null);
+// 미리알림 마감 칸: 자정이면 날짜만
+const dueOp = (due?: string | null) => { const d = due ? new Date(due) : null; return d ? { due: d.toISOString(), dueHasTime: !!(d.getHours() || d.getMinutes()) } : { due: null }; };
 
 // 한 번 맞추기: 안 끝난 것은 넣고(지운 것·사용자가 고친 우선순위는 store 가 지킨다), 7일 안에 미리알림에서 끝낸 것은 할 일도 끝낸다.
-// twoWay 면 그 앞에 이어 둔 짝을 맞추고(제목은 우사기에서 고친 쪽이 이김, 끝냄은 바뀐 쪽, 마감은 미리알림 쪽), 뒤에 아직 없는 우사기 할 일을 미리알림에 넣는다
+// twoWay 면 그 앞에 이어 둔 짝을 맞추고(제목·끝냄·마감 모두 바뀐 쪽, 양쪽 다 바뀌었으면 우사기 쪽), 뒤에 아직 없는 우사기 할 일을 미리알림에 넣는다.
+// 우사기 휴지통에 든 할 일의 미리알림은 끝냄으로만 두고(되살리면 다시 열린다), 영구 삭제되면 우사기가 넣은 것만 지운다(미리알림에서 온 것은 메모·하위 항목이 있어 남긴다)
 export async function syncReminders(store: Store, run: EkRun = ekRun, now = new Date(), twoWay = false): Promise<ReminderSync & { added_: Todo[] }> {
   if (twoWay) store.db.exec(LINKS);
   const links = twoWay ? store.db.prepare("SELECT * FROM reminder_links").all() as Link[] : [];
   const r = await run(["reminders", new Date(now.getTime() - 7 * 86400e3).toISOString(), ...links.map((l) => l.rid)]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   if (!r?.ok) return { added: 0, done: 0, ok: false, error: r?.error === "not-granted" ? "macOS 미리알림 권한이 없어요" : String(r?.error ?? "실패"), added_: [] };
+  if (twoWay && !Array.isArray(r.linked)) return { added: 0, done: 0, ok: false, error: "미리알림 도우미가 양방향을 몰라요(앱을 다시 설치해 주세요)", added_: [] }; // 짝이 모두 사라진 것으로 읽어 지우지 않게
   const linkedRid = new Set(links.map((l) => l.rid)), linkedTodo = new Set(links.map((l) => l.todo_id));
-  const saveLink = (todo: string, rid: string, title: string, done: boolean) => {
-    store.db.prepare("INSERT OR REPLACE INTO reminder_links (todo_id, rid, title, done) VALUES (?, ?, ?, ?)").run(todo, rid, title, done ? 1 : 0);
+  const saveLink = (todo: string, rid: string, title: string, done: boolean, due: string | null) => {
+    store.db.prepare("INSERT OR REPLACE INTO reminder_links (todo_id, rid, title, done, due) VALUES (?, ?, ?, ?, ?)").run(todo, rid, title, done ? 1 : 0, iso(due));
     linkedRid.add(rid); linkedTodo.add(todo);
   };
   const dropLink = (todo: string) => store.db.prepare("DELETE FROM reminder_links WHERE todo_id = ?").run(todo);
@@ -115,39 +120,52 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
 
   if (twoWay) {
     const byRid = new Map<string, any>((r.linked ?? []).map((x: any) => [x.id, x]));
-    const missing = links.filter((l) => !byRid.has(l.rid));
-    const massMissing = missing.length > 3 && missing.length * 2 > links.length; // iCloud 로그아웃 같은 때 한꺼번에 지우지 않는다
+    // 끝난 짝이 사라진 것(끝낸 미리알림 정리)은 조용히 놓는다. 열린 짝이 한꺼번에 많이 사라지면(iCloud 로그아웃 등) 지우지 않는다
+    const missing = links.filter((l) => !l.done && !byRid.has(l.rid));
+    const massMissing = missing.length > 3 && missing.length * 2 > links.filter((l) => !l.done).length;
     for (const l of links) {
       const t = store.getTodo(l.todo_id), x = byRid.get(l.rid);
       if (!x) {
+        if (l.done || t?.status === "done") { dropLink(l.todo_id); continue; }
         if (massMissing) continue;
         // id 가 바뀐 같은 미리알림(iCloud 전체 동기화 뒤)이면 다시 잇는다
-        const again = t && (r.open ?? []).find((y: any) => !linkedRid.has(y.id) && (norm(y.title) === l.title || norm(y.title) === t.title));
-        if (again) { dropLink(l.todo_id); saveLink(l.todo_id, again.id, l.title, !!l.done); continue; }
+        const again = t && (r.open ?? []).find((y: any) => !linkedRid.has(y.id) && (norm(y.title) === l.title || norm(y.title) === norm(t.title)));
+        if (again) { dropLink(l.todo_id); saveLink(l.todo_id, again.id, l.title, false, l.due); continue; }
         dropLink(l.todo_id);
         if (t) { store.trashTodo(t.id, now.toISOString(), "user"); trashed++; } // 미리알림에서 지움 → 휴지통(30일 동안 되살릴 수 있다)
         continue;
       }
-      if (!t) { op({ op: "delete", id: l.rid }, () => dropLink(l.todo_id)); continue; } // 우사기에서 지움(휴지통·영구 삭제)
+      if (!t) {
+        if (store.trashedTodo(l.todo_id)) { if (!l.done && !x.completed) op({ op: "set", id: l.rid, done: true }, () => saveLink(l.todo_id, l.rid, l.title, true, l.due)); }
+        else if (l.todo_id.startsWith("reminder:")) dropLink(l.todo_id);
+        else op({ op: "delete", id: l.rid }, () => dropLink(l.todo_id));
+        continue;
+      }
       const set: Record<string, unknown> = {};
-      let title = l.title, done = !!l.done;
-      const rt = norm(x.title), tDone = t.status === "done", rDone = !!x.completed;
-      if (t.title !== l.title) { if (rt !== t.title) set.title = t.title; title = t.title; }
+      let title = l.title, done = !!l.done, due = l.due;
+      const tt = norm(t.title), rt = norm(x.title), tDone = t.status === "done", rDone = !!x.completed;
+      if (tt !== l.title) { if (rt !== tt) set.title = t.title; title = tt; }
       else if (rt && rt !== l.title) { store.editTodo(t.id, { title: rt }); title = rt; }
       if (tDone !== done) { if (rDone !== tDone) set.done = tDone; done = tDone; }
       else if (rDone !== done) { store.editTodo(t.id, { status: rDone ? "done" : "open" }); done = rDone; }
-      if (!sameTime(t.due, x.due)) store.setTodoDue(t.id, x.due ? new Date(x.due).toISOString() : null);
-      if (Object.keys(set).length) op({ op: "set", id: l.rid, ...set }, () => saveLink(l.todo_id, l.rid, title, done));
-      else if (title !== l.title || done !== !!l.done) saveLink(l.todo_id, l.rid, title, done);
+      if (!sameTime(t.due, l.due)) { if (!sameTime(x.due, t.due)) Object.assign(set, dueOp(t.due)); due = t.due ?? null; }
+      else if (!sameTime(x.due, l.due)) { store.setTodoDue(t.id, iso(x.due)); due = x.due ?? null; }
+      if (Object.keys(set).length) op({ op: "set", id: l.rid, ...set }, () => saveLink(l.todo_id, l.rid, title, done, due));
+      else if (title !== l.title || done !== !!l.done || !sameTime(due, l.due)) saveLink(l.todo_id, l.rid, title, done, due);
     }
   }
 
   const added: Todo[] = [];
   for (const x of r.open ?? []) {
-    if (linkedRid.has(x?.id)) continue;
+    if (linkedRid.has(x?.id) || (!twoWay && x?.list === TWO_WAY_LIST)) continue; // 양방향을 끄면 우사기가 넣은 목록은 다시 가져오지 않는다
     const t = reminderTodo(x, now);
-    if (t && store.upsertTodo(t, "briefing") === "added") { const got = store.getTodo(t.id); if (got) added.push(got); }
-    if (t && twoWay && !linkedTodo.has(t.id) && store.getTodo(t.id)) saveLink(t.id, x.id, norm(x.title), false);
+    if (!t) continue;
+    const res = store.upsertTodo(t, "briefing");
+    if (res === "added") { const got = store.getTodo(t.id); if (got) added.push(got); }
+    if (!twoWay) continue;
+    // 같은 일이 이미 열린 할 일로 있어 합쳐졌으면 그 할 일과 잇는다(안 그러면 그 할 일을 미리알림에 또 넣는다)
+    const into = res === "merged" ? store.findDuplicate(t)?.id : store.getTodo(t.id) && t.id;
+    if (into && !linkedTodo.has(into)) saveLink(into, x.id, norm(x.title), false, iso(x.due));
   }
   let done = 0;
   for (const x of r.completed ?? []) {
@@ -157,12 +175,11 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
   if (twoWay) {
     // 미리알림에서 온 할 일은 다시 넣지 않는다(원래 미리알림이 끝났거나 지워졌으면 중복이 된다)
     for (const t of store.openTodos().filter((t) => t.source !== "reminders" && !linkedTodo.has(t.id)).slice(0, PUSH_PER_RUN)) {
-      const d = t.due ? new Date(t.due) : null;
       op({
         op: "add", list: TWO_WAY_LIST, title: t.title, priority: ({ 1: 1, 2: 5, 3: 9 } as Record<number, number>)[t.priority] ?? 0,
-        ...(d ? { due: d.toISOString(), dueHasTime: !!(d.getHours() || d.getMinutes()) } : {}),
+        ...(t.due ? dueOp(t.due) : {}),
         ...(t.link?.startsWith("https://") ? { url: t.link } : {}),
-      }, (res) => { if (res.id) saveLink(t.id, res.id, t.title, false); });
+      }, (res) => { if (res.id) saveLink(t.id, res.id, norm(t.title), false, t.due ?? null); });
     }
   }
   let wrote = 0;
@@ -170,6 +187,9 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     const w = await run(["write", JSON.stringify(ops)]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
     if (!w?.ok) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(w?.error ?? "실패")}`, trashed, added_: added };
     (w.results ?? []).forEach((res: any, i: number) => { if (res?.ok && after[i]) { after[i](res); wrote++; } });
+    // 못 쓴 것(읽기 전용 목록 등)은 짝을 그대로 둬서 다음 번에 다시 한다. 하나도 못 썼으면 알린다(데몬은 한 번만 로그)
+    const fail = (w.results ?? []).find((res: any) => res && !res.ok && !res.missing);
+    if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, added_: added };
   }
   return { added: added.length, done, ok: true, wrote, trashed, added_: added };
 }
