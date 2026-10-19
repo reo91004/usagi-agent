@@ -55,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
 import { agentRules } from "./agent-rules.ts";
 import { directivesView } from "./directives.ts";
-import { appleStatus, ekRun, eventkitAvailable, setAppleFlags, syncReminders } from "./eventkit.ts";
+import { appleStatus, ekRun, eventkitAvailable, importantEvents, setAppleFlags, syncReminders, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { agyPrewarm, agyWarm, BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
@@ -208,6 +208,14 @@ if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고
 
 // 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다·↻ 새로고침 때 할 일과 맞춘다(맥 안 DB 만). 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
 let applePending = false, appleError: string | undefined, remindersBusy = false, remindersAgain = false, remindersWarned = false;
+// 개요 「꼭 챙길 것」(#279): 긴급 미리알림(맞출 때마다)과 「중요」 캘린더 일정(회의 동기화 30분·↻ 때, 맥 안 DB 만). 메모리에만, 바뀌면 패널을 다시 그린다
+let urgent = new Map<string, UrgentReminder>(), important: ImportantEvent[] = [];
+const calLocal = () => conns.calendar.mode === "api" && !!(conns.calendar as any).local;
+async function syncImportant() {
+  if (!calLocal() || !eventkitAvailable()) return;
+  const next = await importantEvents();
+  if (next && JSON.stringify(next) !== JSON.stringify(important)) { important = next; bus.dashboardChanged(); }
+}
 async function syncRemindersNow() {
   if (!cfg.appleReminders || !eventkitAvailable()) return;
   if (remindersBusy) { remindersAgain = true; return; }
@@ -216,8 +224,11 @@ async function syncRemindersNow() {
     const r = await syncReminders(store, undefined, undefined, !!cfg.remindersTwoWay);
     if (!r.ok) { if (!remindersWarned) console.warn(`[reminders] ${r.error}`); remindersWarned = true; return; }
     remindersWarned = false;
+    const urgentNow = new Map((r.urgent ?? []).map((u) => [u.id, u]));
+    const urgentChanged = JSON.stringify([...urgentNow]) !== JSON.stringify([...urgent]);
+    urgent = urgentNow;
     if (r.added || r.done || r.wrote || r.trashed) console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개 · 미리알림에 쓴 것 ${r.wrote ?? 0}개 · 미리알림에서 지워 휴지통 ${r.trashed ?? 0}개`);
-    if (r.added || r.done || r.wrote || r.trashed || r.edited) bus.dashboardChanged(); // 제목·마감만 바뀌어도 패널을 다시 그린다
+    if (r.added || r.done || r.wrote || r.trashed || r.edited || urgentChanged) bus.dashboardChanged(); // 제목·마감만 바뀌어도 패널을 다시 그린다
   } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
   finally { remindersBusy = false; if (remindersAgain) { remindersAgain = false; void syncRemindersNow(); } }
 }
@@ -254,6 +265,8 @@ await bus.listen(cfg.port, {
     const dash = await agent.dashboard();
     return {
     ...dash,
+    todos: cfg.appleReminders && urgent.size ? dash.todos.map((t) => (urgent.has(t.id) ? { ...t, urgent: urgent.get(t.id) } : t)) : dash.todos, // 긴급 미리알림 표시
+    important: calLocal() ? important : [],
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
     ...(() => { const r = researchSummary(cfg, store, new Date(), tmuxSeen, dash.researchProjects); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
@@ -291,7 +304,7 @@ await bus.listen(cfg.port, {
         if ((o.calendar && !cal) || (o.reminders && !rem)) appleError = "macOS 권한을 받지 못했어요. 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림에서 우사기를 켜 주세요";
         setAppleFlags(join(HOME_DIR, "config.json"), { ...(cal ? { calendar: true } : {}), ...(rem ? { reminders: true } : {}) });
         if (rem) { cfg.appleReminders = true; void syncRemindersNow(); }
-        if (cal && !reloadConnectors().changed && calendar.enabled) calendar.sync().catch(() => {}); // 이미 연결돼 있던 것을 다시 허락함(앱 업데이트 뒤) → 바로 가져온다
+        if (cal && !reloadConnectors().changed && calendar.enabled) { calendar.sync().catch(() => {}); void syncImportant(); } // 이미 연결돼 있던 것을 다시 허락함(앱 업데이트 뒤) → 바로 가져온다
         pushStatus();
         bus.dashboardChanged();
       }).catch((e) => { appleError = String(e?.message ?? e).slice(0, 200); }).finally(() => { applePending = false; });
@@ -499,13 +512,13 @@ const slackTick = asRoutine(safe("slack-ingest", async () => {
   await safe("slack-todos", () => agent.slackTodosNow())(); // 새 DM·멘션은 바로 할 일로(정기 브리핑을 기다리지 않는다)
 }));
 
-// ↻ 새로고침(패널): 미리알림 맞추기(맥 안 DB 라 모델·네트워크 없이 먼저) → 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
+// ↻ 새로고침(패널): 미리알림·중요 일정 맞추기(맥 안 DB 라 모델·네트워크 없이 먼저) → 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
 // 새 할 일은 「할 일 추가했어요」 말풍선(reactions.newTodos)으로 뜬다. 동시에 눌러도 한 번만
 let refreshing: Promise<void> | undefined;
 const refreshAll = () => (refreshing ??= (async () => {
   void pollJobHosts(true).then(() => bus.dashboardChanged()); // 서버 tmux·usagi-run 도 지금(모델 없이 되는 일이라 먼저)
   const before = new Set(store.openTodos().map((t) => t.id));
-  await syncRemindersNow();
+  await Promise.all([syncRemindersNow(), syncImportant()]);
   if (!modelWorkAllowed(cfg)) { bus.bubble({ id: "refresh", text: WAIT_SETUP, kind: "info", ttlMs: 10e3 }); return; }
   bus.bubble({ id: "refresh", text: phrase("refresh_prog"), kind: "info", ttlMs: 60e3 });
   await slackTick();
@@ -715,7 +728,7 @@ const stopCalendar = asRoutine(calendar.schedule.bind(calendar))((m, text, mins)
   bus.activity.startDance(8000);
   const detail = alertDetail(m);
   bus.bubble({ id: `meeting:${m.id}@${m.start}#${mins}`, text, kind: "todo", ttlMs: Math.max(60e3, Date.parse(m.start) - Date.now()), link: m.link ?? m.webLink, ...(detail ? { detail } : {}) });
-}, (r) => console.log("[calendar]", JSON.stringify({ meetings: r.meetings, events: r.events, calls: r.calls, errors: r.errors, costUsd: r.costUsd })));
+}, (r) => { console.log("[calendar]", JSON.stringify({ meetings: r.meetings, events: r.events, calls: r.calls, errors: r.errors, costUsd: r.costUsd })); void syncImportant(); });
 
 // 설치 마법사를 막 마쳤을 때(PUT /settings onboarded: true): 시작할 때 하던 첫 정리를 지금 한 번
 function onboardedNow() {

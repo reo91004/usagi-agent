@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, SECTIONS, navGroups, shapeMeetings, splitHost } from '../src/dashboard.js';
+import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, SECTIONS, navGroups, shapeMeetings, shapeImportant, splitHost } from '../src/dashboard.js';
 
 const NOW = Date.parse('2026-10-09T05:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -89,6 +89,43 @@ test('shapeMeetings: 오늘 시작하는 일정만, 시작 순, 끝난 건 past,
   assert.equal(r[0].link, null);
   assert.equal(r[1].link, 'https://teams.microsoft.com/x');
   assert.deepEqual(shapeMeetings(undefined, now), []);
+});
+
+test('shapeImportant: 이 맥 날짜로 D-day, 오늘·진행 중·여러 날·해 넘김, 끝난 건 뺌, 시작 순', () => {
+  const now = new Date(2026, 9, 19, 15, 0).getTime();
+  const at = (y, mo, d, h = 0, m = 0) => new Date(y, mo - 1, d, h, m).toISOString();
+  const r = shapeImportant([
+    { id: 'far', title: '졸업 심사', start: at(2027, 1, 5), end: at(2027, 1, 6), allDay: true },
+    { id: 'today', title: '발표', start: at(2026, 10, 19, 17), end: at(2026, 10, 19, 18), allDay: false },
+    { id: 'trip', title: '학회 출장', start: at(2026, 10, 18), end: at(2026, 10, 21), allDay: true },
+    { id: 'near', title: '논문 마감', start: at(2026, 10, 22, 23, 59), end: at(2026, 10, 23), allDay: false },
+    { id: 'soon', title: '중간 보고', start: at(2026, 10, 30), end: at(2026, 10, 31), allDay: true },
+    { id: 'gone', title: '끝남', start: at(2026, 10, 19, 9), end: at(2026, 10, 19, 10), allDay: false },
+    { id: 'x', title: '', start: at(2026, 10, 25), end: at(2026, 10, 26), allDay: true },
+  ], now);
+  assert.deepEqual(r.map((e) => [e.title, e.label, e.tone, e.when]), [
+    ['학회 출장', '진행 중', 'now', '10월 18일 (일) ~ 10월 20일 (화)'],
+    ['발표', 'D-DAY', 'now', '10월 19일 (월) · 17:00'],
+    ['논문 마감', 'D-3', 'near', '10월 22일 (목) · 23:59'],
+    ['중간 보고', 'D-11', 'soon', '10월 30일 (금)'],
+    ['졸업 심사', 'D-78', 'far', '2027년 1월 5일 (화)'],
+  ]);
+  assert.deepEqual(shapeImportant(undefined, now), []);
+});
+
+test('shapeDashboard: 긴급 미리알림은 할 일 중 urgent, 날짜 이른 순·날짜 없으면 뒤·같으면 높음 먼저', () => {
+  const due = (d) => new Date(2026, 9, d, 9).toISOString();
+  const vm = shapeDashboard({ todos: [
+    { id: 'a', title: '날짜 없음', priority: 3, urgent: { list: '긴급', high: false } },
+    { id: 'b', title: '보통 일', priority: 1 },
+    { id: 'c', title: '모레', priority: 2, due: due(21), urgent: { list: '연구', high: false } },
+    { id: 'd', title: '날짜 없음 높음', priority: 3, urgent: { list: '할 일', high: true } },
+    { id: 'e', title: '내일', priority: 2, due: due(20), urgent: { list: '연구', high: true } },
+  ] });
+  assert.deepEqual(vm.urgent.map((t) => t.id), ['e', 'c', 'd', 'a']);
+  assert.deepEqual(vm.urgent[0].urgent, { list: '연구', high: true });
+  assert.deepEqual(shapeDashboard(null).urgent, []);
+  assert.deepEqual(shapeDashboard(null).important, []);
 });
 
 test('normalizeSection', () => {

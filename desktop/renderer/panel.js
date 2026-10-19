@@ -384,6 +384,30 @@ function meetingRow(m) {
     m.link ? h('a.small', { href: m.link, text: '참여' }) : null);
 }
 
+// 꼭 챙길 것(#279): 「중요」 캘린더 일정(D-day) · 긴급 미리알림(체크하면 끝냄, 줄을 누르면 할 일 탭에서 펼침). 개요와 할 일 탭 맨 위에 같이 보인다.
+// 칸마다 처음 3개(오늘 일정·할 일 목록이 밀리지 않게), 나머지는 「N개 더 보기」(펼침은 두 탭이 같이 쓴다). 둘 다 없으면 안 그린다
+const IMP_MAX = 3;
+const impOpen = { ev: false, rem: false };
+function importantSection() {
+  const { important, urgent } = vm;
+  const col = (key, title, list, row) => (list.length ? h('div', null,
+    h('h2', null, h('span', { text: `${title} ` }), h('span.muted.small', { text: `${list.length}개` })),
+    h('div.card.imp-card', null, (impOpen[key] ? list : list.slice(0, IMP_MAX)).map(row),
+      list.length > IMP_MAX ? h('button.ghost.small.imp-more', { type: 'button', text: impOpen[key] ? '접기' : `${list.length - IMP_MAX}개 더 보기`, onclick: () => { impOpen[key] = !impOpen[key]; renderAll(); } }) : null)) : null);
+  if (!important.length && !urgent.length) return null;
+  return h('div.duo', null,
+    col('ev', '중요 일정', important, (e) => h('div.imp-row', null,
+      h(`span.dday.${e.tone}`, { text: e.label }),
+      h('div.imp-main', null, h('div.imp-title', { text: e.title, title: e.title }), h('div.imp-sub', { text: e.when })))),
+    col('rem', '긴급 미리알림', urgent, (t) => h('div.imp-row', null,
+      h('input.check', { type: 'checkbox', 'aria-label': `완료: ${t.title}`, title: '완료', disabled: t.pending, onchange: () => completeTodo(t) }),
+      h('button.imp-open', { type: 'button', title: '할 일에서 열기', onclick: () => { goto('todos'); if (openId !== t.id) toggleDetail(t.id); } },
+        h('div.imp-main', null,
+          h('div.imp-title', { title: t.title }, t.urgent.high ? h('span.imp-bang', { text: '!!! ', title: '우선순위 높음' }) : null, t.title),
+          t.urgent.list ? h('div.imp-sub', { text: t.urgent.list }) : null),
+        dueBadge(t)))));
+}
+
 const PROPOSAL_LABEL = { pending: '대기', approved: '승인', held: '보류', running: '진행 중', done: '완료', failed: '실패' };
 const PROPOSAL_CHIP = { pending: 'accent', running: 'warn', done: 'ok', failed: 'err' };
 
@@ -401,17 +425,19 @@ function renderOverview() {
       stat(focusView.todayText(), '오늘 집중', null, false, true),
       stat(stats.pendingProposals, '대기 중 제안', null)),
     connected ? null : h('div.card.empty', { text: `${who()}가 꺼져 있어요. 켜지면 여기 채워져요.` }),
+    h('div.duo', null, // 오늘 일정 | 오늘 할 일(일정이 없으면 할 일이 한 줄을 다 쓴다), 그 아래 꼭 챙길 것
+      meetings.length ? h('div', null, h('h2', { text: '오늘 일정' }), h('div.card.meetings', null, meetings.map(meetingRow))) : null,
+      h('div', null,
+        h('h2', null, h('span', { text: '오늘 할 일 ' }),
+          h('span.chip.click', { text: openToday.length ? `남은 ${openToday.length}개` : '아직 없음', role: 'button', onclick: () => goto('todos') })),
+        openToday.length
+          ? h('div.card.today-short', null,
+            openToday.slice(0, 5).map((it) => h('button.today-item', { type: 'button', onclick: () => goto('todos') },
+              h('span.ti-dot', { 'aria-hidden': 'true' }), h('span.ti-title', { text: it.title }))),
+            openToday.length > 5 ? h('div.muted.small.ti-more', { text: `외 ${openToday.length - 5}개` }) : null)
+          : h('div.card.empty.today-none', { text: '할 일 탭에서 오늘 하려고 고른 일이 여기 보여요' }))),
+    importantSection(),
     researchSummaryCard(),
-    meetings.length ? h('h2', { text: '오늘 일정' }) : null,
-    meetings.length ? h('div.card.meetings', null, meetings.map(meetingRow)) : null,
-    h('h2', null, h('span', { text: '오늘 할 일 ' }),
-      h('span.chip.click', { text: openToday.length ? `남은 ${openToday.length}개` : '아직 없음', role: 'button', onclick: () => goto('todos') })),
-    openToday.length
-      ? h('div.card.today-short', null,
-        openToday.slice(0, 5).map((it) => h('button.today-item', { type: 'button', onclick: () => goto('todos') },
-          h('span.ti-dot', { 'aria-hidden': 'true' }), h('span.ti-title', { text: it.title }))),
-        openToday.length > 5 ? h('div.muted.small.ti-more', { text: `외 ${openToday.length - 5}개` }) : null)
-      : null,
     h('h2', null, h('span', { text: '최근 브리핑 ' }),
       h('button.ghost.small', { type: 'button', text: '지금 브리핑', onclick: async (ev) => {
         const b = ev.currentTarget; b.disabled = true; b.textContent = '브리핑 중…';
@@ -1586,6 +1612,8 @@ function todoListKids() {
   // 끄는 동안엔 빈 우선순위 칸도 보여서 거기로 옮길 수 있게
   const groups = dragGroups ? withEmptyGroups(vm.todoGroups) : vm.todoGroups;
   const kids = [addForm(), rulesBar()];
+  const imp = importantSection();
+  if (imp) kids.push(imp);
   if (todoMsg) kids.push(h(`div.result.${todoMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: todoMsg.text }));
   if (!raw && error) kids.push(h('div.empty', { text: '불러오지 못함' }));
   // 맨 위 「오늘」은 비어도 보인다(고르는 법 안내)

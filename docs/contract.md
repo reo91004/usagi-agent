@@ -168,6 +168,8 @@ type Bubble = {
   - `projects[]`: `name`, `path`, `lastActive`, `sessions24h`, `lastTitle`, `lastPrompt`, `branch`, `commitsToday`, `recentCommits`, `hidden`
   - `todos[]`(아래), `recentDone[]`, `proposals[]`, `today{date,asked,items}`
   - `connectors[]{cap,label,mode,ready,detail,doc}`, `meetings[]{id,subject,start,end,link?}`, `todoRules[]`
+  - `important[]{id,title,start,end,allDay}`: 이 Mac 캘린더 중 이름에 「중요」가 든 캘린더의 1년 안 일정(되풀이는 가장 가까운 한 번, 시작 순, 최대 50). 이 Mac 캘린더를 연결하지 않았으면 빈 배열. 개요 「중요 일정」 D-day 칸이 쓴다.
+  - 미리알림 할 일 중 우선순위 「높음」(1~4)이거나 목록·제목에 「긴급」이 든 것은 `todos[].urgent{list,high}` 가 붙는다(「우사기 비서」 목록 제외). 개요 「긴급 미리알림」 칸이 쓴다.
   - `projects[]` 에는 연구 프로젝트에 속한 폴더에 `hiddenByResearch: true` 가 붙는다.
   - `researchProjects[]`: 연구 탭 목록. `key`(대표 폴더 키: 이 Mac 은 레포 루트 절대 경로, 서버는 `서버:/경로`), `kind`(`research`|`project`|null=후보), `name`, `folders[]{path,onMac?}`, `subs[]{venue,stage,deadline?,at}`, `url?`, `lastActive`, `running[]`(tmux 에서 도는 AI CLI 는 `ai`=도구 이름이 붙고 실험이 아니다), `recent{done,failed,lost,items}`(30일), `sessions[]{title,tool,at}`(30일 중 최근 5개, 작업 기록을 읽을 때만). 후보는 30일 안의 job, 지금 도는 tmux(AI CLI 제외), 30일 안의 세션 2개 이상 중 하나가 있는 폴더로 최대 8개, kind `none` 은 빠진다. 작업 폴더 `projects[]` 는 7일 창 그대로다.
   - `research.jobs[]` 와 `research.tmux[host].sessions[]` 에는 `label`(실험 이름), `project?`(속한 key), `ai?`(첫 단어가 claude·codex·agy·gemini·aider·cursor-agent·opencode 일 때 도구 이름)가 붙는다.

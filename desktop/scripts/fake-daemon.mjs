@@ -63,6 +63,16 @@ const fakeRuns = (D.createRuns ?? createFakeRuns)(emit, {
 const startChatRun = (o) => fakeRuns.chatRun?.(o) ?? { id: null, done() {}, fail() {} };
 const hasRun = (id) => !!fakeRuns.has?.(id);
 const kstHHMM = (d) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+// 「중요」 캘린더 일정(GET /dashboard important): 오늘 0시 기준 며칠 뒤
+const dayAt = (d, h = 0, m = 0) => { const x = new Date(); x.setHours(h, m, 0, 0); x.setDate(x.getDate() + d); return x.toISOString(); };
+const fakeImportant = () => D.important?.() ?? [
+  { id: 'ek:i1', title: '학회 출장', start: dayAt(-1), end: dayAt(2), allDay: true },
+  { id: 'ek:i2', title: '연구실 세미나 발표', start: dayAt(0, 16), end: dayAt(0, 17), allDay: false },
+  { id: 'ek:i3', title: 'ICASSP 논문 마감', start: dayAt(3, 23, 59), end: dayAt(4), allDay: false },
+  { id: 'ek:i4', title: '중간 보고', start: dayAt(11), end: dayAt(12), allDay: true },
+  { id: 'ek:i5', title: '졸업 논문 심사', start: dayAt(78), end: dayAt(79), allDay: true },
+  { id: 'ek:i6', title: '엄마 생신', start: dayAt(120), end: dayAt(121), allDay: true },
+];
 const fakeMeetings = () => D.meetings?.() ?? [
   { id: 'meet1', subject: '디자인 리뷰', start: new Date(Date.now() + 10 * 60e3).toISOString(), end: new Date(Date.now() + 70 * 60e3).toISOString(), link: 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_FAKE%40thread.v2/0', location: 'Room_A(8P)' },
   { id: 'meet2', subject: '1:1', start: new Date(Date.now() + 180 * 60e3).toISOString(), end: new Date(Date.now() + 210 * 60e3).toISOString() },
@@ -141,7 +151,9 @@ let todos = D.todos ?? [
   { id: 'slack:3', title: '#cy-agent 어제 질문에 답장', source: 'slack', link: 'slack://channel?team=T1&id=C1', priority: 2 },
   { id: 'cal:4', title: '내일 1:1 안건 적기', source: 'calendar', link: null, priority: 3 },
   { id: 'reminder:r1', title: '쿠팡와우 해지', source: 'reminders', priority: 3, note: '미리알림 「할 일」', due: new Date(Date.now() + 4 * 864e5).toISOString() },
-  { id: 'reminder:r2', title: '세금 서류 제출', source: 'reminders', priority: 1, note: '미리알림 「할 일」', due: new Date(Date.now() - 864e5).toISOString() },
+  { id: 'reminder:r2', title: '세금 서류 제출', source: 'reminders', priority: 1, note: '미리알림 「할 일」', due: new Date(Date.now() - 864e5).toISOString(), urgent: { list: '할 일', high: true } },
+  { id: 'reminder:r3', title: '서버 사용 연장 신청 긴급', source: 'reminders', priority: 2, note: '미리알림 「연구실」', due: new Date(Date.now() + 2 * 864e5).toISOString(), urgent: { list: '연구실', high: false } },
+  { id: 'reminder:r4', title: '학회 등록비 영수증 제출', source: 'reminders', priority: 2, note: '미리알림 「긴급」', urgent: { list: '긴급', high: true } },
   { id: 'user:u1', title: '직접 적은 할 일', source: 'user', priority: 2 },
   { id: 'local:5', title: '노트 레포 정리', source: 'local', priority: 4 },
   { id: 'mail:news', title: '팀 뉴스레터 10월호 훑어보기', source: 'mail', priority: 4, appliedRule: { id: 'rule:seed0', text: '앞으로 뉴스레터는 백로그로' } },
@@ -217,6 +229,7 @@ function dashboard() {
     trash: trash.slice(0, 50).map(({ id, title, priority, source, trashedAt }) => ({ id, title, priority, source, trashedAt })),
     trashCount: trash.length,
     meetings: fakeMeetings(),
+    important: fakeImportant(),
     connectors: fakeConnectors(),
     research: {
       hosts: ['pacl-208', 'pacl-reo'],

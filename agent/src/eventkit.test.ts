@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Store } from "./store.ts";
 import { Bus } from "./bus.ts";
 import { resolveConnectors } from "./connectors.ts";
-import { TWO_WAY_LIST, ekToCalEvent, eventkitSource, reminderPriority, reminderTodo, setAppleFlags, syncReminders, type EkRun } from "./eventkit.ts";
+import { IMPORTANT_CAL, TWO_WAY_LIST, ekToCalEvent, eventkitSource, importantEvents, reminderPriority, reminderTodo, setAppleFlags, syncReminders, urgentReminders, type EkRun } from "./eventkit.ts";
 
 const NOW = new Date("2026-10-17T03:00:00Z"); // KST 12:00
 
@@ -22,6 +22,45 @@ test("ekToCalEvent·eventkitSource: 응답·주최·회의 링크·참석자, �
   assert.deepEqual(calls[0], ["events", "2026-10-16T15:00:00Z", "2026-10-18T15:00:00Z"]);
   const no = await eventkitSource(async () => ({ ok: false, error: "not-granted" }))({} as any, { from: "a", to: "b" });
   assert.deepEqual([no.ok, no.errors], [false, 1]);
+});
+
+test("importantEvents: 「중요」 캘린더만, 되풀이는 가장 가까운 한 번, 취소·끝난 것 빼고, 오늘 0시~1년을 묻고, 실패면 null", async () => {
+  const ev = (id: string, start: string, end: string, more: Record<string, unknown> = {}) => ({ id, uid: `U-${id}`, title: id, start, end, allDay: false, cancelled: false, calendar: "중요 일정", ...more });
+  const calls: string[][] = [];
+  const run: EkRun = async (args) => {
+    calls.push(args);
+    return { ok: true, events: [
+      ev("발표", "2026-10-30T05:00:00Z", "2026-10-30T06:00:00Z"),
+      ev("생일", "2027-03-01T15:00:00Z", "2027-03-02T15:00:00Z", { uid: "BD", allDay: true }),
+      ev("생일", "2026-11-01T15:00:00Z", "2026-11-02T15:00:00Z", { uid: "BD", allDay: true }), // 같은 되풀이 일정의 더 가까운 회차
+      ev("취소", "2026-10-20T05:00:00Z", "2026-10-20T06:00:00Z", { cancelled: true }),
+      ev("지남", "2026-10-17T00:00:00Z", "2026-10-17T01:00:00Z"),
+      ev("랩 미팅", "2026-10-21T05:00:00Z", "2026-10-21T06:00:00Z", { calendar: "연구실" }), // 옛 도우미(이름 인자를 모름)가 준 다른 캘린더
+    ] };
+  };
+  const got = await importantEvents(run, NOW);
+  assert.deepEqual(got!.map((e) => [e.title, e.start, e.allDay]), [["발표", "2026-10-30T05:00:00.000Z", false], ["생일", "2026-11-01T15:00:00.000Z", true]]);
+  assert.equal(got![0].id, "ek:발표");
+  const [cmd, from, to, name] = calls[0];
+  assert.deepEqual([cmd, name], ["events", IMPORTANT_CAL]);
+  assert.equal(new Date(from).getTime(), new Date(2026, 9, 17).getTime()); // 이 맥의 오늘 0시
+  assert.equal(new Date(to).getTime(), new Date(2027, 9, 17).getTime());
+  assert.equal(await importantEvents(async () => ({ ok: false, error: "not-granted" }), NOW), null);
+  assert.equal(await importantEvents(async () => { throw new Error("x"); }, NOW), null);
+});
+
+test("urgentReminders·syncReminders: 우선순위 높음(1~4)이나 목록·제목의 「긴급」, 우사기 목록은 뺀다", async () => {
+  const open = [
+    { id: "A", title: "보고서", list: "연구", priority: 1 },
+    { id: "B", title: "서버 연장 긴급", list: "할 일", priority: 0 },
+    { id: "C", title: "장보기", list: "긴급", priority: 9 },
+    { id: "D", title: "우유", list: "장보기", priority: 5 },
+    { id: "E", title: "할 일 P1", list: TWO_WAY_LIST, priority: 1 },
+  ];
+  const want = [{ id: "reminder:A", list: "연구", high: true }, { id: "reminder:B", list: "할 일", high: false }, { id: "reminder:C", list: "긴급", high: false }];
+  assert.deepEqual(urgentReminders(open), want);
+  const r = await syncReminders(new Store(":memory:"), async () => ({ ok: true, open, completed: [] }), NOW);
+  assert.deepEqual(r.urgent, want);
 });
 
 test("reminderPriority·reminderTodo: 날짜가 있으면 날짜로(오늘·지남 P1, 7일 안 P2), 없으면 높음·보통 P2, 나머지 P3, 메모에 목록·마감", () => {

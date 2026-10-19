@@ -265,6 +265,26 @@ h2 .muted, h2 .small { font-weight: 400; }
 .ti-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--faint); }
 .ti-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ti-more { padding: 4px; }
+/* 개요·할 일 두 칸 줄(오늘 일정 | 오늘 할 일, 중요 일정 | 긴급 미리알림): 넓으면 두 칸, 좁으면 한 칸, 하나만 있으면 꽉 차게 */
+.duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0 10px; }
+.duo > * { min-width: 0; }
+.today-none { padding: var(--s4); font-size: var(--fs-sm); }
+/* 꼭 챙길 것(#279). D-day 색: 오늘 빨강 · 3일 안 옅은 빨강 · 2주 안 주황 · 그 뒤 보라 */
+.imp-card { padding: 6px var(--s3); }
+.imp-row { display: flex; align-items: center; gap: var(--s3); min-width: 0; padding: 7px 4px; border-top: 1px solid var(--line); }
+.imp-row:first-child { border-top: 0; }
+.imp-open { display: flex; flex: 1; align-items: center; gap: var(--s3); min-width: 0; margin: -3px -4px -3px -6px; padding: 3px 4px 3px 6px; border-radius: var(--r-sm); background: none; text-align: left; }
+.imp-open:hover:not(:disabled) { background: var(--hover); filter: none; }
+.imp-main { flex: 1; min-width: 0; }
+.imp-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.imp-sub { margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.imp-bang { color: var(--p1); font-weight: 700; letter-spacing: -0.04em; }
+.imp-row .chip.due { flex: none; }
+.imp-more { display: block; margin: 2px auto 4px; }
+.dday { flex: none; min-width: 54px; padding: 4px 6px; border-radius: var(--r-md); text-align: center; font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; background: var(--accent-soft); color: var(--accent); }
+.dday.now { background: var(--p1); color: #fff; }
+.dday.near { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.dday.soon { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-fg); }
 .proposal { display: flex; align-items: center; gap: var(--s2); padding: 6px 0; border-top: 1px solid var(--line); }
 .proposal:first-child { border-top: 0; }
 .proposal .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -595,7 +615,7 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row .t { user-select: none; -webkit-user-select: none; }
 .todo.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .todo.row.open { background: var(--code); }
-.todo.row .check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--ok); }
+.todo.row .check, .imp-row .check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--ok); }
 .todo .chip.mine { flex: none; }
 .todo .chip { flex: none; }
 #sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select,
