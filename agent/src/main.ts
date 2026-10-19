@@ -206,7 +206,7 @@ onBrainSwitch(({ from, to, reason }) => { // 한도·인증으로 다음 뇌로 
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 
-// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다 할 일과 맞춘다(맥 안 DB 만). 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
+// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다·↻ 새로고침 때 할 일과 맞춘다(맥 안 DB 만). 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
 let applePending = false, appleError: string | undefined, remindersBusy = false, remindersAgain = false, remindersWarned = false;
 async function syncRemindersNow() {
   if (!cfg.appleReminders || !eventkitAvailable()) return;
@@ -216,7 +216,8 @@ async function syncRemindersNow() {
     const r = await syncReminders(store, undefined, undefined, !!cfg.remindersTwoWay);
     if (!r.ok) { if (!remindersWarned) console.warn(`[reminders] ${r.error}`); remindersWarned = true; return; }
     remindersWarned = false;
-    if (r.added || r.done || r.wrote || r.trashed) { console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개 · 미리알림에 쓴 것 ${r.wrote ?? 0}개 · 미리알림에서 지워 휴지통 ${r.trashed ?? 0}개`); bus.dashboardChanged(); }
+    if (r.added || r.done || r.wrote || r.trashed) console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개 · 미리알림에 쓴 것 ${r.wrote ?? 0}개 · 미리알림에서 지워 휴지통 ${r.trashed ?? 0}개`);
+    if (r.added || r.done || r.wrote || r.trashed || r.edited) bus.dashboardChanged(); // 제목·마감만 바뀌어도 패널을 다시 그린다
   } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
   finally { remindersBusy = false; if (remindersAgain) { remindersAgain = false; void syncRemindersNow(); } }
 }
@@ -498,16 +499,16 @@ const slackTick = asRoutine(safe("slack-ingest", async () => {
   await safe("slack-todos", () => agent.slackTodosNow())(); // 새 DM·멘션은 바로 할 일로(정기 브리핑을 기다리지 않는다)
 }));
 
-// ↻ 새로고침(패널): 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 미리알림 맞추기 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
+// ↻ 새로고침(패널): 미리알림 맞추기(맥 안 DB 라 모델·네트워크 없이 먼저) → 슬랙을 지금 다시 훑고 → 새 DM·멘션을 할 일로 → 브리핑(메일·일정·Jira 등)도 간격 상관없이 지금.
 // 새 할 일은 「할 일 추가했어요」 말풍선(reactions.newTodos)으로 뜬다. 동시에 눌러도 한 번만
 let refreshing: Promise<void> | undefined;
 const refreshAll = () => (refreshing ??= (async () => {
   void pollJobHosts(true).then(() => bus.dashboardChanged()); // 서버 tmux·usagi-run 도 지금(모델 없이 되는 일이라 먼저)
+  const before = new Set(store.openTodos().map((t) => t.id));
+  await syncRemindersNow();
   if (!modelWorkAllowed(cfg)) { bus.bubble({ id: "refresh", text: WAIT_SETUP, kind: "info", ttlMs: 10e3 }); return; }
   bus.bubble({ id: "refresh", text: phrase("refresh_prog"), kind: "info", ttlMs: 60e3 });
-  const before = new Set(store.openTodos().map((t) => t.id));
   await slackTick();
-  await syncRemindersNow();
   await agent.runBriefing();
   if (!store.openTodos().some((t) => !before.has(t.id))) bus.bubble({ id: "refresh", text: phrase("refresh_none"), kind: "info", ttlMs: 6e3 });
 })().finally(() => { refreshing = undefined; }));

@@ -1,6 +1,6 @@
 // 이 Mac 의 캘린더·미리알림(EventKit, #53). 앱에 든 Swift 도우미(desktop/native/usagi-eventkit.swift → Resources/bin/usagi-eventkit)를 부른다.
 //   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS 주소와 합쳐진다)
-//   미리알림: config appleReminders → 10분마다 안 끝난 것은 할 일로(reminder:<id>), 미리알림에서 끝낸 것은 할 일도 끝낸다.
+//   미리알림: config appleReminders → 10분마다 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝낸다.
 //     remindersTwoWay 를 켜면 양방향: 우사기 할 일도 미리알림 「우사기 비서」 목록에 쓰고, 이어 둔 짝(reminder_links)끼리 제목·끝냄·지움을 맞춘다
 //   도우미가 맥 안 DB 만 다뤄서 네트워크를 쓰지 않는다. 한 번에 수십 ms(쓸 게 있으면 도우미를 한 번 더 부른다)
 import { execFile } from "node:child_process";
@@ -65,14 +65,14 @@ export function eventkitSource(run: EkRun = ekRun): CalendarSource {
 
 // ── 미리알림 → 할 일 ──────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, "0");
-// 마감이 오늘까지(지난 것 포함)거나 「높음」이면 P1, 7일 안이거나 「보통」이면 P2, 나머지 P3
+// 날짜가 있으면 날짜로(오늘까지·지난 것 P1, 7일 안 P2, 그 뒤 P3), 없으면 중요도로(「높음」·「보통」 P2, 나머지 P3).
+// 묶음 이름(오늘 꼭·이번 주·나중에)이 날짜 기준이라, 중요도로 올리면 마감이 먼 일이 오늘 마감처럼 보인다
 export function reminderPriority(r: { due?: string; priority?: number }, now = new Date()): number {
   const p = Number(r.priority) || 0; // Apple: 1~4 높음, 5 보통, 6~9 낮음, 0 없음
   const due = r.due ? Date.parse(r.due) : NaN;
   const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  if ((Number.isFinite(due) && due < endToday) || (p >= 1 && p <= 4)) return 1;
-  if ((Number.isFinite(due) && due < endToday + 6 * 86400e3) || p === 5) return 2;
-  return 3;
+  if (Number.isFinite(due)) return due < endToday ? 1 : due < endToday + 6 * 86400e3 ? 2 : 3;
+  return p >= 1 && p <= 5 ? 2 : 3;
 }
 export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsertTodo"]>[0] | null {
   const title = String(r?.title ?? "").replace(/\s+/g, " ").trim();
@@ -87,7 +87,11 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
   } as Parameters<Store["upsertTodo"]>[0];
 }
 
-export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number };
+// 메모 앞의 「미리알림 「목록」 · 마감 …」만 새로 쓴다(마감을 옮기면 옛 날짜가 남지 않게). 할 일 규칙이 덧붙인 메모는 그대로
+const AUTO_NOTE = /^미리알림 「[^」]*」(?: · 마감 \d+월 \d+일(?: \d\d:\d\d)?)?/;
+const freshNote = (cur?: string, note?: string) => (note && cur && AUTO_NOTE.test(cur) ? cur.replace(AUTO_NOTE, () => note) : undefined);
+
+export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number };
 export const TWO_WAY_LIST = "우사기 비서";
 const PUSH_PER_RUN = 100; // 처음 켤 때 할 일이 많아도 도우미 인자 크기·한 번 걸리는 시간을 묶어 둔다(나머지는 다음 번에)
 // 양방향 짝: 할 일 ↔ 미리알림 id, 마지막으로 맞춘 제목·끝냄·마감, 우사기가 넣은 미리알림인지(pushed). 지난번과 달라진 쪽을 다른 쪽에 옮긴다
@@ -99,7 +103,7 @@ const iso = (s?: string | null) => (s ? new Date(s).toISOString() : null);
 // 미리알림 마감 칸: 자정이면 날짜만
 const dueOp = (due?: string | null) => { const d = due ? new Date(due) : null; return d ? { due: d.toISOString(), dueHasTime: !!(d.getHours() || d.getMinutes()) } : { due: null }; };
 
-// 한 번 맞추기: 안 끝난 것은 넣고(지운 것·사용자가 고친 우선순위는 store 가 지킨다), 7일 안에 미리알림에서 끝낸 것은 할 일도 끝낸다.
+// 한 번 맞추기: 안 끝난 것은 넣거나 제목·마감·메모를 맞추고(지운 것·사용자가 고친 칸은 store 가 지킨다), 7일 안에 미리알림에서 끝낸 것은 할 일도 끝낸다.
 // twoWay 면 그 앞에 이어 둔 짝을 맞추고(제목·끝냄·마감 모두 바뀐 쪽, 양쪽 다 바뀌었으면 우사기 쪽), 뒤에 아직 없는 우사기 할 일을 미리알림에 넣는다.
 // 우사기 휴지통에 든 할 일의 미리알림은 끝냄으로만 두고(되살리면 다시 열린다), 영구 삭제되면 우사기가 넣은 것(pushed)만 지운다(사용자가 만든 미리알림은 메모·하위 항목이 있어 남긴다)
 export async function syncReminders(store: Store, run: EkRun = ekRun, now = new Date(), twoWay = false): Promise<ReminderSync & { added_: Todo[] }> {
@@ -116,7 +120,7 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
   const dropLink = (todo: string) => store.db.prepare("DELETE FROM reminder_links WHERE todo_id = ?").run(todo);
   const ops: Record<string, unknown>[] = [], after: ((res: any) => void)[] = [];
   const op = (o: Record<string, unknown>, then: (res: any) => void) => { ops.push(o); after.push(then); };
-  let trashed = 0;
+  let trashed = 0, edited = 0; // edited: 미리알림 쪽 변화(제목·마감·끝냄·메모)로 고친 할 일 수 — 패널을 다시 그리게
 
   if (twoWay) {
     const byRid = new Map<string, any>((r.linked ?? []).map((x: any) => [x.id, x]));
@@ -145,11 +149,12 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
       let title = l.title, done = !!l.done, due = l.due;
       const tt = norm(t.title), rt = norm(x.title), tDone = t.status === "done", rDone = !!x.completed;
       if (tt !== l.title) { if (rt !== tt) set.title = t.title; title = tt; }
-      else if (rt && rt !== l.title) { store.editTodo(t.id, { title: rt }); title = rt; }
+      else if (rt && rt !== l.title) { store.editTodo(t.id, { title: rt }); title = rt; edited++; }
       if (tDone !== done) { if (rDone !== tDone) set.done = tDone; done = tDone; }
-      else if (rDone !== done) { store.editTodo(t.id, { status: rDone ? "done" : "open" }); done = rDone; }
+      else if (rDone !== done) { store.editTodo(t.id, { status: rDone ? "done" : "open" }); done = rDone; edited++; }
       if (!sameTime(t.due, l.due)) { if (!sameTime(x.due, t.due)) Object.assign(set, dueOp(t.due)); due = t.due ?? null; }
-      else if (!sameTime(x.due, l.due)) { store.setTodoDue(t.id, iso(x.due)); due = x.due ?? null; }
+      else if (!sameTime(x.due, l.due)) { store.setTodoDue(t.id, iso(x.due)); due = x.due ?? null; edited++; }
+      if (t.source === "reminders" && store.followSource(t.id, { note: freshNote(t.note, reminderTodo(x, now)?.note) })) edited++;
       if (Object.keys(set).length) op({ op: "set", id: l.rid, ...set }, () => saveLink(l.todo_id, l.rid, title, done, due, !!l.pushed));
       else if (title !== l.title || done !== !!l.done || !sameTime(due, l.due)) saveLink(l.todo_id, l.rid, title, done, due, !!l.pushed);
     }
@@ -162,6 +167,7 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     if (!t) continue;
     const res = store.upsertTodo(t, "briefing");
     if (res === "added") { const got = store.getTodo(t.id); if (got) added.push(got); }
+    else if (store.followSource(t.id, { title: t.title, note: freshNote(store.getTodo(t.id)?.note, t.note) }) || res === "updated") edited++; // 미리알림에서 고친 제목·마감
     if (!twoWay) continue;
     if (store.getTodo(t.id) && !linkedTodo.has(t.id)) { saveLink(t.id, x.id, norm(x.title), false, iso(x.due)); continue; }
     // 같은 일이 이미 열린 할 일로 있어 합쳐졌으면 그 할 일과 잇는다(안 그러면 그 할 일을 미리알림에 또 넣는다).
@@ -187,13 +193,13 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
   let wrote = 0;
   if (ops.length) {
     const w = await run(["write", JSON.stringify(ops)]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
-    if (!w?.ok) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(w?.error ?? "실패")}`, trashed, added_: added };
+    if (!w?.ok) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(w?.error ?? "실패")}`, trashed, edited, added_: added };
     (w.results ?? []).forEach((res: any, i: number) => { if (res?.ok && after[i]) { after[i](res); wrote++; } });
     // 못 쓴 것(읽기 전용 목록 등)은 짝을 그대로 둬서 다음 번에 다시 한다. 하나도 못 썼으면 알린다(데몬은 한 번만 로그)
     const fail = (w.results ?? []).find((res: any) => res && !res.ok && !res.missing);
-    if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, added_: added };
+    if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, edited, added_: added };
   }
-  return { added: added.length, done, ok: true, wrote, trashed, added_: added };
+  return { added: added.length, done, ok: true, wrote, trashed, edited, added_: added };
 }
 
 // config.json 에 켜고 끄기: calendar → connectors.calendar.local(ICS 주소는 그대로), reminders → appleReminders(끄면 양방향도), twoWay → remindersTwoWay.

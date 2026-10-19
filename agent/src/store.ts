@@ -282,11 +282,12 @@ export class Store {
     if (!cur.description && t.description && !cur.userEdited?.includes("description")) this.setTodoDetail(t.id, { description: t.description }); // 사용자가 고친(지운) 설명은 안 덮음
     if (!cur.origin && t.origin) this.setTodoDetail(t.id, { origin: t.origin });
     if (cur.status !== "open") return "skipped";
-    if (t.due !== undefined && (t.due ?? undefined) !== cur.due) this.db.prepare("UPDATE todos SET due = ? WHERE id = ?").run(t.due, t.id); // 마감은 사용자 필드가 아니라 원본 따라 맞춘다
+    const dueChanged = t.due !== undefined && (t.due ?? undefined) !== cur.due;
+    if (dueChanged) this.db.prepare("UPDATE todos SET due = ? WHERE id = ?").run(t.due ?? null, t.id); // 마감은 사용자 필드가 아니라 원본 따라 맞춘다
     const mine = new Set(cur.userEdited);
     const priority = mine.has("priority") ? cur.priority : t.priority;
     const link = mine.has("link") ? cur.link : (t.link ?? cur.link);
-    if (priority === cur.priority && link === cur.link) return "skipped";
+    if (priority === cur.priority && link === cur.link) return dueChanged ? "updated" : "skipped";
     this.db.prepare("UPDATE todos SET priority = ?, link = ?, updated = ? WHERE id = ?").run(priority, link ?? null, now(), t.id);
     this.log(t.id, cur.title, "edited", by, priority !== cur.priority ? `P${cur.priority} → P${priority}` : "링크");
     return "updated";
@@ -541,6 +542,18 @@ export class Store {
   // 마감은 사용자 필드가 아니라 원본(미리알림)을 따른다
   setTodoDue(id: string, due: string | null) {
     this.db.prepare("UPDATE todos SET due = ? WHERE id = ? AND trashed_at IS NULL").run(due, id);
+  }
+  // 원본(미리알림)에서 바뀐 제목·메모를 열린 할 일에 옮긴다. 사용자가 고친 칸은 그대로. 바꿨으면 true
+  followSource(id: string, f: { title?: string; note?: string }): boolean {
+    const cur = this.getTodo(id);
+    if (!cur || cur.status !== "open") return false;
+    const mine = new Set(cur.userEdited);
+    const title = f.title === undefined || mine.has("title") ? cur.title : f.title;
+    const note = f.note === undefined || mine.has("note") ? cur.note : f.note;
+    if (title === cur.title && note === cur.note) return false;
+    this.db.prepare("UPDATE todos SET title = ?, note = ?, updated = ? WHERE id = ?").run(title, note ?? null, now(), id);
+    if (title !== cur.title) this.log(id, title, "edited", "briefing", "제목");
+    return true;
   }
   // 브리핑·자동 처리용 상태 변경. 사용자가 상태를 직접 정한 할 일은 건드리지 않는다(force면 무시)
   setTodoStatus(id: string, status: string, opts: { force?: boolean; by?: TodoDoneBy } = {}): boolean {

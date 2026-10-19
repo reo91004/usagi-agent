@@ -655,7 +655,7 @@ button.ghost.danger-text { color: var(--err); }
 .chip.src-reminders { --src: var(--c-orange); }
 .chip.src-user { --src: var(--accent); }
 .chip.src-other { --src: var(--c-gray); }
-/* 마감 칩 */
+/* 미리알림 날짜 칩 */
 .chip.due { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .chip.due.due-today { color: var(--c-orange); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-orange) 45%, transparent); }
 .chip.due.due-late { color: var(--c-red); background: color-mix(in srgb, var(--c-red) 12%, transparent); box-shadow: none; }

@@ -122,12 +122,14 @@ test('직접 추가한 할 일의 원본 칸엔 안쪽 id 를 보이지 않는�
   assert.ok(!v.source.meta.join(' ').includes('eb08ba75'), v.source.meta.join(' '));
 });
 
-test('dueChip: 지남(빨강)·오늘 마감·「10/21 마감」, 마감이 없거나 이상하면 null', () => {
+test('dueChip: 지남(빨강)·「오늘」·「10/21」, 시각이 있으면 붙이고, 날짜가 없거나 이상하면 null', () => {
   const now = new Date(2026, 9, 17, 15).getTime();
   const at = (m, d, h = 9) => new Date(2026, m - 1, d, h).toISOString();
   assert.deepEqual(dueChip(at(10, 16, 23), now), { text: '지남', kind: 'late' });
-  assert.deepEqual(dueChip(at(10, 17, 8), now), { text: '오늘 마감', kind: 'today' }); // 시각이 지났어도 그날은 오늘 마감
-  assert.deepEqual(dueChip(at(10, 21, 17), now), { text: '10/21 마감', kind: 'soon' });
+  assert.deepEqual(dueChip(at(10, 17, 8), now), { text: '오늘 08:00', kind: 'today' }); // 시각이 지났어도 그날은 오늘
+  assert.deepEqual(dueChip(at(10, 17, 0), now), { text: '오늘', kind: 'today' }); // 날짜만(미리알림 「오늘」 목록에 넣은 것)
+  assert.deepEqual(dueChip(at(10, 21, 17), now), { text: '10/21 17:00', kind: 'soon' });
+  assert.deepEqual(dueChip(at(10, 21, 0), now), { text: '10/21', kind: 'soon' });
   assert.equal(dueChip(undefined, now), null);
   assert.equal(dueChip('아무거나', now), null);
 });

@@ -24,11 +24,13 @@ test("ekToCalEvent·eventkitSource: 응답·주최·회의 링크·참석자, �
   assert.deepEqual([no.ok, no.errors], [false, 1]);
 });
 
-test("reminderPriority·reminderTodo: 마감 오늘·지남·높음은 P1, 7일 안·보통은 P2, 나머지 P3, 메모에 목록·마감", () => {
+test("reminderPriority·reminderTodo: 날짜가 있으면 날짜로(오늘·지남 P1, 7일 안 P2), 없으면 높음·보통 P2, 나머지 P3, 메모에 목록·마감", () => {
   const local = (d: number, h = 9) => new Date(2026, 9, d, h).toISOString();
   assert.equal(reminderPriority({ due: local(17, 23) }, NOW), 1);
   assert.equal(reminderPriority({ due: local(10) }, NOW), 1); // 지난 마감
-  assert.equal(reminderPriority({ priority: 1 }, NOW), 1);
+  assert.equal(reminderPriority({ priority: 1 }, NOW), 2);
+  assert.equal(reminderPriority({ priority: 1, due: local(30) }, NOW), 3); // 오늘 넣은 「높음」 미리알림이라도 마감이 먼 날이면 「오늘 꼭」이 아니다
+  assert.equal(reminderPriority({ priority: 1, due: local(17, 18) }, NOW), 1);
   assert.equal(reminderPriority({ due: local(20) }, NOW), 2);
   assert.equal(reminderPriority({ priority: 5 }, NOW), 2);
   assert.equal(reminderPriority({ due: local(30) }, NOW), 3);
@@ -51,6 +53,23 @@ test("syncReminders: 마감이 바뀌면 열린 할 일의 due 도 맞춘다", a
   assert.equal(store.getTodo("reminder:R9")!.due, due2);
   await syncReminders(store, async () => ({ ok: true, open: [{ id: "R9", title: "해지", list: "할 일" }], completed: [] }), NOW); // 미리알림에서 마감을 지움
   assert.equal(store.getTodo("reminder:R9")!.due, undefined);
+});
+
+test("syncReminders: 미리알림에서 고친 제목·마감이 메모까지 따라가고 패널에 알린다(edited), 내가 고친 제목·규칙 메모는 그대로", async () => {
+  const store = new Store(":memory:");
+  const due1 = new Date(2026, 9, 19, 14).toISOString(), due2 = new Date(2026, 9, 20, 14).toISOString();
+  const run = (title: string, due: string): EkRun => async () => ({ ok: true, open: [{ id: "R7", title, list: "공부", due, dueHasTime: true }, { id: "R8", title: "세미나", list: "공부" }], completed: [] });
+  await syncReminders(store, run("Asiacrypt 등록", due1), NOW);
+  assert.equal((await syncReminders(store, run("Asiacrypt 등록", due1), NOW)).edited, 0, "바뀐 게 없으면 패널을 건드리지 않는다");
+  const a = await syncReminders(store, run("Asiacrypt 참가 등록", due2), NOW);
+  assert.equal(a.edited, 1);
+  const t = store.getTodo("reminder:R7")!;
+  assert.deepEqual([t.title, t.due, t.note, t.priority], ["Asiacrypt 참가 등록", due2, "미리알림 「공부」 · 마감 10월 20일 14:00", 2]);
+  store.editTodo("reminder:R7", { title: "등록(내 제목)" });
+  store.ruleUpdateTodo("reminder:R8", { note: "미리알림 「공부」 · 발표 준비" }); // 할 일 규칙이 덧붙인 메모
+  await syncReminders(store, async () => ({ ok: true, open: [{ id: "R7", title: "또 바꾼 제목", list: "공부", due: due1, dueHasTime: true }, { id: "R8", title: "세미나", list: "연구" }], completed: [] }), NOW);
+  assert.deepEqual([store.getTodo("reminder:R7")!.title, store.getTodo("reminder:R7")!.note], ["등록(내 제목)", "미리알림 「공부」 · 마감 10월 19일 14:00"]);
+  assert.equal(store.getTodo("reminder:R8")!.note, "미리알림 「연구」 · 발표 준비");
 });
 
 test("syncReminders: 안 끝난 것은 할 일로(한 번만), 미리알림에서 끝내면 할 일도 끝, 지운 할 일은 되살리지 않고 내가 고친 우선순위는 그대로", async () => {
