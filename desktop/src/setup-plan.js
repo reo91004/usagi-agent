@@ -41,7 +41,7 @@ export function restorePhase(saved) {
 // 미리알림 줄: 연결해 둔 것(config)이라도 macOS 허락이 없으면(앱 업데이트 뒤) 다시 허락하라고
 function appleRow(a) {
   const on = !!a.connected?.reminders, ok = on && a.reminders === 'granted';
-  return { id: 'reminders', label: '미리알림', ok, text: ok ? '안 끝난 미리알림을 할 일로 가져와요' : on ? 'macOS 허락이 다시 필요해요(더 연결하기에서)' : '나중에' };
+  return { id: 'reminders', label: '미리알림', ok, text: ok ? (a.connected?.twoWay ? '미리알림과 할 일을 양방향으로 맞춰요' : '안 끝난 미리알림을 할 일로 가져와요') : on ? 'macOS 허락이 다시 필요해요(더 연결하기에서)' : '나중에' };
 }
 
 // 끝 화면 요약: 무엇이 됐고 무엇을 나중에 할 수 있나. 캘린더·Slack 은 데몬이 본 연결 상태(대시보드 connectors — 개요 카드와 같은 값),

@@ -538,6 +538,10 @@ export class Store {
   doneTodos(limit = 10, withSkipped = false): Todo[] {
     return (this.db.prepare(`SELECT * FROM todos WHERE status = 'done'${withSkipped ? "" : " AND skipped = 0"} ORDER BY coalesce(updated, created) DESC LIMIT ?`).all(limit) as any[]).map(todoRow);
   }
+  // 마감은 사용자 필드가 아니라 원본(미리알림)을 따른다
+  setTodoDue(id: string, due: string | null) {
+    this.db.prepare("UPDATE todos SET due = ? WHERE id = ? AND trashed_at IS NULL").run(due, id);
+  }
   // 브리핑·자동 처리용 상태 변경. 사용자가 상태를 직접 정한 할 일은 건드리지 않는다(force면 무시)
   setTodoStatus(id: string, status: string, opts: { force?: boolean; by?: TodoDoneBy } = {}): boolean {
     const cur = this.getTodo(id);

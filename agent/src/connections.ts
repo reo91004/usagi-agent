@@ -306,7 +306,7 @@ export class Connections {
     // 이 Mac 의 캘린더·미리알림(eventkit.ts) — 켜고 끄기는 연결 도우미 「더 연결하기」
     const calLocal = conns.calendar.mode === "api" && !!conns.calendar.local, rem = !!this.cfg.appleReminders;
     rows.push({ id: "apple", label: "이 Mac 캘린더·미리알림", group: "local", check: "local", checkedAt: at, state: calLocal || rem ? "ok" : "off",
-      detail: calLocal || rem ? `${[calLocal ? "캘린더" : "", rem ? "미리알림(할 일로)" : ""].filter(Boolean).join("·")}을 읽어요` : "연결 안 함(연결 도우미 → 더 연결하기)" });
+      detail: calLocal || rem ? `${[calLocal ? "캘린더" : "", rem ? (this.cfg.remindersTwoWay ? "미리알림(양방향)" : "미리알림(할 일로)") : ""].filter(Boolean).join("·")}을 읽어요` : "연결 안 함(연결 도우미 → 더 연결하기)" });
     // 실험 서버(ssh): 끝난 작업 알림(jobHosts — sshHosts 포함)·물어볼 때 탐색(sshHosts). config.json 에서 고친다
     const jh = this.cfg.jobHosts ?? [], xh = this.cfg.sshHosts ?? [];
     rows.push({ id: "ssh", label: "실험 서버(ssh)", group: "local", check: "local", checkedAt: at, state: jh.length || xh.length ? "ok" : "off",

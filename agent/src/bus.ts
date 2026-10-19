@@ -33,6 +33,7 @@ export type Bubble = {
 };
 export type BubbleImage = "merge" | "merge_complete" | "lots" | "daily" | "daily_all_complete" | "daily_half_complete" | "to_do_new";
 export type PanelSection = "overview" | "projects" | "todos" | "chat";
+export type AppleFlags = { calendar: boolean; reminders: boolean; twoWay: boolean };
 export type BusHandlers = {
   approve(id: string): Promise<unknown>;
   hold(id: string): Promise<unknown>;
@@ -47,7 +48,7 @@ export type BusHandlers = {
   agentRules?(path: unknown, apply: boolean): Promise<Rules | { error: string }>; // 폴더의 AI 지시 파일 상태·덧붙이기(agent-rules.ts). { error } → 400
   researchProjectPut?(body: unknown): { ok: true } | { error: string }; // 연구 프로젝트 메타 저장(research-projects.ts). { error } → 400
   // 이 Mac 의 캘린더·미리알림(eventkit.ts): 상태 · 연결(macOS 권한을 묻고 기다리는 동안 pending) · 해제. 없으면 503
-  apple?: { status(): Promise<unknown>; connect(o: { calendar: boolean; reminders: boolean }): unknown; disconnect(o: { calendar: boolean; reminders: boolean }): unknown };
+  apple?: { status(): Promise<unknown>; connect(o: AppleFlags): unknown; disconnect(o: AppleFlags): unknown };
   // 맥락 도구 MCP(mcp-http.ts) — Codex·agy 뇌가 부른다. 경로의 토큰 검사·본문 읽기는 처리기가 한다. 없으면 503
   mcp?(req: IncomingMessage, res: ServerResponse, token: string): Promise<void>;
   // Slack 지시사항 카드(directives.ts): [할 일로]·[괜찮아요]. 모르는 지시면 false → 404. 없으면 503
@@ -579,11 +580,11 @@ export class Bus {
       if (url.pathname === "/connectors/reload") {
         return h.connectorsReload ? json(res, 200, h.connectorsReload()) : json(res, 503, { error: "reload unavailable" });
       }
-      // 이 Mac 의 캘린더·미리알림: { calendar, reminders } 켜기·끄기
+      // 이 Mac 의 캘린더·미리알림: { calendar, reminders, twoWay(미리알림 양방향) } 켜기·끄기
       if (url.pathname === "/apple/connect" || url.pathname === "/apple/disconnect") {
         if (!h.apple) return json(res, 503, { error: "apple unavailable" });
         const b = await readJson(req, true);
-        const o = { calendar: b.calendar === true, reminders: b.reminders === true };
+        const o = { calendar: b.calendar === true, reminders: b.reminders === true, twoWay: b.twoWay === true };
         return json(res, 200, url.pathname === "/apple/connect" ? h.apple.connect(o) : await h.apple.disconnect(o));
       }
       // Slack 지시사항 카드: POST /directives/<메시지 id>/todo|dismiss

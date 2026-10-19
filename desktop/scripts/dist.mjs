@@ -138,11 +138,11 @@ const paths = await packager({
     CFBundleName: APP_NAME,
     LSUIElement: true, // Dock 아이콘 없이 켠다(설정에서 켜면 app.dock.show)
     LSMinimumSystemVersion: '12.0',
-    // 이 Mac 의 캘린더·미리알림(EventKit, 데몬이 bin/usagi-eventkit 으로 읽기만). 14 이상은 FullAccess 문구를 본다
+    // 이 Mac 의 캘린더·미리알림(EventKit, 데몬이 bin/usagi-eventkit 으로. 캘린더는 읽기만, 미리알림은 양방향을 켜면 쓴다). 14 이상은 FullAccess 문구를 본다
     NSCalendarsUsageDescription: '우사기가 오늘 일정과 회의를 알려 드리려고 캘린더를 읽습니다. 일정을 바꾸지는 않습니다.',
     NSCalendarsFullAccessUsageDescription: '우사기가 오늘 일정과 회의를 알려 드리려고 캘린더를 읽습니다. 일정을 바꾸지는 않습니다.',
-    NSRemindersUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 미리알림을 바꾸지는 않습니다.',
-    NSRemindersFullAccessUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 미리알림을 바꾸지는 않습니다.',
+    NSRemindersUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 양방향 맞추기를 켜면 할 일을 미리알림에도 씁니다.',
+    NSRemindersFullAccessUsageDescription: '우사기가 미리알림을 할 일 목록에 보여 드리려고 읽습니다. 양방향 맞추기를 켜면 할 일을 미리알림에도 씁니다.',
   },
   quiet: true,
 });

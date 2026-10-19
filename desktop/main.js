@@ -1687,7 +1687,7 @@ function setupIPC() {
     return request('PUT', '/settings', { directiveFrom: ids });
   });
   // 이 Mac 의 캘린더·미리알림(EventKit): 상태 · 연결(macOS 권한 창 — 데몬은 바로 돌아오고 상태로 기다린다) · 해제 · 시스템 설정 개인정보 화면
-  const appleBody = (o) => ({ calendar: o?.calendar === true, reminders: o?.reminders === true });
+  const appleBody = (o) => ({ calendar: o?.calendar === true, reminders: o?.reminders === true, twoWay: o?.twoWay === true });
   ipcMain.handle('apple-status', (e) => (fromOurs(e) ? request('GET', '/apple/status') : denied()));
   ipcMain.handle('apple-connect', (e, o) => (fromOurs(e) ? post('/apple/connect', appleBody(o)) : denied()));
   ipcMain.handle('apple-disconnect', (e, o) => (fromOurs(e) ? post('/apple/disconnect', appleBody(o)) : denied()));
