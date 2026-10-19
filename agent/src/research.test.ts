@@ -38,7 +38,7 @@ test("researchSummary·notePathFor: 오늘 노트가 있나, 어제 요약, 열 
   writeFileSync(notePath(graph, "2026-10-17"), "- 내 블록\n"); // 우사기 블록 없음
   assert.equal(researchSummary(cfg, store, NOW)!.note!.exists, false);
   writeFileSync(notePath(graph, "2026-10-17"), "- 우사기 기록\n  usagi-auto:: true\n");
-  store.upsertNode("note-summary:2026-10-16", "note-summary", "2026-10-16", { lines: ["a"], next: ["b"] });
+  store.upsertNode("note-report:2026-10-16", "note-report", "2026-10-16", { summary: ["a"], experiments: {}, projects: {}, next: ["b"] });
   assert.deepEqual(researchSummary(cfg, store, NOW)!.note, { day: "2026-10-17", exists: true, yesterday: { day: "2026-10-16", lines: ["a"], next: ["b"] } });
   assert.equal(notePathFor(cfg, "2026-10-17"), notePath(graph, "2026-10-17"));
   assert.equal(notePathFor(cfg, "2026-10-16"), null); // 파일 없음

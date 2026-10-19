@@ -49,7 +49,7 @@ import { cliMcpServers } from "./cli-mcp.ts";
 import { mergePr } from "./fixer.ts";
 import { askBtw } from "./btw.ts";
 import { Focus, dayStart, focusApi, focusDoneText, localDay } from "./focus.ts";
-import { collectDay, sharedGit, summarizeDay, writeDay } from "./research-note.ts";
+import { REPORT_EVERY_MS, collectDay, noteFrozen, notePath, reportDay, sharedGit, writeNote } from "./research-note.ts";
 import { awayAwareBriefing, hidIdleSec } from "./activity.ts";
 import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
@@ -577,25 +577,28 @@ const kgHourly = asRoutine(safe("kg-hourly", async () => {
 setInterval(kgHourly, 60 * 60e3);
 
 // 연구 노트(research-note.ts): 한 시간마다 오늘·어제 저널의 우사기 블록을 다시 쓴다(바뀐 경우만). 어제 것은 자정 넘어 끝난 세션까지 담으려고
-// 어제 블록에는 하루가 끝났으니 요약을 한 번 붙인다(날짜마다 이 데몬에서 한 번만 시도 — 실패해도 매시간 다시 부르지 않게)
+// 쓰기 전에 그날 보고서를 뇌로 새로 쓸지 본다(reportDay: 재료가 바뀌었을 때만, 오늘은 3시간에 한 번까지, 어제는 끝난 뒤 한 번). 실패한 날은 3시간 뒤에 다시.
+// 사용자가 고치거나 지운 날은 보고서도 안 쓴다. 뇌를 기다리는 동안 설정이 바뀌어 다시 불려도 겹쳐 돌지 않는다
 const noteSkipped = new Set<string>(); // 사용자가 고친 블록은 한 번만 알린다
-const summaryTried = new Set<string>();
-const writeNotes = safe("research-note", async () => {
-  if (!cfg.tineGraph) return;
+const reportFailed = new Map<string, number>();
+let notesRun: Promise<void> | undefined;
+const writeNotes = () => (notesRun ??= safe("research-note", async () => {
+  const graph = cfg.tineGraph;
+  if (!graph) return;
   const today = localDay(Date.now());
   const yesterday = localDay(dayStart(today) - 12 * 3600e3); // 어제 낮 = 어제 날짜
   const git = sharedGit(cfg, yesterday); // 어제·오늘 커밋을 한 번에 모아 날짜로 나눈다
-  if (!summaryTried.has(yesterday)) {
-    summaryTried.add(yesterday);
-    try { if (await summarizeDay(cfg, store, await collectDay(cfg, store, yesterday, { focus, git }))) console.log(`[research-note] ${yesterday} 요약을 붙여요`); }
-    catch (e: any) { console.warn(`[research-note] ${yesterday} 요약 못 함: ${e?.message ?? e}`); }
-  }
   for (const day of [yesterday, today]) {
-    const { path, result } = await writeDay(cfg, store, day, { focus, git });
+    const n = await collectDay(cfg, store, day, { focus, git });
+    if (Date.now() - (reportFailed.get(day) ?? 0) >= REPORT_EVERY_MS && !noteFrozen(store, graph, day)) {
+      try { const r = await reportDay(cfg, store, n); if (r) { n.report = r; console.log(`[research-note] ${day} 보고서를 새로 썼어요`); } }
+      catch (e: any) { reportFailed.set(day, Date.now()); console.warn(`[research-note] ${day} 보고서 못 씀: ${e?.message ?? e}`); }
+    }
+    const path = notePath(graph, day), result = writeNote(store, graph, n);
     if (result === "written") console.log(`[research-note] ${day} 썼어요`);
     if ((result === "edited" || result === "removed") && !noteSkipped.has(path)) { noteSkipped.add(path); console.log(`[research-note] ${day} 우사기 블록을 누가 ${result === "edited" ? "고쳐서" : "지워서"} 그대로 둬요: ${path}`); }
   }
-});
+})().finally(() => { notesRun = undefined; }));
 // 그래프가 없으면 바로 끝나는 타이머라 늘 건다 — 설정에서 그래프를 고르면 재시작 없이 시작한다
 setTimeout(writeNotes, 90e3).unref(); setInterval(writeNotes, 60 * 60e3).unref();
 
