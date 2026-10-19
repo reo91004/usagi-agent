@@ -339,7 +339,8 @@ function appleBlock(a, onConnect, onDisconnect, onPrivacy, calMcp) {
   const on = [cal ? '캘린더' : '', rem ? '미리알림' : ''].filter(Boolean).join('·');
   return h('div.setup-folder.setup-apple', null,
     h('span.setup-pick-title', { text: on ? `이 Mac 의 캘린더·미리알림 · ${on} 연결됨` : '이 Mac 의 캘린더·미리알림' }),
-    h('p.setup-blurb', { text: '주소를 붙이지 않고 캘린더 앱과 미리알림 앱을 바로 읽어요. 처음 한 번 macOS 가 허락을 물어요. 구글 캘린더는 시스템 설정 → 인터넷 계정에 Google 계정을 넣으면 함께 읽혀요. 읽기만 하고 바꾸지 않아요.' }),
+    h('p.setup-blurb', { text: '주소를 붙이지 않고 캘린더 앱과 미리알림 앱을 바로 읽어요. 처음 한 번 macOS 가 허락을 물어요. 구글 캘린더는 시스템 설정 → 인터넷 계정에 Google 계정을 넣으면 함께 읽혀요. 캘린더는 읽기만 해요.' }),
+    rem ? twoWayToggle(!!a.connected?.twoWay, onConnect, onDisconnect) : null,
     calMcp && !set('calendar') ? h('p.setup-gate', { text: `지금은 캘린더를 MCP(${calMcp})로 읽고 있어요. 캘린더를 연결하면 이 Mac 캘린더로 바뀌어요.` }) : null,
     regrant && !a.pending ? h('p.setup-gate', { text: '연결해 둔 것의 macOS 허락이 풀렸어요. 앱을 업데이트하면 macOS 가 다시 물어요. [다시 허락하기]를 눌러 주세요.' }) : null,
     a.pending ? h('p.setup-gate', { text: 'macOS 창에서 허락을 기다리고 있어요…' }) : null,
@@ -351,6 +352,18 @@ function appleBlock(a, onConnect, onDisconnect, onPrivacy, calMcp) {
       set('reminders') ? h('button.ghost', { type: 'button', text: '미리알림 빼기', onclick: () => onDisconnect({ reminders: true }) }) : null,
       denied('calendar') ? h('button.ghost', { type: 'button', text: '캘린더 허락 열기', onclick: () => onPrivacy('calendar') }) : null,
       denied('reminders') ? h('button.ghost', { type: 'button', text: '미리알림 허락 열기', onclick: () => onPrivacy('reminders') }) : null));
+}
+
+// 미리알림 양방향: 켜면 우사기 할 일도 미리알림 「우사기 비서」 목록에 쓰고, 끝내기·제목·지우기를 서로 맞춘다(eventkit.ts syncReminders)
+function twoWayToggle(on, onConnect, onDisconnect) {
+  const box = h('input', { type: 'checkbox', 'aria-describedby': 'rem-2way-hint' });
+  box.checked = on;
+  box.addEventListener('change', () => { box.disabled = true; (box.checked ? onConnect : onDisconnect)({ twoWay: true }); });
+  return h('div.setup-twoway', null,
+    h('label.setup-check', null, box, h('span', { text: '미리알림과 양방향으로 맞추기' })),
+    h('p.setup-blurb', { id: 'rem-2way-hint', text: on
+      ? '우사기 할 일이 미리알림 「우사기 비서」 목록에도 있어요. 어느 쪽에서 끝내거나 제목을 고치거나 지워도 다른 쪽이 따라가요. 지운 할 일은 우사기 휴지통에서 30일 동안 되살릴 수 있어요.'
+      : '켜면 우사기 할 일을 미리알림 「우사기 비서」 목록에도 넣고, 어느 쪽에서 끝내거나 제목을 고치거나 지워도 다른 쪽이 따라가요.' }));
 }
 
 function extrasView({ done = {}, repos = [], coder = true, readSessions = false, servers = {}, calendars = [], apple = null, onOpen, onDisconnect, onCopy, onAddCalendar, onRemoveCalendar, onAppleConnect, onAppleDisconnect, onOpenPrivacy, onAddRepo, onPickFolder, onRemoveRepo, onToggleSessions, onFinish, onBack }) {

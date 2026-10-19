@@ -73,6 +73,7 @@ export type Config = {
   readSessions?: boolean;
   // 이 Mac 의 미리알림을 할 일로(eventkit.ts). 설치 마법사 「이 Mac 의 캘린더·미리알림」에서 macOS 권한을 받은 뒤 켠다
   appleReminders?: boolean;
+  remindersTwoWay?: boolean; // 우사기 할 일도 미리알림에 쓰고 서로 맞춘다(eventkit.ts syncReminders)
   // 커넥터 밖에서 채팅이 더 써도 되는 MCP 서버 이름(~/.claude.json 에 등록한 것, 예: notion). 없으면 커넥터 서버·gh·cy 만(guard.ts)
   allowMcp?: string[];
   // 내 커밋을 알아보고(대시보드), 자동 수정 커밋에 쓰는 작성자. 기본: CY_AGENT_GIT_NAME/EMAIL > config.gitAuthor > `git config --global user.*`
@@ -373,6 +374,7 @@ export function loadConfig(env = process.env, file: FileConfig = readFileConfig(
     onboarded: onboardedOf(f),
     readSessions: readSessionsOf(f),
     appleReminders: f.appleReminders === true,
+    remindersTwoWay: f.appleReminders === true && f.remindersTwoWay === true,
     allowMcp: Array.isArray(f.allowMcp) ? (f.allowMcp as unknown[]).filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()) : [],
     github: githubConfig(env, f.github ?? (f.connectors as any)?.github),
     contextMode: contextModeOf(env.CY_AGENT_CONTEXT_MODE ?? f.contextMode),

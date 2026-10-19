@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Store } from "./store.ts";
 import { Bus } from "./bus.ts";
 import { resolveConnectors } from "./connectors.ts";
-import { ekToCalEvent, eventkitSource, reminderPriority, reminderTodo, setAppleFlags, syncReminders, type EkRun } from "./eventkit.ts";
+import { TWO_WAY_LIST, ekToCalEvent, eventkitSource, reminderPriority, reminderTodo, setAppleFlags, syncReminders, type EkRun } from "./eventkit.ts";
 
 const NOW = new Date("2026-10-17T03:00:00Z"); // KST 12:00
 
@@ -77,6 +77,113 @@ test("syncReminders: 안 끝난 것은 할 일로(한 번만), 미리알림에�
   assert.deepEqual([no.ok, no.error], [false, "macOS 미리알림 권한이 없어요"]);
 });
 
+// 가짜 미리알림 앱: reminders(linked 포함)·write 를 흉내 낸다
+function fakeReminders(items: Record<string, any> = {}) {
+  const state = new Map<string, any>(Object.entries(items).map(([id, x]) => [id, { id, list: "개인", completed: false, ...x }]));
+  const calls: string[][] = [];
+  let n = 0;
+  const run: EkRun = async (args) => {
+    calls.push(args);
+    if (args[0] === "reminders") {
+      const all = [...state.values()];
+      return { ok: true, open: all.filter((x) => !x.completed), completed: all.filter((x) => x.completed), linked: args.slice(2).map((id) => state.get(id)).filter(Boolean) };
+    }
+    const results = (JSON.parse(args[1]) as any[]).map((o) => {
+      if (o.op === "add") { const id = `N${++n}`; state.set(id, { id, list: o.list, title: o.title, completed: false, ...(o.due ? { due: o.due } : {}) }); return { ok: true, id }; }
+      const x = state.get(o.id);
+      if (o.op === "delete") { state.delete(o.id); return { ok: true }; }
+      if (!x) return { ok: false, missing: true };
+      if (o.title !== undefined) x.title = o.title;
+      if (o.done !== undefined) x.completed = o.done;
+      return { ok: true };
+    });
+    return { ok: true, results };
+  };
+  return { state, calls, run, writes: () => calls.filter((c) => c[0] === "write").map((c) => JSON.parse(c[1])) };
+}
+
+test("syncReminders 양방향: 가져온 것은 잇고, 우사기 할 일은 「우사기 비서」에 넣고, 바뀐 게 없으면 쓰지 않는다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문 그림 3" } });
+  const mine = store.addTodo({ title: "보고서 쓰기", priority: 1 });
+  store.addTodo({ title: "끝낸 일" }); store.editTodo(store.openTodos().find((t) => t.title === "끝낸 일")!.id, { status: "done" });
+  const a = await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([a.ok, a.added, a.wrote], [true, 1, 1]);
+  assert.deepEqual(f.writes()[0], [{ op: "add", list: TWO_WAY_LIST, title: "보고서 쓰기", priority: 1 }], "열린 우사기 할 일만, 미리알림에서 온 것은 다시 넣지 않는다");
+  assert.equal(f.state.get("N1").title, "보고서 쓰기");
+  // 두 번째: 이어 둔 id 를 넘겨 지금 모습을 받고, 바뀐 게 없으니 write 는 없다(도우미 한 번)
+  f.calls.length = 0;
+  const b = await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([b.added, b.wrote], [0, 0]);
+  assert.deepEqual(f.calls.map((c) => c[0]), ["reminders"]);
+  assert.deepEqual(new Set(f.calls[0].slice(2)), new Set(["R1", "N1"]));
+  assert.equal(store.openTodos().filter((t) => t.title === "보고서 쓰기").length, 1, "넣은 미리알림을 다시 할 일로 가져오지 않는다");
+  assert.ok(mine);
+});
+
+test("syncReminders 양방향: 끝냄·다시 엶·제목·마감·지움이 서로 따라간다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문 그림 3" }, R2: { title: "장보기" } });
+  const mine = store.addTodo({ title: "보고서 쓰기" });
+  await syncReminders(store, f.run, NOW, true);
+  // 우사기에서 끝냄·제목 고침 → 미리알림
+  store.editTodo("reminder:R1", { status: "done" });
+  store.editTodo(mine.id, { title: "보고서 마감" });
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(f.state.get("R1").completed, true);
+  assert.equal(f.state.get("N1").title, "보고서 마감");
+  // 미리알림에서 다시 엶·제목·마감 → 우사기
+  f.state.get("R1").completed = false;
+  f.state.get("R2").title = "장보기 (우유)";
+  const due = new Date(2026, 9, 21, 9).toISOString();
+  f.state.get("N1").due = due;
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(store.getTodo("reminder:R1")!.status, "open");
+  assert.equal(store.getTodo("reminder:R2")!.title, "장보기 (우유)");
+  assert.equal(Date.parse(store.getTodo(mine.id)!.due!), Date.parse(due));
+  // 미리알림에서 끝냄 → 우사기도 끝
+  f.state.get("N1").completed = true;
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(store.getTodo(mine.id)!.status, "done");
+  // 우사기에서 지움 → 미리알림도 지움 / 미리알림에서 지움 → 우사기 휴지통
+  store.trashTodo("reminder:R1");
+  f.state.delete("R2");
+  const c = await syncReminders(store, f.run, NOW, true);
+  assert.equal(f.state.has("R1"), false);
+  assert.equal(c.trashed, 1);
+  assert.ok(store.trashedTodo("reminder:R2"));
+  assert.equal(store.db.prepare("SELECT count(*) n FROM reminder_links").get()!.n, 1, "남은 짝은 보고서 하나");
+});
+
+test("syncReminders 양방향: 한꺼번에 많이 사라지면(iCloud 로그아웃 등) 지우지 않고, id 만 바뀐 같은 미리알림은 다시 잇는다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders(Object.fromEntries(["A", "B", "C", "D", "E"].map((k) => [k, { title: `일 ${k}` }])));
+  await syncReminders(store, f.run, NOW, true);
+  const gone = ["A", "B", "C", "D"].map((k) => f.state.get(k));
+  for (const k of ["A", "B", "C", "D"]) f.state.delete(k);
+  const r = await syncReminders(store, f.run, NOW, true);
+  assert.equal(r.trashed, 0);
+  assert.equal(store.openTodos().length, 5);
+  for (const x of gone) f.state.set(x.id, x); // 다시 로그인
+  // E 의 id 가 E2 로 바뀜 → 새 할 일을 만들지 않고 이어 둔다
+  f.state.set("E2", { ...f.state.get("E"), id: "E2" }); f.state.delete("E");
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(store.openTodos().length, 5);
+  assert.equal((store.db.prepare("SELECT rid FROM reminder_links WHERE todo_id = 'reminder:E'").get() as any).rid, "E2");
+});
+
+test("syncReminders 양방향: 쓰기가 실패하면 짝을 바꾸지 않고 다음에 다시 한다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders();
+  store.addTodo({ title: "보고서" });
+  const fail: EkRun = async (args) => (args[0] === "write" ? { ok: false, error: "not-granted" } : f.run(args));
+  const a = await syncReminders(store, fail, NOW, true);
+  assert.equal(a.ok, false);
+  assert.equal(store.db.prepare("SELECT count(*) n FROM reminder_links").get()!.n, 0);
+  await syncReminders(store, f.run, NOW, true);
+  assert.equal(f.state.size, 1);
+});
+
 test("setAppleFlags: 캘린더 local·appleReminders 켜고 끄기, ICS 는 그대로, 깨진 파일은 안 건드림", () => {
   const dir = mkdtempSync(join(tmpdir(), "ek-"));
   const p = join(dir, "config.json");
@@ -92,11 +199,15 @@ test("setAppleFlags: 캘린더 local·appleReminders 켜고 끄기, ICS 는 그�
   writeFileSync(p, JSON.stringify({ connectors: { calendar: { mode: "api", icsUrls: ["https://x/a.ics"] } } }));
   setAppleFlags(p, { calendar: true });
   assert.deepEqual(JSON.parse(readFileSync(p, "utf8")).connectors.calendar, { mode: "api", icsUrls: ["https://x/a.ics"], local: true });
+  setAppleFlags(p, { reminders: true, twoWay: true });
+  assert.equal(JSON.parse(readFileSync(p, "utf8")).remindersTwoWay, true);
+  setAppleFlags(p, { reminders: false }); // 미리알림을 빼면 양방향도
+  assert.equal(JSON.parse(readFileSync(p, "utf8")).remindersTwoWay, undefined);
   writeFileSync(p, "{ 깨짐");
   assert.throws(() => setAppleFlags(p, { reminders: true }), /그대로/);
 });
 
-test("HTTP: /apple/status·connect·disconnect 는 헤더 필수, 몸통은 calendar·reminders 참/거짓만", async () => {
+test("HTTP: /apple/status·connect·disconnect 는 헤더 필수, 몸통은 calendar·reminders·twoWay 참/거짓만", async () => {
   const bus = new Bus();
   const got: unknown[] = [];
   await bus.listen(0, {
@@ -110,7 +221,8 @@ test("HTTP: /apple/status·connect·disconnect 는 헤더 필수, 몸통은 cale
     assert.equal((await fetch(`${base}/apple/connect`, { method: "POST", body: "{}" })).status, 403);
     await fetch(`${base}/apple/connect`, { method: "POST", headers: { "x-cy-agent": "1", "content-type": "application/json" }, body: JSON.stringify({ calendar: true, reminders: "yes" }) });
     await fetch(`${base}/apple/disconnect`, { method: "POST", headers: { "x-cy-agent": "1", "content-type": "application/json" }, body: JSON.stringify({ reminders: true }) });
-    assert.deepEqual(got, [["c", { calendar: true, reminders: false }], ["d", { calendar: false, reminders: true }]]);
+    await fetch(`${base}/apple/connect`, { method: "POST", headers: { "x-cy-agent": "1", "content-type": "application/json" }, body: JSON.stringify({ twoWay: true }) });
+    assert.deepEqual(got, [["c", { calendar: true, reminders: false, twoWay: false }], ["d", { calendar: false, reminders: true, twoWay: false }], ["c", { calendar: false, reminders: false, twoWay: true }]]);
   } finally {
     bus.close();
   }

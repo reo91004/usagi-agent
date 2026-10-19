@@ -218,7 +218,7 @@ AI별 차이와 모델은 [docs/connect/brain.md](docs/connect/brain.md)에 있�
 | 기능 | 추천 | 안내 |
 |---|---|---|
 | 캘린더 | 이 Mac 캘린더(EventKit)나 비공개 ICS 주소(`api`) | [calendar.md](docs/connect/calendar.md) |
-| 미리알림 | 이 Mac 미리알림을 할 일로(EventKit, 읽기만, 10분마다) | [calendar.md](docs/connect/calendar.md) |
+| 미리알림 | 이 Mac 미리알림을 할 일로(EventKit, 10분마다). 켜면 양방향으로 맞춤 | [calendar.md](docs/connect/calendar.md) |
 | Slack | 내 Slack 앱의 읽기 전용 사용자 토큰(`api`) | [slack.md](docs/connect/slack.md) |
 | 메일 | `mcp`(Gmail, Microsoft 365) 또는 `off` | [mail.md](docs/connect/mail.md) |
 | 이슈 | `mcp`(GitHub, Jira, Linear) | [issues.md](docs/connect/issues.md) |
@@ -226,7 +226,7 @@ AI별 차이와 모델은 [docs/connect/brain.md](docs/connect/brain.md)에 있�
 | 서버 | `sshHosts`, `jobDirs`, `sessionHosts` | [연구 비서 기능](#연구-비서-기능) |
 | 연구 노트 | `tineGraph` | [연구 노트](#연구-노트-tine-일지) |
 
-이 Mac의 캘린더·미리알림은 연결 도우미 「더 연결하기」에서 「연결하기」를 누르면 macOS가 허락을 한 번 묻습니다. 일정은 30분마다 다시 읽고, 메모 본문은 가져오지 않고 회의 링크(Meet, Zoom, Teams, Webex)만 뽑습니다. 안 끝난 미리알림은 마감이 오늘까지거나 「높음」이면 「오늘 꼭」, 7일 안이거나 「보통」이면 「이번 주」로 들어오고, 미리알림 앱에서 끝내면 우사기에서도 끝납니다. 우사기에서 끝내거나 지워도 미리알림은 그대로입니다. 허락을 거절했다면 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림에서 켭니다.
+이 Mac의 캘린더·미리알림은 연결 도우미 「더 연결하기」에서 「연결하기」를 누르면 macOS가 허락을 한 번 묻습니다. 일정은 30분마다 다시 읽고, 메모 본문은 가져오지 않고 회의 링크(Meet, Zoom, Teams, Webex)만 뽑습니다. 안 끝난 미리알림은 마감이 오늘까지거나 「높음」이면 「오늘 꼭」, 7일 안이거나 「보통」이면 「이번 주」로 들어오고, 미리알림 앱에서 끝내면 우사기에서도 끝납니다. 같은 칸의 「미리알림과 양방향으로 맞추기」를 켜면 우사기 할 일도 미리알림 「우사기 비서」 목록에 들어가고, 어느 쪽에서 끝내거나 제목을 고치거나 지워도 다른 쪽이 따라갑니다(끄면 우사기에서 끝내거나 지워도 미리알림은 그대로). 허락을 거절했다면 시스템 설정 → 개인정보 보호 및 보안 → 캘린더·미리알림에서 켭니다.
 
 ## 설정 파일 (`~/.cy-agent/config.json`)
 
@@ -246,6 +246,7 @@ AI별 차이와 모델은 [docs/connect/brain.md](docs/connect/brain.md)에 있�
 | `sshHosts`, `jobHosts`, `jobDirs`, `sessionHosts` | | `[]`, `[]`, `{}`, `[]` | [서버 실험](#서버-실험-usagi-run-tmux-gpu) |
 | `tineGraph` | | | [연구 노트](#연구-노트-tine-일지) |
 | `appleReminders` | | `false` | 이 Mac 미리알림을 할 일로 |
+| `remindersTwoWay` | | `false` | 미리알림과 할 일을 양방향으로 맞춤(`appleReminders` 가 켜져 있을 때만) |
 | `connectors.<기능>` | `CY_AGENT_SLACK_USER_TOKEN`, `CY_AGENT_CALENDAR_ICS_URL` | 전부 `off` | `slack`, `calendar`, `mail`, `issues` |
 | `directiveFrom` | | `[]` | 지시를 줄 사람의 Slack id(연구 탭에서 고름) |
 | `allowMcp` | | `[]` | 커넥터 밖에서 채팅이 써도 되는 MCP 서버 이름(Claude Code 뇌일 때만) |
@@ -302,7 +303,7 @@ AI별 차이와 모델은 [docs/connect/brain.md](docs/connect/brain.md)에 있�
 | 할 일 진행 확인(새 세션이 없으면 모델을 안 부름) | 5분(`progressCheckMin`) |
 | 서버 usagi-run·tmux 확인(`sshHosts`·`jobHosts`를 적었을 때) | 2분 |
 | 서버 작업 기록 받기(`sessionHosts`) | 10분 |
-| 미리알림 가져오기 | 10분 |
+| 미리알림 가져오기·맞추기 | 10분(양방향이면 할 일을 고친 뒤 5초에도 한 번) |
 | 캘린더 가져오기 | 30분 |
 | 브리핑(평일 9~19시) | 60분 |
 | 지식그래프 갱신, 프로필 학습 | 60분 |

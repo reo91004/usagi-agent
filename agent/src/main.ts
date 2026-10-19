@@ -206,19 +206,27 @@ onBrainSwitch(({ from, to, reason }) => { // 한도·인증으로 다음 뇌로 
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 
-// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다 할 일과 맞춘다(맥 안 DB 만 읽는다). 연결 창 상태는 applePending·appleError
-let applePending = false, appleError: string | undefined, remindersBusy = false, remindersWarned = false;
+// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다 할 일과 맞춘다(맥 안 DB 만). 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
+let applePending = false, appleError: string | undefined, remindersBusy = false, remindersAgain = false, remindersWarned = false;
 async function syncRemindersNow() {
-  if (!cfg.appleReminders || remindersBusy || !eventkitAvailable()) return;
+  if (!cfg.appleReminders || !eventkitAvailable()) return;
+  if (remindersBusy) { remindersAgain = true; return; }
   remindersBusy = true;
   try {
-    const r = await syncReminders(store);
+    const r = await syncReminders(store, undefined, undefined, !!cfg.remindersTwoWay);
     if (!r.ok) { if (!remindersWarned) console.warn(`[reminders] ${r.error}`); remindersWarned = true; return; }
     remindersWarned = false;
-    if (r.added || r.done) { console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개`); bus.dashboardChanged(); }
+    if (r.added || r.done || r.wrote || r.trashed) { console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개 · 미리알림에 쓴 것 ${r.wrote ?? 0}개 · 미리알림에서 지워 휴지통 ${r.trashed ?? 0}개`); bus.dashboardChanged(); }
   } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
-  finally { remindersBusy = false; }
+  finally { remindersBusy = false; if (remindersAgain) { remindersAgain = false; void syncRemindersNow(); } }
 }
+let remindersSoon: ReturnType<typeof setTimeout> | undefined;
+agent.onChange(() => { // 패널·채팅·Slack 에서 할 일을 고치면 곧 미리알림에도(여러 번 고쳐도 마지막 뒤 5초에 한 번)
+  if (!cfg.remindersTwoWay) return;
+  clearTimeout(remindersSoon);
+  remindersSoon = setTimeout(() => void syncRemindersNow(), 5e3);
+  remindersSoon.unref();
+});
 setTimeout(() => void syncRemindersNow(), 20e3).unref();
 // 앱을 업데이트하면 서명(ad-hoc)이 바뀌어 macOS 가 캘린더·미리알림 허락을 다시 묻는다. 연결해 둔 것인데 허락이 없으면 한 번 알린다(누르면 설치 탭 「더 연결하기」)
 setTimeout(async () => {
@@ -261,9 +269,16 @@ await bus.listen(cfg.port, {
   directiveDecide: (id, decision) => agent.directiveDecide(id, decision),
   // 이 Mac 의 캘린더·미리알림: 연결은 macOS 권한 창을 띄우고 바로 돌아온다(패널이 status 로 기다린다). 캘린더는 연결이 바뀌니 데몬이 다시 켜지며 붙는다
   apple: {
-    status: async () => ({ ...(await appleStatus()), connected: { calendar: conns.calendar.mode === "api" && !!(conns.calendar as any).local, reminders: !!cfg.appleReminders }, pending: applePending, ...(appleError ? { error: appleError } : {}) }),
+    status: async () => ({ ...(await appleStatus()), connected: { calendar: conns.calendar.mode === "api" && !!(conns.calendar as any).local, reminders: !!cfg.appleReminders, twoWay: !!cfg.remindersTwoWay }, pending: applePending, ...(appleError ? { error: appleError } : {}) }),
     connect: (o) => {
       if (!eventkitAvailable()) return { ok: false, error: "이 앱에는 캘린더 도우미가 없어요(macOS 앱 0.5.0 이상)" };
+      if (o.twoWay) { // 이미 허락받은 미리알림을 양방향으로(권한 창 없음)
+        if (!cfg.appleReminders) return { ok: false, error: "미리알림을 먼저 연결해 주세요" };
+        setAppleFlags(join(HOME_DIR, "config.json"), { twoWay: true });
+        cfg.remindersTwoWay = true;
+        void syncRemindersNow();
+        return { ok: true };
+      }
       if (applePending) return { ok: true, pending: true };
       applePending = true;
       appleError = undefined;
@@ -279,8 +294,9 @@ await bus.listen(cfg.port, {
       return { ok: true, pending: true };
     },
     disconnect: (o) => {
-      setAppleFlags(join(HOME_DIR, "config.json"), { ...(o.calendar ? { calendar: false } : {}), ...(o.reminders ? { reminders: false } : {}) });
+      setAppleFlags(join(HOME_DIR, "config.json"), { ...(o.calendar ? { calendar: false } : {}), ...(o.reminders ? { reminders: false } : {}), ...(o.twoWay ? { twoWay: false } : {}) });
       if (o.reminders) cfg.appleReminders = false;
+      if (o.reminders || o.twoWay) cfg.remindersTwoWay = false;
       if (o.calendar) reloadConnectors();
       pushStatus();
       return { ok: true };

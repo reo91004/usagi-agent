@@ -1,9 +1,11 @@
-// 우사기 EventKit 도우미(#53): 이 Mac 의 캘린더·미리알림을 읽기만 해서 JSON 한 줄로 낸다. 데몬(agent/src/eventkit.ts)이 부른다.
+// 우사기 EventKit 도우미(#53): 이 Mac 의 캘린더·미리알림을 JSON 한 줄로 낸다. 데몬(agent/src/eventkit.ts)이 부른다.
 //   usagi-eventkit status                       권한 상태
 //   usagi-eventkit request                      캘린더·미리알림 권한을 묻는다(처음 한 번 macOS 창)
 //   usagi-eventkit events <from ISO> <to ISO>   그 기간 일정(메모 본문은 내지 않고 회의 링크만 뽑는다)
-//   usagi-eventkit reminders <since ISO>        안 끝난 미리알림 전부 + since 뒤에 끝낸 것
-// 쓰기 API 는 부르지 않는다. 권한 창은 앱(우사기.app)의 Info.plist 문구로 뜬다(데몬이 앱의 자식이라 앱 이름으로)
+//   usagi-eventkit reminders <since ISO> [id…]  안 끝난 미리알림 전부 + since 뒤에 끝낸 것 + 이어 둔 id 의 지금 모습(linked, 없어진 것은 빠진다)
+//   usagi-eventkit write <ops JSON>             미리알림 쓰기(add·set·delete)를 차례로 하고 한 번에 저장한다
+// 캘린더는 쓰지 않는다. 미리알림 쓰기는 write 하나뿐이고 데몬은 양방향을 켰을 때만 부른다.
+// 권한 창은 앱(우사기.app)의 Info.plist 문구로 뜬다(데몬이 앱의 자식이라 앱 이름으로)
 import EventKit
 import Foundation
 
@@ -101,6 +103,21 @@ func reminderDict(_ r: EKReminder) -> [String: Any] {
   return d
 }
 
+// write 의 add 가 넣는 목록: 이름이 같은 쓸 수 있는 목록, 없으면 기본 목록과 같은 계정에 만든다
+var listsByName: [String: EKCalendar] = [:]
+func reminderList(_ name: String) throws -> EKCalendar {
+  if let c = listsByName[name] { return c }
+  if let c = store.calendars(for: .reminder).first(where: { $0.title == name && $0.allowsContentModifications }) { listsByName[name] = c; return c }
+  guard let src = store.defaultCalendarForNewReminders()?.source else { throw NSError(domain: "usagi", code: 1, userInfo: [NSLocalizedDescriptionKey: "기본 미리알림 목록이 없어요"]) }
+  let c = EKCalendar(for: .reminder, eventStore: store)
+  c.title = name
+  c.source = src
+  try store.saveCalendar(c, commit: true)
+  listsByName[name] = c
+  return c
+}
+func reminder(_ id: Any?) -> EKReminder? { (id as? String).flatMap { store.calendarItem(withIdentifier: $0) as? EKReminder } }
+
 let args = CommandLine.arguments
 switch args.count > 1 ? args[1] : "" {
 case "status":
@@ -119,8 +136,47 @@ case "reminders":
   let lists = store.calendars(for: .reminder)
   let open = await fetch(store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: lists))
   let done = await fetch(store.predicateForCompletedReminders(withCompletionDateStarting: since, ending: Date(), calendars: lists))
-  emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict)])
+  let linked = args.dropFirst(3).compactMap { reminder($0) }
+  emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict)])
+case "write":
+  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?} | {op:"delete", id}] → results 같은 순서
+  guard args.count >= 3, let ops = (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [[String: Any]] else { emit(["ok": false, "error": "usage: write <ops JSON>"]); exit(2) }
+  guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
+  var results: [[String: Any]] = []
+  var made: [(Int, EKReminder)] = []
+  for o in ops {
+    do {
+      switch o["op"] as? String {
+      case "add":
+        let r = EKReminder(eventStore: store)
+        r.calendar = try reminderList(o["list"] as? String ?? "우사기 비서")
+        r.title = o["title"] as? String ?? ""
+        if let p = o["priority"] as? Int { r.priority = p }
+        if let due = (o["due"] as? String).flatMap(parseIso) {
+          r.dueDateComponents = Calendar.current.dateComponents(o["dueHasTime"] as? Bool == true ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: due)
+        }
+        if let u = (o["url"] as? String).flatMap(URL.init(string:)) { r.url = u }
+        try store.save(r, commit: false)
+        made.append((results.count, r))
+        results.append(["ok": true])
+      case "set":
+        guard let r = reminder(o["id"]) else { results.append(["ok": false, "missing": true]); continue }
+        if let t = o["title"] as? String { r.title = t }
+        if let d = o["done"] as? Bool { r.isCompleted = d }
+        try store.save(r, commit: false)
+        results.append(["ok": true])
+      case "delete":
+        if let r = reminder(o["id"]) { try store.remove(r, commit: false) } // 이미 없으면 그대로 성공
+        results.append(["ok": true])
+      default:
+        results.append(["ok": false, "error": "unknown op"])
+      }
+    } catch { results.append(["ok": false, "error": error.localizedDescription]) }
+  }
+  do { try store.commit() } catch { emit(["ok": false, "error": error.localizedDescription]); exit(0) }
+  for (i, r) in made { results[i]["id"] = r.calendarItemIdentifier } // 새 id 는 저장한 뒤에 읽는다
+  emit(["ok": true, "results": results])
 default:
-  emit(["ok": false, "error": "usage: usagi-eventkit status|request|events <from> <to>|reminders <since>"])
+  emit(["ok": false, "error": "usage: usagi-eventkit status|request|events <from> <to>|reminders <since> [id…]|write <ops>"])
   exit(2)
 }
