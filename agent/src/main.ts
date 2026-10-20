@@ -55,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
 import { agentRules } from "./agent-rules.ts";
 import { directivesView } from "./directives.ts";
-import { appleStatus, ekRun, eventkitAvailable, importantDaysOf, importantEvents, setAppleFlags, syncReminders, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
+import { appleStatus, ekRun, eventkitAvailable, importantDaysOf, importantEvents, pushDone, setAppleFlags, syncReminders, watchStore, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { agyPrewarm, agyWarm, BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
@@ -207,8 +207,18 @@ onBrainSwitch(({ from, to, reason }) => { // 한도·인증으로 다음 뇌로 
 onBrainAuthChange(() => pushStatus()); // API 키가 401·403 을 받음 ↔ 다시 됨 → 데스크톱에 바로
 if (cfg.configError) console.error("[config] 안전 모드: 설정 파일을 고칠 때까지 아무것도 읽지 않고 로컬 뇌로 돌아요");
 
-// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 10분마다·↻ 새로고침 때 할 일과 맞춘다(맥 안 DB 만). 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
+// 이 Mac 의 미리알림(eventkit.ts): 켜져 있으면 미리알림이 바뀔 때(watch, 1초 모아서)·↻ 새로고침 때·주기로 할 일과 맞춘다(맥 안 DB 만).
+// 주기는 watch 가 돌면 30분(날짜가 바뀌어 우선순위를 다시 매기는 용도), 아니면 10분. 양방향이면 할 일을 고친 뒤 5초에도 한 번. 연결 창 상태는 applePending·appleError
 let applePending = false, appleError: string | undefined, remindersBusy = false, remindersAgain = false, remindersWarned = false;
+let remindersAt = 0, unwatch: (() => void) | undefined, changedSoon: ReturnType<typeof setTimeout> | undefined;
+function watchReminders() {
+  if (unwatch || !cfg.appleReminders) return;
+  const stop = unwatch = watchStore(() => {
+    clearTimeout(changedSoon); // iCloud 가 한꺼번에 여러 번 알려도 한 번만
+    changedSoon = setTimeout(() => void syncRemindersNow(), 1e3);
+    changedSoon.unref();
+  }, () => { if (unwatch === stop) unwatch = undefined; }); // 다음 맞추기가 다시 띄운다
+}
 // 개요 「꼭 챙길 것」(#279): 긴급 미리알림(맞출 때마다)과 「중요」 캘린더 일정(회의 동기화 30분·↻ 때, 맥 안 DB 만). 메모리에만, 바뀌면 패널을 다시 그린다
 let urgent = new Map<string, UrgentReminder>(), important: ImportantEvent[] = [];
 const calLocal = () => conns.calendar.mode === "api" && !!(conns.calendar as any).local;
@@ -225,6 +235,8 @@ async function syncRemindersNow() {
     const r = await syncReminders(store, undefined, undefined, !!cfg.remindersTwoWay);
     if (!r.ok) { if (!remindersWarned) console.warn(`[reminders] ${r.error}`); remindersWarned = true; return; }
     remindersWarned = false;
+    remindersAt = Date.now();
+    watchReminders();
     const urgentNow = new Map((r.urgent ?? []).map((u) => [u.id, u]));
     const urgentChanged = JSON.stringify([...urgentNow]) !== JSON.stringify([...urgent]);
     urgent = urgentNow;
@@ -243,6 +255,12 @@ agent.onChange(() => { // 패널·채팅·Slack 에서 할 일을 고치면 곧 
   remindersSoon = setTimeout(() => void syncRemindersNow(), 5e3);
   remindersSoon.unref();
 });
+// 우사기에서 체크·체크 해제하면 그 미리알림에도 바로(차례로, 그때의 상태로). 쓰고 나면 watch 가 알려 와 한 번 더 맞춘다
+let pushing = Promise.resolve();
+agent.onTodoStatus = (id) => {
+  if (!cfg.appleReminders || !eventkitAvailable()) return;
+  pushing = pushing.then(() => pushDone(store, id, !!cfg.remindersTwoWay)).then(() => {}, (e) => console.warn("[reminders]", e?.message ?? e));
+};
 setTimeout(() => void syncRemindersNow(), 20e3).unref();
 // 앱을 업데이트하면 서명(ad-hoc)이 바뀌어 macOS 가 캘린더·미리알림 허락을 다시 묻는다. 연결해 둔 것인데 허락이 없으면 한 번 알린다(누르면 설치 탭 「더 연결하기」)
 setTimeout(async () => {
@@ -252,7 +270,7 @@ setTimeout(async () => {
   const lost = [calOn && st?.calendar !== "granted" ? "캘린더" : "", remOn && st?.reminders !== "granted" ? "미리알림" : ""].filter(Boolean);
   if (st && lost.length) bus.bubble({ id: "apple-regrant", kind: "info", ttlMs: 10 * 60e3, text: `이 Mac 의 ${lost.join("·")} 허락이 풀렸어요(앱을 업데이트하면 macOS 가 다시 물어요). 눌러서 다시 허락해 주세요`, open: { section: "setup", id: "extras" }, openLabel: "다시 허락하기" });
 }, 8e3).unref();
-setInterval(() => void syncRemindersNow(), 10 * 60e3).unref();
+setInterval(() => { if (!unwatch || Date.now() - remindersAt > 25 * 60e3) void syncRemindersNow(); }, 10 * 60e3).unref();
 
 // 맥락 도구 MCP(mcp-http.ts): Codex·agy 뇌의 채팅이 Claude 와 같은 cy 도구를 부른다
 const mcpTok = mcpToken();
@@ -313,7 +331,7 @@ await bus.listen(cfg.port, {
     },
     disconnect: (o) => {
       setAppleFlags(join(HOME_DIR, "config.json"), { ...(o.calendar ? { calendar: false } : {}), ...(o.reminders ? { reminders: false } : {}), ...(o.twoWay ? { twoWay: false } : {}) });
-      if (o.reminders) cfg.appleReminders = false;
+      if (o.reminders) { cfg.appleReminders = false; unwatch?.(); }
       if (o.reminders || o.twoWay) cfg.remindersTwoWay = false;
       if (o.calendar) reloadConnectors();
       pushStatus();

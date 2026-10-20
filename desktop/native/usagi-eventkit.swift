@@ -4,12 +4,13 @@
 //   usagi-eventkit events <from ISO> <to ISO> [이름]  그 기간 일정(메모 본문은 내지 않고 회의 링크만 뽑는다). 이름을 주면 그 글자가 든 캘린더만
 //   usagi-eventkit reminders <since ISO> [id…]  안 끝난 미리알림 전부 + since 뒤에 끝낸 것 + 이어 둔 id 의 지금 모습(linked, 없어진 것은 빠진다)
 //   usagi-eventkit write <ops JSON>             미리알림 쓰기(add·set·delete)를 차례로 하고 한 번에 저장한다
-// 캘린더는 쓰지 않는다. 미리알림 쓰기는 write 하나뿐이고 데몬은 양방향을 켰을 때만 부른다.
+//   usagi-eventkit watch                        미리알림·캘린더가 바뀔 때마다 {"changed":true} 한 줄. stdin 이 닫히면(데몬이 꺼지면) 끝난다
+// 캘린더는 쓰지 않는다. 미리알림 쓰기는 write 하나뿐이고 데몬은 양방향이거나 우사기에서 체크했을 때만 부른다.
 // 권한 창은 앱(우사기.app)의 Info.plist 문구로 뜬다(데몬이 앱의 자식이라 앱 이름으로)
 import EventKit
 import Foundation
 
-nonisolated(unsafe) let store = EKEventStore() // 이 도우미는 한 번 돌고 끝나는 단일 흐름이라 동시 접근이 없다
+nonisolated(unsafe) let store = EKEventStore() // 단일 흐름이라 동시 접근이 없다(watch 는 store 를 알림 구독에만 쓴다)
 
 func emit(_ v: Any) {
   let d = (try? JSONSerialization.data(withJSONObject: v, options: [])) ?? Data("{\"ok\":false,\"error\":\"json\"}".utf8)
@@ -186,7 +187,13 @@ case "write":
   do { try store.commit() } catch { emit(["ok": false, "error": error.localizedDescription]); exit(0) }
   for (i, r) in made { results[i]["id"] = r.calendarItemIdentifier } // 새 id 는 저장한 뒤에 읽는다
   emit(["ok": true, "results": results])
+case "watch":
+  // macOS 가 미리알림 DB 가 바뀌었다고 알려 줄 때만 깨어난다(다른 앱·아이폰 iCloud·우리 write 모두). 그 밖에는 타이머 없이 잠들어 있다
+  guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
+  NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { _ in emit(["changed": true]) }
+  Thread.detachNewThread { while readLine() != nil {}; exit(0) }
+  await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in } // 메인 큐(알림)는 계속 돈다
 default:
-  emit(["ok": false, "error": "usage: usagi-eventkit status|request|events <from> <to>|reminders <since> [id…]|write <ops>"])
+  emit(["ok": false, "error": "usage: usagi-eventkit status|request|events <from> <to>|reminders <since> [id…]|write <ops>|watch"])
   exit(2)
 }

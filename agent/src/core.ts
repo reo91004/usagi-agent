@@ -958,10 +958,13 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     return guidelinesApi(this.guidelines);
   }
 
+  // 패널·Slack·채팅에서 할 일을 체크하거나 다시 열었을 때(자동 완료 되돌리기 포함. 미리알림에 바로 쓰기, main.ts)
+  onTodoStatus?: (id: string) => void;
   editTodo(id: string, patch: TodoPatch): Todo | undefined {
     const before = this.store.getTodo(id);
     if (!before) return undefined;
     const after = this.store.editTodo(id, patch)!;
+    if (after.status !== before.status) this.onTodoStatus?.(id);
     if (patch.status === "done" && before.status !== "done")
       recordFeedback(this.store, patch.skipped ? { kind: "todo_ignored", ref: id, note: `안 해도 됨: ${before.title}` } : { kind: "todo_done", ref: id });
     if (patch.priority !== undefined && patch.priority !== before.priority)
@@ -1043,6 +1046,7 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     if (!cur) return "missing";
     const t = this.store.revertAutoTodo(id);
     if (!t) return "not_auto";
+    this.onTodoStatus?.(id);
     recordFeedback(this.store, { kind: "todo_auto_reverted", ref: id, note: cur.autoReason });
     this.changed();
     return t;

@@ -1,9 +1,10 @@
 // 이 Mac 의 캘린더·미리알림(EventKit, #53). 앱에 든 Swift 도우미(desktop/native/usagi-eventkit.swift → Resources/bin/usagi-eventkit)를 부른다.
 //   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS 주소와 합쳐진다)
-//   미리알림: config appleReminders → 10분마다 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝낸다.
+//   미리알림: config appleReminders → 미리알림이 바뀔 때(watchStore)·주기로 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝낸다.
+//     우사기에서 체크·체크 해제한 것은 그 미리알림에도 바로 쓴다(pushDone, 한 방향이어도).
 //     remindersTwoWay 를 켜면 양방향: 우사기 할 일도 미리알림 「우사기 비서」 목록에 쓰고, 이어 둔 짝(reminder_links)끼리 제목·끝냄·지움을 맞춘다
 //   도우미가 맥 안 DB 만 다뤄서 네트워크를 쓰지 않는다. 한 번에 수십 ms(쓸 게 있으면 도우미를 한 번 더 부른다)
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,16 @@ export const ekRun: EkRun = (args, timeoutMs = 20e3) => new Promise((resolve, re
     catch { reject(err ?? new Error("EventKit 도우미가 이상한 답을 했어요")); }
   });
 });
+
+// 미리알림·캘린더 DB 가 바뀔 때마다 onChange(도우미 watch: macOS 가 알려 줄 때만 깨어나 배터리를 쓰지 않는다). 도우미가 끝나면(권한 없음 등) onExit.
+// 도우미는 stdin 이 닫히면 끝나서 데몬이 죽어도 남지 않는다. 돌려준 함수로 끈다
+export function watchStore(onChange: () => void, onExit: () => void): () => void {
+  const p = spawn(helperPath(), ["watch"], { stdio: ["pipe", "pipe", "ignore"] });
+  p.stdout.on("data", (b) => { if (String(b).includes('"changed"')) onChange(); });
+  p.on("error", () => {}); // 실행 실패도 close 로 온다
+  p.once("close", onExit);
+  return () => p.kill();
+}
 
 export type AppleStatus = { available: boolean; calendar: string; reminders: string };
 export async function appleStatus(run: EkRun = ekRun): Promise<AppleStatus> {
@@ -207,7 +218,15 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
   }
   let done = 0;
   for (const x of r.completed ?? []) {
-    if (x?.id && !linkedRid.has(x.id) && store.autoCompleteTodo(`reminder:${x.id}`, { reason: "미리알림에서 끝냄", evidence: { ids: [`reminder:${x.id}`] } })) done++;
+    if (!x?.id || linkedRid.has(x.id)) continue;
+    const id = `reminder:${x.id}`;
+    if (store.autoCompleteTodo(id, { reason: "미리알림에서 끝냄", evidence: { ids: [id] } })) done++;
+    // 우사기에서 체크·다시 연 것은 바로 미리알림에 쓰니(pushDone), 그 뒤에 미리알림에서 끝낸 것이면 사용자가 정한 상태여도 따른다.
+    // 끝낸 시각이 할 일을 마지막으로 고친 때보다 앞이면(맞추는 사이 우사기에서 다시 엶) 우사기 쪽 그대로
+    else {
+      const t = store.getTodo(id);
+      if (t?.status === "open" && Date.parse(x.completedAt) >= Date.parse(t.updated ?? t.created) && store.setTodoStatus(id, "done", { force: true, by: "user" })) done++;
+    }
   }
 
   if (twoWay) {
@@ -230,6 +249,19 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, edited, added_: added };
   }
   return { added: added.length, done, ok: true, wrote, trashed, edited, urgent: urgentReminders(r.open), added_: added };
+}
+
+// 우사기에서 체크·체크 해제한 할 일을 그 미리알림에 바로 쓴다(지금 상태로). 양방향 짝이 있으면 짝의 미리알림, 없으면 미리알림에서 온 할 일(reminder:<id>)만.
+// 이어진 미리알림이 없거나 못 쓰면 false(양방향이면 다음 맞추기가 다시 한다)
+export async function pushDone(store: Store, id: string, twoWay: boolean, run: EkRun = ekRun): Promise<boolean> {
+  const t = store.getTodo(id);
+  if (!t) return false;
+  if (twoWay) store.db.exec(LINKS);
+  const link = twoWay ? store.db.prepare("SELECT rid FROM reminder_links WHERE todo_id = ?").get(id) as { rid: string } | undefined : undefined;
+  const rid = link?.rid ?? (id.startsWith("reminder:") ? id.slice("reminder:".length) : "");
+  if (!rid) return false;
+  const w = await run(["write", JSON.stringify([{ op: "set", id: rid, done: t.status === "done" }])]).catch(() => null);
+  return !!w?.results?.[0]?.ok;
 }
 
 // config.json 에 켜고 끄기: calendar → connectors.calendar.local(ICS 주소는 그대로), reminders → appleReminders(끄면 양방향도), twoWay → remindersTwoWay.

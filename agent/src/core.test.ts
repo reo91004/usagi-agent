@@ -152,7 +152,9 @@ const feedback = (store: Store) => store.db.prepare("SELECT kind, ref, note FROM
 test("할 일 편집: 변경마다 대시보드·캔버스 신호, 학습 신호 기록", async () => {
   const s = setup();
   let synced = 0;
+  const statusOf: string[] = [];
   s.agent.onChange(() => synced++);
+  s.agent.onTodoStatus = (id) => statusOf.push(id);
   await s.agent.runBriefing();
   const base = synced;
   const t = s.agent.addTodo({ title: "견적 회신", priority: 2 });
@@ -160,6 +162,7 @@ test("할 일 편집: 변경마다 대시보드·캔버스 신호, 학습 신호
   assert.equal(s.agent.editTodo("nope", { priority: 1 }), undefined);
   assert.equal(s.agent.todoDone(t.id), true);
   assert.equal(s.agent.editTodo(t.id, { status: "open" })!.status, "open");
+  assert.deepEqual(statusOf, [t.id, t.id], "체크·다시 열기만 알린다(우선순위는 아님)");
   assert.equal(s.agent.deleteTodo("mail:1", "필요 없음")?.trashedAt !== undefined, true);
   assert.equal(s.agent.deleteTodo("mail:1"), undefined);
   assert.equal(synced - base, 5);
