@@ -331,7 +331,7 @@ await bus.listen(cfg.port, {
     },
     disconnect: (o) => {
       setAppleFlags(join(HOME_DIR, "config.json"), { ...(o.calendar ? { calendar: false } : {}), ...(o.reminders ? { reminders: false } : {}), ...(o.twoWay ? { twoWay: false } : {}) });
-      if (o.reminders) { cfg.appleReminders = false; unwatch?.(); }
+      if (o.reminders) { cfg.appleReminders = false; unwatch?.(); unwatch = undefined; } // 꺼지기 전에 다시 연결해도 새 watch 를 띄우게
       if (o.reminders || o.twoWay) cfg.remindersTwoWay = false;
       if (o.calendar) reloadConnectors();
       pushStatus();

@@ -156,6 +156,7 @@ case "write":
   guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
   var results: [[String: Any]] = []
   var made: [(Int, EKReminder)] = []
+  var saved = 0 // 하나도 안 바꿨으면 commit 하지 않는다(빈 commit 이 바뀜 알림을 내면 watch 가 계속 맞추게 된다)
   for o in ops {
     do {
       switch o["op"] as? String {
@@ -167,6 +168,7 @@ case "write":
         setDue(r, o)
         if let u = (o["url"] as? String).flatMap(URL.init(string:)) { r.url = u }
         try store.save(r, commit: false)
+        saved += 1
         made.append((results.count, r))
         results.append(["ok": true])
       case "set":
@@ -175,16 +177,17 @@ case "write":
         if let d = o["done"] as? Bool { r.isCompleted = d }
         setDue(r, o)
         try store.save(r, commit: false)
+        saved += 1
         results.append(["ok": true])
       case "delete":
-        if let r = reminder(o["id"]) { try store.remove(r, commit: false) } // 이미 없으면 그대로 성공
+        if let r = reminder(o["id"]) { try store.remove(r, commit: false); saved += 1 } // 이미 없으면 그대로 성공
         results.append(["ok": true])
       default:
         results.append(["ok": false, "error": "unknown op"])
       }
     } catch { results.append(["ok": false, "error": error.localizedDescription]) }
   }
-  do { try store.commit() } catch { emit(["ok": false, "error": error.localizedDescription]); exit(0) }
+  if saved > 0 { do { try store.commit() } catch { emit(["ok": false, "error": error.localizedDescription]); exit(0) } }
   for (i, r) in made { results[i]["id"] = r.calendarItemIdentifier } // 새 id 는 저장한 뒤에 읽는다
   emit(["ok": true, "results": results])
 case "watch":
