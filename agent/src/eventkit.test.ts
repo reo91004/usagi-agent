@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "./store.ts";
 import { Bus } from "./bus.ts";
 import { resolveConnectors } from "./connectors.ts";
-import { IMPORTANT_CAL, TWO_WAY_LIST, ekToCalEvent, eventkitSource, importantEvents, reminderPriority, reminderTodo, setAppleFlags, syncReminders, urgentReminders, type EkRun } from "./eventkit.ts";
+import { IMPORTANT_CAL, TWO_WAY_LIST, ekToCalEvent, eventkitSource, importantEvents, pushDone, reminderPriority, reminderTodo, setAppleFlags, syncReminders, urgentReminders, watchStore, type EkRun } from "./eventkit.ts";
 
 const NOW = new Date("2026-10-17T03:00:00Z"); // KST 12:00
 
@@ -303,6 +303,78 @@ test("syncReminders 양방향: 쓰기가 실패하면 짝을 바꾸지 않고 �
   assert.equal(store.db.prepare("SELECT count(*) n FROM reminder_links").get()!.n, 0);
   await syncReminders(store, f.run, NOW, true);
   assert.equal(f.state.size, 1);
+});
+
+test("pushDone 한 방향: 미리알림에서 온 할 일을 체크·다시 열면 그 미리알림에 바로, 그 뒤 미리알림에서 끝낸 것도 따르고, 우사기 할 일은 쓰지 않는다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문 그림 3" } });
+  await syncReminders(store, f.run, NOW);
+  const mine = store.addTodo({ title: "보고서 쓰기" });
+  store.editTodo("reminder:R1", { status: "done" });
+  assert.equal(await pushDone(store, "reminder:R1", false, f.run), true);
+  assert.equal(f.state.get("R1").completed, true);
+  const a = await syncReminders(store, f.run, NOW);
+  assert.deepEqual([a.done, a.wrote, store.getTodo("reminder:R1")!.status], [0, 0, "done"], "끝낸 미리알림을 다시 끝내지 않는다");
+  store.editTodo("reminder:R1", { status: "open" });
+  assert.equal(await pushDone(store, "reminder:R1", false, f.run), true);
+  assert.equal(f.state.get("R1").completed, false);
+  // 우사기에서 체크했다 푼 뒤(사용자가 정한 상태) 미리알림에서 끝내도 따라간다. 끝낸 시각이 마지막으로 고친 때보다 앞이면(맞추는 사이 다시 엶) 그대로
+  f.state.get("R1").completed = true;
+  f.state.get("R1").completedAt = new Date(Date.now() - 60e3).toISOString().replace(/\.\d+Z$/, "Z");
+  assert.deepEqual([(await syncReminders(store, f.run, NOW)).done, store.getTodo("reminder:R1")!.status], [0, "open"]);
+  f.state.get("R1").completedAt = new Date(Date.now() + 1e3).toISOString().replace(/\.\d+Z$/, "Z");
+  const c = await syncReminders(store, f.run, NOW);
+  assert.deepEqual([c.done, store.getTodo("reminder:R1")!.status, store.getTodo("reminder:R1")!.doneBy], [1, "done", "user"]);
+  store.editTodo(mine.id, { status: "done" });
+  f.calls.length = 0;
+  assert.equal(await pushDone(store, mine.id, false, f.run), false);
+  assert.equal(await pushDone(store, "nope", false, f.run), false);
+  assert.deepEqual(f.calls, [], "이어진 미리알림이 없으면 도우미를 부르지 않는다");
+  f.state.delete("R1");
+  assert.equal(await pushDone(store, "reminder:R1", false, f.run), false, "지워진 미리알림");
+});
+
+test("pushDone 양방향: 짝의 미리알림(우사기가 넣은 것·id 가 바뀐 것)에 쓰고, 다음 맞추기는 쓰지 않는다", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문 그림 3" } });
+  const mine = store.addTodo({ title: "보고서 쓰기" });
+  assert.equal(await pushDone(store, mine.id, true, f.run), false, "짝이 생기기 전");
+  await syncReminders(store, f.run, NOW, true);
+  store.editTodo(mine.id, { status: "done" });
+  assert.equal(await pushDone(store, mine.id, true, f.run), true);
+  assert.equal(f.state.get("N1").completed, true);
+  // iCloud 전체 동기화로 id 가 바뀌어 다시 이은 미리알림
+  f.state.set("R9", { ...f.state.get("R1"), id: "R9" }); f.state.delete("R1");
+  await syncReminders(store, f.run, NOW, true);
+  store.editTodo("reminder:R1", { status: "done" });
+  assert.equal(await pushDone(store, "reminder:R1", true, f.run), true);
+  assert.equal(f.state.get("R9").completed, true);
+  f.calls.length = 0;
+  const b = await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([b.ok, b.wrote, b.edited], [true, 0, 0]);
+});
+
+test("watchStore: 도우미가 바뀜을 알리면 onChange, 끄면 onExit, 도우미가 없어도 onExit", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cy-ekwatch-"));
+  const helper = join(dir, "usagi-eventkit");
+  writeFileSync(helper, '#!/bin/sh\n[ "$1" = watch ] || exit 2\necho \'{"changed":true}\'\ncat > /dev/null\n');
+  chmodSync(helper, 0o755);
+  const prev = process.env.CY_AGENT_EVENTKIT;
+  try {
+    process.env.CY_AGENT_EVENTKIT = helper;
+    let changed = 0;
+    let exited!: () => void;
+    const gone = new Promise<void>((r) => { exited = r; });
+    const stop = watchStore(() => changed++, () => exited());
+    while (!changed) await new Promise((r) => setTimeout(r, 10));
+    stop();
+    await gone;
+    assert.equal(changed, 1);
+    process.env.CY_AGENT_EVENTKIT = join(dir, "없음");
+    await new Promise<void>((r) => watchStore(() => assert.fail("바뀜 없음"), r));
+  } finally {
+    if (prev === undefined) delete process.env.CY_AGENT_EVENTKIT; else process.env.CY_AGENT_EVENTKIT = prev;
+  }
 });
 
 test("setAppleFlags: 캘린더 local·appleReminders 켜고 끄기, ICS 는 그대로, 깨진 파일은 안 건드림", () => {
