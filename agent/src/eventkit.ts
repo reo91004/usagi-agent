@@ -1,7 +1,7 @@
 // 이 Mac 의 캘린더·미리알림(EventKit, #53). 앱에 든 Swift 도우미(desktop/native/usagi-eventkit.swift → Resources/bin/usagi-eventkit)를 부른다.
 //   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS 주소와 합쳐진다)
 //   미리알림: config appleReminders → 미리알림이 바뀔 때(watchStore)·주기로 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝낸다.
-//     우사기에서 체크·체크 해제한 것은 그 미리알림에도 바로 쓴다(pushDone, 한 방향이어도).
+//     우사기에서 체크·체크 해제한 것은 그 미리알림에도 바로 쓴다(pushDone, 한 방향이어도). 반복 미리알림은 할 일을 다음 회차로 다시 연다.
 //     remindersTwoWay 를 켜면 양방향: 우사기 할 일도 미리알림 「우사기 비서」 목록에 쓰고, 이어 둔 짝(reminder_links)끼리 제목·끝냄·지움을 맞춘다
 //   도우미가 맥 안 DB 만 다뤄서 네트워크를 쓰지 않는다. 한 번에 수십 ms(쓸 게 있으면 도우미를 한 번 더 부른다)
 import { execFile, spawn } from "node:child_process";
@@ -252,8 +252,9 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
 }
 
 // 우사기에서 체크·체크 해제한 할 일을 그 미리알림에 바로 쓴다(지금 상태로). 양방향 짝이 있으면 짝의 미리알림, 없으면 미리알림에서 온 할 일(reminder:<id>)만.
+// 반복 미리알림은 끝내도 같은 id 가 열린 채 다음 회차로 넘어간다(끝낸 사본은 새 id) → 할 일도 다시 열고 마감·메모를 그 회차로, "reopened".
 // 이어진 미리알림이 없거나 못 쓰면 false(양방향이면 다음 맞추기가 다시 한다)
-export async function pushDone(store: Store, id: string, twoWay: boolean, run: EkRun = ekRun): Promise<boolean> {
+export async function pushDone(store: Store, id: string, twoWay: boolean, run: EkRun = ekRun): Promise<boolean | "reopened"> {
   const t = store.getTodo(id);
   if (!t) return false;
   if (twoWay) store.db.exec(LINKS);
@@ -261,7 +262,12 @@ export async function pushDone(store: Store, id: string, twoWay: boolean, run: E
   const rid = link?.rid ?? (id.startsWith("reminder:") ? id.slice("reminder:".length) : "");
   if (!rid) return false;
   const w = await run(["write", JSON.stringify([{ op: "set", id: rid, done: t.status === "done" }])]).catch(() => null);
-  return !!w?.results?.[0]?.ok;
+  const res = w?.results?.[0];
+  if (!res?.ok) return false;
+  if (t.status !== "done" || res.completed !== false || !store.setTodoStatus(id, "open", { force: true })) return true; // 옛 도우미는 completed 를 안 준다
+  store.setTodoDue(id, iso(res.due));
+  if (t.source === "reminders") store.followSource(id, { note: freshNote(t.note, reminderTodo(res)?.note) });
+  return "reopened";
 }
 
 // config.json 에 켜고 끄기: calendar → connectors.calendar.local(ICS 주소는 그대로), reminders → appleReminders(끄면 양방향도), twoWay → remindersTwoWay.

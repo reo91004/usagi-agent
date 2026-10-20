@@ -151,7 +151,7 @@ case "reminders":
   let linked = args.dropFirst(3).compactMap { reminder($0) }
   emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict)])
 case "write":
-  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서
+  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서(add·set 은 저장한 뒤 미리알림 모습도)
   guard args.count >= 3, let ops = (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [[String: Any]] else { emit(["ok": false, "error": "usage: write <ops JSON>"]); exit(2) }
   guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
   var results: [[String: Any]] = []
@@ -178,6 +178,7 @@ case "write":
         setDue(r, o)
         try store.save(r, commit: false)
         saved += 1
+        made.append((results.count, r))
         results.append(["ok": true])
       case "delete":
         if let r = reminder(o["id"]) { try store.remove(r, commit: false); saved += 1 } // 이미 없으면 그대로 성공
@@ -188,7 +189,8 @@ case "write":
     } catch { results.append(["ok": false, "error": error.localizedDescription]) }
   }
   if saved > 0 { do { try store.commit() } catch { emit(["ok": false, "error": error.localizedDescription]); exit(0) } }
-  for (i, r) in made { results[i]["id"] = r.calendarItemIdentifier } // 새 id 는 저장한 뒤에 읽는다
+  // 저장한 뒤의 모습: add 는 새 id, set 은 반복 미리알림이면 끝내도 열린 채 다음 회차 마감(끝낸 사본은 새 id 로 따로 생긴다)
+  for (i, r) in made { results[i].merge(reminderDict(r)) { _, new in new } }
   emit(["ok": true, "results": results])
 case "watch":
   // macOS 가 미리알림 DB 가 바뀌었다고 알려 줄 때만 깨어난다(다른 앱·아이폰 iCloud·우리 write 모두). 그 밖에는 타이머 없이 잠들어 있다

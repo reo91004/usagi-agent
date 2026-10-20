@@ -255,11 +255,12 @@ agent.onChange(() => { // 패널·채팅·Slack 에서 할 일을 고치면 곧 
   remindersSoon = setTimeout(() => void syncRemindersNow(), 5e3);
   remindersSoon.unref();
 });
-// 우사기에서 체크·체크 해제하면 그 미리알림에도 바로(차례로, 그때의 상태로). 쓰고 나면 watch 가 알려 와 한 번 더 맞춘다
+// 우사기에서 체크·체크 해제하면 그 미리알림에도 바로(차례로, 그때의 상태로). 쓰고 나면 watch 가 알려 와 한 번 더 맞춘다.
+// 반복 미리알림이라 다음 회차로 다시 열렸으면 패널을 다시 그린다
 let pushing = Promise.resolve();
 agent.onTodoStatus = (id) => {
   if (!cfg.appleReminders || !eventkitAvailable()) return;
-  pushing = pushing.then(() => pushDone(store, id, !!cfg.remindersTwoWay)).then(() => {}, (e) => console.warn("[reminders]", e?.message ?? e));
+  pushing = pushing.then(() => pushDone(store, id, !!cfg.remindersTwoWay)).then((r) => { if (r === "reopened") bus.dashboardChanged(); }, (e) => console.warn("[reminders]", e?.message ?? e));
 };
 setTimeout(() => void syncRemindersNow(), 20e3).unref();
 // 앱을 업데이트하면 서명(ad-hoc)이 바뀌어 macOS 가 캘린더·미리알림 허락을 다시 묻는다. 연결해 둔 것인데 허락이 없으면 한 번 알린다(누르면 설치 탭 「더 연결하기」)
