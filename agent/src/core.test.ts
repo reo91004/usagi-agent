@@ -49,6 +49,26 @@ function setup(fix: { ok: boolean } = { ok: true }, extra: Record<string, unknow
   return { agent, store, root, bubbles, posts, updates, signals, fixCalls: () => fixCalls };
 }
 
+test("브리핑: 참석만 하는 일정을 그대로 옮긴 캘린더 할 일은 만들지 않는다, 캘린더 표가 없으면 그대로(#293)", async () => {
+  const todos = [
+    { key: "calendar:1", title: "디지털논리회로 수업", source: "calendar", priority: 1 },
+    { key: "calendar:2", title: "피아노 학원", source: "calendar", priority: 2 },
+    { key: "calendar:3", title: "피아노 학원 준비물 챙기기", source: "calendar", priority: 1 },
+    { key: "slack:C1:1", title: "피아노 학원", source: "slack", priority: 2 }, // 캘린더 출처가 아니면 그대로
+  ];
+  const think = async () => ({ bubble: "", reply_md: "", todos, done_todo_ids: [], proposals: [] });
+  const s = setup({ ok: true }, { think });
+  s.store.db.exec("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, subject TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL)");
+  const ins = s.store.db.prepare("INSERT INTO meetings VALUES (?, ?, ?, '2026-10-20T12:00:00Z')");
+  ins.run("m1", "디지털논리회로", "2026-10-20T04:00:00Z");
+  ins.run("m2", "피아노 학원", "2026-10-20T10:30:00Z");
+  await s.agent.runBriefing();
+  assert.deepEqual(s.store.openTodos().map((t) => t.id).sort(), ["calendar:3", "slack:C1:1"]);
+  const bare = setup({ ok: true }, { think });
+  await bare.agent.runBriefing();
+  assert.ok(bare.store.getTodo("calendar:1") && bare.store.getTodo("calendar:2"));
+});
+
 test("브리핑: 할 일 저장, 허용 레포 제안만 올리고 말풍선", async () => {
   const s = setup();
   await s.agent.runBriefing();

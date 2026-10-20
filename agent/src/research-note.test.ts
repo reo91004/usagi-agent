@@ -110,6 +110,23 @@ const graphDir = (edn = "{}") => {
   writeFileSync(join(graph, "logseq", "config.edn"), edn);
   return graph;
 };
+test("collectDay: 그날 「일정」을 그대로 옮긴 캘린더 할 일은 「신규」에서 뺀다(#293)", async () => {
+  const store = new Store(":memory:");
+  store.db.exec("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, subject TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL)");
+  store.db.prepare("INSERT INTO meetings VALUES (?, ?, ?, ?)").run("m1", "디지털논리회로", at("13:00"), at("15:00"));
+  store.db.prepare("INSERT INTO meetings VALUES (?, ?, ?, ?)").run("m2", "피아노 학원", at("19:30"), at("20:30"));
+  const led = store.db.prepare("INSERT INTO todo_ledger (day, at, todo_id, title, action, by) VALUES ('2026-10-17', ?, ?, ?, 'added', 'briefing')");
+  for (const [id, title, source] of [
+    ["calendar:a", "디지털논리회로 수업", "calendar"],
+    ["calendar:b", "피아노 학원 준비물 챙기기", "calendar"], // 할 일이 붙으면 그대로
+    ["user:c", "피아노 학원", "user"], // 캘린더 출처가 아니면 그대로
+    ["calendar:d", "논문 초안 제출", "calendar"], // 그날 일정에 없으면 그대로
+  ]) { store.upsertTodo({ id, title, source, priority: 2 }); led.run(at("09:00"), id, title); }
+  const n = await collectDay({ ...cfg, readSessions: false }, store, "2026-10-17", { git: async () => [] });
+  assert.deepEqual(n.meetings.map((m) => m.title), ["디지털논리회로", "피아노 학원"]);
+  assert.deepEqual(n.added, ["피아노 학원 준비물 챙기기", "피아노 학원", "논문 초안 제출"]);
+});
+
 const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], skipped: [], added: [], commits: [] };
 const one: DayNote = { ...empty, done: ["a"] };
 const oneBlock = `- ## 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일 완료 1건\n\t- ### 할 일\n\t\t- 완료\n\t\t\t- a`;

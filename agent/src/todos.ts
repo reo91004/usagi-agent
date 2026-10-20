@@ -91,6 +91,14 @@ export function opPatch(op: TodoOp): Result<TodoPatch> {
   return parsePatch(body);
 }
 
+// 할 일 제목이 캘린더 일정을 그대로 옮긴 것인가(참석만 하는 일정). 공백·기호, 앞의 오늘·내일, 끝의 수업·학원·참석 같은 말을 빼고 비교한다.
+// 「… 준비」처럼 할 일이 붙은 제목은 다르다
+const eventKey = (s: string) => {
+  const k = s.normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").replace(/^(?:오늘|내일)/u, "");
+  return k.replace(/(?:수업|강의|학원|참석|회의|미팅|일정|세미나)+$/u, "") || k;
+};
+export const sameAsEvent = (title: string, events: string[]) => { const k = eventKey(title); return events.some((e) => eventKey(e) === k); };
+
 // 우선순위 뜻(스키마·프롬프트 공용). 4 = 언젠가·백로그: 기한이 딱히 없고 별로 안 중요한 것
 export const PRIORITY_DESC = "1=오늘 꼭, 2=이번 주, 3=나중에(마감이 일주일 넘게 남았거나 날짜 없음), 4=언젠가·백로그(기한 없고 별로 안 중요함)";
 

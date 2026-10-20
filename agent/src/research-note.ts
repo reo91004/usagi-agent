@@ -20,6 +20,7 @@ import { redact } from "./runs.ts";
 import { cliStructured, featureBrain, usesCli, type CodexDeps } from "./feature-brain.ts";
 import { trackQuery, withRun } from "./runs.ts";
 import type { Node, Store } from "./store.ts";
+import { sameAsEvent } from "./todos.ts";
 
 // config.edn 의 문자열 값. 없으면 Logseq 기본
 const ednString = (graph: string, key: string, dflt: string) => {
@@ -119,6 +120,9 @@ export async function collectDay(
     meetings = (store.db.prepare("SELECT subject, start FROM meetings WHERE start >= ? AND start < ? ORDER BY start LIMIT 30").all(from, to) as any[])
       .map((r) => ({ time: hm(String(r.start)), title: String(r.subject) }));
   } catch { /* 캘린더를 연결한 적 없으면 표가 없다 */ }
+  // 그날 일정을 그대로 옮긴 캘린더 할 일은 「일정」에 이미 있으니 「신규」에서 뺀다
+  const titles = meetings.map((m) => m.title);
+  for (const [id, title] of added) if (store.getTodo(id)?.source === "calendar" && sameAsEvent(title, titles)) added.delete(id);
 
   const f = deps.focus?.stats(day, day)?.days[0];
   // 커밋은 사용자가 고른 레포 폴더에서만(대시보드와 같다). 그날 낮을 기준 시각으로 주고 그날 것만 남긴다

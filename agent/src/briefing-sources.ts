@@ -90,8 +90,10 @@ export function briefingTask(c: Connectors | null = CONNECTORS, ready: ReadonlyS
   };
   const cal = conns.calendar, mail = conns.mail, slack = conns.slack, issues = conns.issues;
   if (usable("calendar")) {
-    if (cal.mode === "mcp") steps.push(`${STEP_HEAD.calendar} 오늘·내일 일정(${tool(cal, "listEvents")})`);
-    else steps.push(`${STEP_HEAD.calendar} 위 "오늘·내일 일정"(로컬 캐시)에서 준비가 필요한 회의`);
+    // 일정은 연구 노트·개요에 따로 보인다 — 참석만 하는 일정까지 할 일로 만들면 두 번 보인다(데몬도 core.ts addTodos 에서 거른다)
+    const calTodo = "준비물·제출·사전 작업처럼 따로 할 일이 있는 일정만 할 일로 만든다. 수업·학원·회의처럼 참석만 하면 되는 일정은 할 일로 만들지 않는다";
+    if (cal.mode === "mcp") steps.push(`${STEP_HEAD.calendar} 오늘·내일 일정(${tool(cal, "listEvents")}). ${calTodo}`);
+    else steps.push(`${STEP_HEAD.calendar} 위 "오늘·내일 일정"(로컬 캐시). ${calTodo}`);
   }
   if (usable("mail") && mail.mode === "mcp") steps.push(`${STEP_HEAD.mail} 최근 24시간 받은 메일 중 답장/조치가 필요한 것(${tool(mail, "search", "read")})`);
   if (usable("slack")) {

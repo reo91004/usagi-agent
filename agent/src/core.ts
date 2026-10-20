@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { HOME_DIR, type Config } from "./config.ts";
 import type { Bus } from "./bus.ts";
 import { LEDGER_KEEP_DAYS, TRASH_KEEP_DAYS, type Store, type Proposal, type Todo, type TodoPatch, type AutoEvidence, type TrashedTodo } from "./store.ts";
-import { opPatch, type NewTodo, type TodoOp } from "./todos.ts";
+import { opPatch, sameAsEvent, type NewTodo, type TodoOp } from "./todos.ts";
 import { TodoRules, evaluateRules, parseRule, ruleChanges, ruleSummary, withNote, RULE_GUIDE, type RuleProposal, type RuleChange, type RuleSkip, type TodoRule } from "./todo-rules.ts";
 import { describeTodo as realDescribe, originOf, resolveOrigin, type Describe, type GitShow } from "./todo-source.ts";
 import type { TodoSource } from "./store.ts";
@@ -532,11 +532,14 @@ export class Agent {
   private addTodos(todos: Thought["todos"]): Todo[] {
     const added: Todo[] = [];
     const rules = this.rules.enabled();
+    let events: string[] | undefined; // 캘린더 일정 제목(캘린더 출처 할 일이 올 때만 한 번 읽는다)
     for (const td of todos) {
       // 할 일 규칙(결정적): 우선순위·메모를 덮고, skip이면 새로 만들지 않는다(이미 있는 할 일은 그대로)
       const rule = evaluateRules(rules, { title: td.title, source: td.source });
       const exists = !!this.store.getTodo(td.key);
       if (rule.skip && !exists) { this.rules.hit(rule.ruleIds); continue; }
+      // 수업·학원처럼 참석만 하는 일정을 그대로 옮긴 할 일은 만들지 않는다(일정은 따로 보인다). 지시로도 막지만 모델이 또 낼 수 있다
+      if (td.source === "calendar" && !exists && sameAsEvent(td.title, events ??= this.eventTitles())) continue;
       // 원본은 모델이 쓴 걸 믿지 않고 참조 키로 KG·git에서 찾는다
       const ref = td.source_ref?.trim() || td.key;
       const origin = resolveOrigin(this.store, ref, { link: td.link, gitShow: this.deps.gitShow });
@@ -554,6 +557,12 @@ export class Agent {
       if (up === "added") { const n = this.store.getTodo(td.key); if (n) added.push(n); }
     }
     return added;
+  }
+
+  // 동기화해 둔 일정 제목(지난 7일~동기화 범위). 캘린더를 연결한 적 없으면 표가 없다
+  private eventTitles(): string[] {
+    try { return (this.store.db.prepare("SELECT DISTINCT subject FROM meetings").all() as any[]).map((r) => String(r.subject)); }
+    catch { return []; }
   }
 
   // 두뇌 결과를 저장하고 Slack에 올린다. 반환: 본문 메시지 위치
