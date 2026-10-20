@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "./store.ts";
@@ -374,6 +374,7 @@ test("watchStore: 도우미가 바뀜을 알리면 onChange, 끄면 onExit, 도�
     await new Promise<void>((r) => watchStore(() => assert.fail("바뀜 없음"), r));
   } finally {
     if (prev === undefined) delete process.env.CY_AGENT_EVENTKIT; else process.env.CY_AGENT_EVENTKIT = prev;
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -69,12 +69,15 @@ test("store: 끝낸 일은 최근(2일) 것만 막고, 날짜가 다른 반복 �
 
 test("store: 끝낸 Slack 할 일과 제목이 같아도 닫은 뒤에 온 메시지면 새로 생긴다(#206)", () => {
   const s = new Store(":memory:");
-  s.upsertTodo({ id: "slack:D1:p1792175453371419", title: "김영창 Slack DM 확인", source: "slack", priority: 2 });
-  s.editTodo("slack:D1:p1792175453371419", { status: "done" });
-  s.db.prepare("UPDATE todos SET updated = '2026-10-17T10:32:07.991Z' WHERE id = 'slack:D1:p1792175453371419'").run();
-  // 닫기 전(10:19Z) 메시지는 같은 일로 막고, 닫은 뒤(13:40Z) 메시지는 새 할 일
-  assert.equal(s.upsertTodo({ id: "slack:D1:p1792232396269049", title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "blocked");
-  assert.equal(s.upsertTodo({ id: "slack:D1:p1792244449901299", title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "added");
+  // 시각은 지금 기준으로 잡는다(최근 끝낸 일 창이 DEDUPE.doneDays 라서 고정 날짜면 며칠 뒤 깨진다)
+  const closed = Date.now() - 3 * 3600e3;
+  const ts = (ms: number) => `slack:D1:p${Math.floor(ms / 1e3)}371419`;
+  s.upsertTodo({ id: ts(closed - 5 * 3600e3), title: "김영창 Slack DM 확인", source: "slack", priority: 2 });
+  s.editTodo(ts(closed - 5 * 3600e3), { status: "done" });
+  s.db.prepare("UPDATE todos SET updated = ? WHERE id = ?").run(new Date(closed).toISOString(), ts(closed - 5 * 3600e3));
+  // 닫기 전(13분 앞) 메시지는 같은 일로 막고, 닫은 뒤(1시간 뒤) 메시지는 새 할 일
+  assert.equal(s.upsertTodo({ id: ts(closed - 13 * 60e3), title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "blocked");
+  assert.equal(s.upsertTodo({ id: ts(closed + 3600e3), title: "김영창 Slack DM 확인", source: "slack", priority: 2 }), "added");
 });
 
 test("store: 열린 할 일과 같은 일이 새 id 로 오면 합치고, 사용자가 고친 필드는 그대로", () => {
