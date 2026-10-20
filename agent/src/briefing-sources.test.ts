@@ -40,6 +40,11 @@ test("브리핑 지시: 이슈 서버가 등록 안 돼 있으면 이슈 단계�
   assert.doesNotMatch(bare, /slack|캘린더|메일|이슈:/);
 });
 
+test("브리핑 지시: 캘린더는 따로 할 일이 있는 일정만 할 일로, 참석만 하는 일정은 만들지 말라고(#293)", () => {
+  const ics = resolveConnectors({}, { connectors: { calendar: { mode: "api", local: true } } });
+  for (const c of [CONNS, ics]) assert.match(briefingTask(c, null), /1\) 캘린더: .*참석만 하면 되는 일정은 할 일로 만들지 않는다/);
+});
+
 test("이정표: 성공한 데이터 호출에만 — ToolSearch·맥락 도구·실패·연결 안 된 출처는 아무것도", () => {
   assert.equal(briefingMilestone("github.search_issues", true, CONNS, ALL), "이슈 보는 중이에요…");
   assert.equal(briefingMilestone("github.search_issues", true, CONNS, null), "이슈 보는 중이에요…");
