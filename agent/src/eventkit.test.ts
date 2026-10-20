@@ -138,6 +138,7 @@ test("syncReminders: 안 끝난 것은 할 일로(한 번만), 미리알림에�
 });
 
 // 가짜 미리알림 앱: reminders(linked 포함)·write 를 흉내 낸다
+// 진짜 도우미처럼 set 결과에 저장한 뒤 모습을 준다. repeats: 끝내면 원본은 열린 채 마감이 하루 뒤로, 끝낸 사본은 새 id(2026-10-20 실측)
 function fakeReminders(items: Record<string, any> = {}) {
   const state = new Map<string, any>(Object.entries(items).map(([id, x]) => [id, { id, list: "개인", completed: false, ...x }]));
   const calls: string[][] = [];
@@ -156,7 +157,12 @@ function fakeReminders(items: Record<string, any> = {}) {
       if (o.title !== undefined) x.title = o.title;
       if (o.done !== undefined) x.completed = o.done;
       if ("due" in o) { if (o.due) x.due = o.due; else delete x.due; }
-      return { ok: true };
+      if (x.repeats && x.completed) {
+        const { repeats: _r, ...copy } = x, id = `C${++n}`;
+        state.set(id, { ...copy, id, completedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") });
+        Object.assign(x, { completed: false, due: new Date(Date.parse(x.due) + 864e5).toISOString() });
+      }
+      return { ok: true, ...x };
     });
     return { ok: true, results };
   };
@@ -352,6 +358,41 @@ test("pushDone 양방향: 짝의 미리알림(우사기가 넣은 것·id 가 �
   f.calls.length = 0;
   const b = await syncReminders(store, f.run, NOW, true);
   assert.deepEqual([b.ok, b.wrote, b.edited], [true, 0, 0]);
+});
+
+test("pushDone 반복 미리알림: 끝내도 열린 채 다음 회차면 할 일도 다시 열고 마감·메모를 옮긴다. 쓰기 실패·옛 도우미·반복 아님은 그대로", async () => {
+  const store = new Store(":memory:");
+  const due = new Date(2026, 9, 17, 9).toISOString(), next = new Date(2026, 9, 18, 9).toISOString();
+  const f = fakeReminders({ R1: { title: "약 먹기", due, dueHasTime: true, repeats: true }, R2: { title: "논문 그림 3" } });
+  await syncReminders(store, f.run, NOW);
+  store.editTodo("reminder:R1", { status: "done" });
+  assert.equal(await pushDone(store, "reminder:R1", false, async () => ({ ok: false, error: "not-granted" })), false);
+  const old: EkRun = async (args) => (args[0] === "write" ? { ok: true, results: [{ ok: true }] } : f.run(args)); // set 결과에 모습을 안 주는 옛 도우미
+  assert.equal(await pushDone(store, "reminder:R1", false, old), true);
+  assert.equal(store.getTodo("reminder:R1")!.status, "done");
+  assert.equal(await pushDone(store, "reminder:R1", false, f.run), "reopened");
+  const t = store.getTodo("reminder:R1")!;
+  assert.deepEqual([t.status, t.due, t.note], ["open", next, "미리알림 「개인」 · 마감 10월 18일 09:00"]);
+  assert.deepEqual([f.state.get("R1").completed, f.state.get("R1").due], [false, next]);
+  const a = await syncReminders(store, f.run, NOW);
+  assert.deepEqual([a.done, a.wrote, store.getTodo("reminder:R1")!.status, store.openTodos().length], [0, 0, "open", 2], "끝낸 사본은 할 일이 되지 않는다");
+  store.editTodo("reminder:R2", { status: "done" });
+  assert.equal(await pushDone(store, "reminder:R2", false, f.run), true);
+  assert.equal(store.getTodo("reminder:R2")!.status, "done", "반복이 아니면 끝낸 채");
+  store.editTodo("reminder:R1", { status: "open" });
+  assert.equal(await pushDone(store, "reminder:R1", false, f.run), true, "다시 열면 그대로 씀");
+});
+
+test("pushDone 반복 미리알림 양방향: 다시 연 할 일을 다음 맞추기가 또 끝내지 않는다(다음 회차를 건너뛰지 않게)", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "약 먹기", due: new Date(2026, 9, 17, 9).toISOString(), dueHasTime: true, repeats: true } });
+  await syncReminders(store, f.run, NOW, true);
+  store.editTodo("reminder:R1", { status: "done" });
+  assert.equal(await pushDone(store, "reminder:R1", true, f.run), "reopened");
+  f.calls.length = 0;
+  const b = await syncReminders(store, f.run, NOW, true);
+  assert.deepEqual([b.ok, b.wrote, f.writes(), store.getTodo("reminder:R1")!.status], [true, 0, [], "open"]);
+  assert.equal(f.state.get("R1").due, new Date(2026, 9, 18, 9).toISOString());
 });
 
 test("watchStore: 도우미가 바뀜을 알리면 onChange, 끄면 onExit, 도우미가 없어도 onExit", async () => {
