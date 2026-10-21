@@ -19,20 +19,10 @@ export const kindLabel = (k) => KIND_LABELS[k] ?? KIND_LABELS.other;
 export const okRunId = (id) => typeof id === 'string' && /^[\w-]{1,64}$/.test(id);
 export const okModelId = (id) => typeof id === 'string' && /^[\w.-]{1,64}$/.test(id);
 
-// ---- 캐릭터 클릭: 공부 중(돌고 있는 run)이면 세션 창, 아니면 대시보드 ----
-// state: SSE state 페이로드({ mood, activity?, runs? }). active: SSE runs 의 active 목록(돌고 있는 run 요약)
-// activity 가 있으면 그걸 따르고(캐릭터에 보이는 것과 일치), 없으면(예전 데몬) 채팅 빼고 돌고 있는 run 이 있는지로
-export function clickTarget(state, active) {
-  if (state && typeof state.activity === 'string') {
-    if (state.activity === 'studying') return 'session';
-    if (Array.isArray(state.runs) && state.runs.length) return 'session'; // 춤추는 중에도 돌고 있는 일이 있으면
-    return 'panel';
-  }
-  return visibleActive(active).length ? 'session' : 'panel';
-}
 const visibleActive = (active) => (Array.isArray(active) ? active.filter((r) => r && r.status === 'running' && r.kind !== 'chat') : []);
 
-// 세션 창을 열 때 고를 run: 수정 run 우선, 그다음 가장 최근 시작
+// 세션 창을 열 때 고를 run: 수정 run 우선, 그다음 가장 최근 시작.
+// state: SSE state 페이로드({ mood, activity?, runs? }). active: SSE runs 의 active 목록(돌고 있는 run 요약)
 export function pickRun(state, active) {
   const pool = [...(Array.isArray(state?.runs) ? state.runs : []), ...visibleActive(active)].filter((r) => r && okRunId(r.id));
   if (!pool.length) return null;

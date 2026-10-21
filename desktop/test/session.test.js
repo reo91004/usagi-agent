@@ -3,23 +3,13 @@ import assert from 'node:assert/strict';
 import { ipcHandlers, buildHandler } from './helpers/main-calls.js';
 import { denied } from '../src/denied.js';
 import {
-  clickTarget, pickRun, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl, readOnlyReason,
+  pickRun, sortRuns, upsertRun, fmtCost, fmtDuration, canSend, canControl, readOnlyReason,
   initialTranscript, addEvents, buildItems, toolsSummary, shortTool, diffLines,
   isAtBottom, initialScroll, scrollReducer, composerKey, cleanMessage, okRunId, kindIcon,
   composerMode, awaitingFollowUp, isRoutine, groupRuns, routineHeader, shortWhen, lineage, pickInitial, cleanTask,
 } from '../src/session.js';
 
 const run = (o) => ({ id: 'r1', kind: 'fix', title: 't', status: 'running', startedAt: '2026-10-08T01:00:00Z', interactive: true, ...o });
-
-test('캐릭터 클릭: studying 이면 세션, 아니면 패널(activity 없으면 돌고 있는 run 으로)', () => {
-  assert.equal(clickTarget({ mood: 'idle', activity: 'studying', runs: [run()] }, []), 'session');
-  assert.equal(clickTarget({ activity: 'idle', runs: [] }, [run()]), 'panel'); // activity 가 우선(캐릭터에 보이는 것)
-  assert.equal(clickTarget({ activity: 'dancing', runs: [run()] }, []), 'session');
-  assert.equal(clickTarget({ activity: 'dancing', runs: [] }, []), 'panel');
-  assert.equal(clickTarget({ mood: 'idle' }, [run()]), 'session');
-  assert.equal(clickTarget({ mood: 'idle' }, [run({ kind: 'chat' })]), 'panel');
-  assert.equal(clickTarget(null, null), 'panel');
-});
 
 test('pickRun: 수정 run 우선, 그다음 최근', () => {
   const a = run({ id: 'a', kind: 'briefing', startedAt: '2026-10-08T03:00:00Z' });
