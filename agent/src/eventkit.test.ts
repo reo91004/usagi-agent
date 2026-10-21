@@ -169,6 +169,33 @@ function fakeReminders(items: Record<string, any> = {}) {
   return { state, calls, run, writes: () => calls.filter((c) => c[0] === "write").map((c) => JSON.parse(c[1])) };
 }
 
+test("syncReminders 한 방향: 미리알림에서 지운 것은 휴지통으로, 되살린 것·한꺼번에 많이 사라진 것·옛 도우미면 그대로", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders({ R1: { title: "논문" }, R2: { title: "장보기" } });
+  assert.equal((await syncReminders(store, f.run, NOW)).added, 2);
+  store.setTodoStatus("reminder:R2", "done");
+  assert.deepEqual(f.calls.at(-1)!.slice(2), []);
+  await syncReminders(store, f.run, NOW);
+  assert.deepEqual(f.calls.at(-1)!.slice(2), ["R1"], "열린 미리알림 할 일의 id 만 넘긴다");
+  f.state.delete("R1"); f.state.delete("R2");
+  const r = await syncReminders(store, f.run, NOW);
+  assert.equal(r.trashed, 1);
+  assert.ok(store.trashedTodo("reminder:R1"));
+  assert.equal(store.getTodo("reminder:R2")!.status, "done", "끝낸 할 일은 그대로");
+  store.restoreTodo("reminder:R1");
+  assert.equal((await syncReminders(store, f.run, NOW)).trashed, 0);
+  assert.equal(store.getTodo("reminder:R1")!.status, "open", "되살린 것은 다시 버리지 않는다");
+
+  const many = new Store(":memory:");
+  const g = fakeReminders(Object.fromEntries(["A", "B", "C", "D", "E"].map((k) => [k, { title: `일 ${k}` }])));
+  await syncReminders(many, g.run, NOW);
+  for (const k of ["A", "B", "C", "D"]) g.state.delete(k);
+  const old: EkRun = async (args) => { const x = await g.run(args); delete x.linked; return x; };
+  assert.equal((await syncReminders(many, old, NOW)).trashed, 0);
+  assert.equal((await syncReminders(many, g.run, NOW)).trashed, 0);
+  assert.equal(many.openTodos().length, 5);
+});
+
 test("syncReminders 양방향: 가져온 것은 잇고, 우사기 할 일은 「우사기 비서」에 넣고, 바뀐 게 없으면 쓰지 않는다", async () => {
   const store = new Store(":memory:");
   const f = fakeReminders({ R1: { title: "논문 그림 3" } });

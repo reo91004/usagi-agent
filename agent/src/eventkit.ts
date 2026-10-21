@@ -1,6 +1,6 @@
 // 이 Mac 의 캘린더·미리알림(EventKit, #53). 앱에 든 Swift 도우미(desktop/native/usagi-eventkit.swift → Resources/bin/usagi-eventkit)를 부른다.
 //   캘린더: connectors.calendar 의 local: true → calendar-sync 의 30분 동기화에 원천 하나로(ICS 주소와 합쳐진다)
-//   미리알림: config appleReminders → 미리알림이 바뀔 때(watchStore)·주기로 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝낸다.
+//   미리알림: config appleReminders → 미리알림이 바뀔 때(watchStore)·주기로 안 끝난 것은 할 일로(reminder:<id>, 고친 제목·마감도 따라간다), 미리알림에서 끝낸 것은 할 일도 끝내고 지운 것은 휴지통으로.
 //     우사기에서 체크·체크 해제한 것은 그 미리알림에도 바로 쓴다(pushDone, 한 방향이어도). 반복 미리알림은 할 일을 다음 회차로 다시 연다.
 //     remindersTwoWay 를 켜면 양방향: 우사기 할 일도 미리알림 「우사기 비서」 목록에 쓰고, 이어 둔 짝(reminder_links)끼리 제목·끝냄·지움을 맞춘다
 //   도우미가 맥 안 DB 만 다뤄서 네트워크를 쓰지 않는다. 한 번에 수십 ms(쓸 게 있으면 도우미를 한 번 더 부른다)
@@ -141,16 +141,20 @@ const LINKS = "CREATE TABLE IF NOT EXISTS reminder_links (todo_id TEXT PRIMARY K
 const norm = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
 const sameTime = (a?: string | null, b?: string | null) => (a ? Date.parse(a) : NaN) === (b ? Date.parse(b) : NaN) || (!a && !b);
 const iso = (s?: string | null) => (s ? new Date(s).toISOString() : null);
+// 열린 것이 한꺼번에 많이 사라지면(iCloud 로그아웃·계정 끔 등) 지운 것으로 보지 않는다
+const tooMany = (gone: number, of: number) => gone > 3 && gone * 2 > of;
 // 미리알림 마감 칸: 자정이면 날짜만
 const dueOp = (due?: string | null) => { const d = due ? new Date(due) : null; return d ? { due: d.toISOString(), dueHasTime: !!(d.getHours() || d.getMinutes()) } : { due: null }; };
 
-// 한 번 맞추기: 안 끝난 것은 넣거나 제목·마감·메모를 맞추고(지운 것·사용자가 고친 칸은 store 가 지킨다), 7일 안에 미리알림에서 끝낸 것은 할 일도 끝낸다.
+// 한 번 맞추기: 안 끝난 것은 넣거나 제목·마감·메모를 맞추고(지운 것·사용자가 고친 칸은 store 가 지킨다), 7일 안에 미리알림에서 끝낸 것은 할 일도 끝내고, 지운 것은 휴지통으로 보낸다.
 // twoWay 면 그 앞에 이어 둔 짝을 맞추고(제목·끝냄·마감 모두 바뀐 쪽, 양쪽 다 바뀌었으면 우사기 쪽), 뒤에 아직 없는 우사기 할 일을 미리알림에 넣는다.
 // 우사기 휴지통에 든 할 일의 미리알림은 끝냄으로만 두고(되살리면 다시 열린다), 영구 삭제되면 우사기가 넣은 것(pushed)만 지운다(사용자가 만든 미리알림은 메모·하위 항목이 있어 남긴다)
 export async function syncReminders(store: Store, run: EkRun = ekRun, now = new Date(), twoWay = false): Promise<ReminderSync & { added_: Todo[] }> {
   if (twoWay) store.db.exec(LINKS);
   const links = twoWay ? store.db.prepare("SELECT * FROM reminder_links").all() as Link[] : [];
-  const r = await run(["reminders", new Date(now.getTime() - 7 * 86400e3).toISOString(), ...links.map((l) => l.rid)]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  // 한 방향이면 열린 미리알림 할 일의 id 를 넘겨 그 미리알림이 아직 있는지 본다(linked 에 없으면 미리알림에서 지운 것)
+  const mine = twoWay ? [] : store.openTodos().filter((t) => t.source === "reminders" && t.id.startsWith("reminder:"));
+  const r = await run(["reminders", new Date(now.getTime() - 7 * 86400e3).toISOString(), ...(twoWay ? links.map((l) => l.rid) : mine.map((t) => t.id.slice("reminder:".length)))]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   if (!r?.ok) return { added: 0, done: 0, ok: false, error: r?.error === "not-granted" ? "macOS 미리알림 권한이 없어요" : String(r?.error ?? "실패"), added_: [] };
   if (twoWay && !Array.isArray(r.linked)) return { added: 0, done: 0, ok: false, error: "미리알림 도우미가 양방향을 몰라요(앱을 다시 설치해 주세요)", added_: [] }; // 짝이 모두 사라진 것으로 읽어 지우지 않게
   const linkedRid = new Set(links.map((l) => l.rid)), linkedTodo = new Set(links.map((l) => l.todo_id));
@@ -167,7 +171,7 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     const byRid = new Map<string, any>((r.linked ?? []).map((x: any) => [x.id, x]));
     // 끝난 짝이 사라진 것(끝낸 미리알림 정리)은 조용히 놓는다. 열린 짝이 한꺼번에 많이 사라지면(iCloud 로그아웃 등) 지우지 않는다
     const missing = links.filter((l) => !l.done && !byRid.has(l.rid));
-    const massMissing = missing.length > 3 && missing.length * 2 > links.filter((l) => !l.done).length;
+    const massMissing = tooMany(missing.length, links.filter((l) => !l.done).length);
     for (const l of links) {
       const t = store.getTodo(l.todo_id), x = byRid.get(l.rid);
       if (!x) {
@@ -199,6 +203,13 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
       if (Object.keys(set).length) op({ op: "set", id: l.rid, ...set }, () => saveLink(l.todo_id, l.rid, title, done, due, !!l.pushed));
       else if (title !== l.title || done !== !!l.done || !sameTime(due, l.due)) saveLink(l.todo_id, l.rid, title, done, due, !!l.pushed);
     }
+  }
+
+  // 한 방향: 미리알림에서 지운 것 → 휴지통(양방향의 짝 지움과 같게). 휴지통에서 되살린 할 일은 사용자가 남기기로 한 것이라 다시 버리지 않는다
+  if (!twoWay && Array.isArray(r.linked)) {
+    const alive = new Set(r.linked.map((x: any) => `reminder:${x.id}`));
+    const gone = mine.filter((t) => !alive.has(t.id) && !store.ledger({ todoId: t.id, actions: ["restored"], limit: 1 }).length);
+    if (!tooMany(gone.length, mine.length)) for (const t of gone) if (store.trashTodo(t.id, now.toISOString(), "user")) trashed++;
   }
 
   const added: Todo[] = [];
