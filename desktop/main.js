@@ -18,7 +18,7 @@ import { normalizeSection, splitHost } from './src/dashboard.js';
 import { sanitizeTodoPatch } from './src/todos.js';
 import { okRuleId, sanitizeRulePatch } from './src/todo-rules.js';
 import { sshConfigHosts, remoteUrl } from './src/folders.js';
-import { clickTarget, pickRun, okRunId, okModelId, cleanMessage } from './src/session.js';
+import { pickRun, okRunId, okModelId, cleanMessage } from './src/session.js';
 import { okClientId, okMsgId } from './src/session-inbox.js';
 import { okToolUseId, normAgents, runningCount } from './src/agents.js';
 import { cleanOrigin } from './src/origin.js';
@@ -694,12 +694,6 @@ function showSession(runId, toolUseId) {
     else sessionPick = pick;
   }
   showOnCurrentSpace(sessionWin, app);
-}
-
-// 캐릭터 클릭: 공부 중(돌고 있는 세션)이면 세션 창, 아니면 대시보드 패널
-function onCharacterClick() {
-  if (clickTarget(lastState, activeRuns) === 'session') showSession(pickRun(lastState, activeRuns));
-  else togglePanel();
 }
 
 // ---- 데몬 SSE ----
@@ -1467,12 +1461,8 @@ function setupIPC() {
     return { ok: true, ...sisaPublic(next) };
   });
   // ---- 패널 ----
-  // 오버레이 캐릭터 클릭은 공부 중이면 세션 창으로(렌더러는 그대로 togglePanel 을 부른다)
-  ipcMain.on('toggle-panel', (e) => {
-    if (!fromOurs(e)) return;
-    if (e.sender === win?.webContents) onCharacterClick();
-    else togglePanel();
-  });
+  // 캐릭터 두 번 누르기는 늘 패널(작업 세션 창은 메뉴·패널의 「작업 세션」으로 연다)
+  ipcMain.on('toggle-panel', (e) => { if (fromOurs(e)) togglePanel(); });
   // 이 컴퓨터에서 쓸 수 있는 것({ claude, codex }) — 패널이 코드 관련 버튼을 숨길지 정한다
   ipcMain.handle('caps-get', (e) => (fromOurs(e) ? refreshCaps(false) : denied()));
   // 뇌 연결 상태(brain-state.js brainView) — 캐릭터·패널·세션 창

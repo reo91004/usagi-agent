@@ -4,7 +4,7 @@ import { createPress, createClicks, DRAG_PX, LONG_PRESS_MS, AFTER_DRAG_MS, DOUBL
 
 const P = (x, y, t, ox = 100, oy = 100) => ({ x, y, t, ox, oy });
 
-// 렌더러의 mousedown/mousemove/mouseup 핸들러와 같은 순서로 부른다. 'click' 이 나오면 onCharacterClick 이 불린다
+// 렌더러의 mousedown/mousemove/mouseup 핸들러와 같은 순서로 부른다. 'click' 이 나오면 패널 토글(toggle-panel)이 불린다
 function gesture({ moves = [], up = [0, 0], held = 50, t0 = 1000, win = [100, 100], onChar = true, press = createPress() }) {
   press.press(P(0, 0, t0));
   let dragStarts = 0;
