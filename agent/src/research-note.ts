@@ -9,7 +9,7 @@
 //   예전 pages/우사기 연구 노트___*.md 페이지는 더 만들지도 지우지도 않는다.
 import { query as sdkQuery } from "./claude-sdk.ts";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { dayStart, focusDuration, localDay, nextDayStart, type Focus } from "./focus.ts";
@@ -19,7 +19,7 @@ import { modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 import { redact } from "./runs.ts";
 import { cliStructured, featureBrain, usesCli, type CodexDeps } from "./feature-brain.ts";
 import { trackQuery, withRun } from "./runs.ts";
-import type { Node, Store } from "./store.ts";
+import type { Node, ResearchMetaRow, Store } from "./store.ts";
 import { sameAsEvent } from "./todos.ts";
 
 // config.edn 의 문자열 값. 없으면 Logseq 기본
@@ -75,6 +75,8 @@ export type DayNote = {
 };
 
 const NO_DIR = "(폴더 모름)";
+// 세션 cwd → 노트의 레포 키: 숨은 폴더(.claude/worktrees …) 아래는 그 위로, 이 맥의 하위 폴더는 가장 가까운 git 루트로(대시보드와 같은 규칙)
+const repoKey = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return host ? p : gitRootOf(dir); };
 const inDay = (iso: string, day: string) => localDay(Date.parse(iso)) === day;
 const hm = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 const strs = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, n) : []);
@@ -91,14 +93,13 @@ export async function collectDay(
     .all(kind, from, to) as any[]).map((r): Node => ({ ...r, props: JSON.parse(r.props) }));
 
   const hidden = store.hiddenProjects();
-  // 레포 단위로: 숨은 폴더(.claude/worktrees …) 아래는 그 위로, 이 맥의 하위 폴더는 가장 가까운 git 루트로(대시보드와 같은 규칙)
   // 연구·프로젝트로 정한 폴더(research_meta): 합친 폴더는 그 프로젝트로 모으고, 이름을 바꿨으면 그 이름으로 쓴다
   const metas = new Map(store.researchMeta().map((m) => [m.path, m]));
   const owned = (key: string | null | undefined): key is string => !!key && (metas.get(key)?.kind === "research" || metas.get(key)?.kind === "project");
   const toProject = (key: string) => { const to = metas.get(key)?.mergedInto; return owned(to) ? to : key; };
   const names: Record<string, string> = {};
-  for (const m of metas.values()) if (owned(m.path) && m.name) names[m.path] = m.name;
-  const repoOf = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return toProject(host ? p : gitRootOf(dir)); };
+  for (const m of metas.values()) { const name = noteName(m); if (name) names[m.path] = name; }
+  const repoOf = (cwd: string) => toProject(repoKey(cwd));
   const byProject = new Map<string, DayNote["sessions"][number]["items"]>();
   for (const s of sessionsAllowed(cfg) ? nodes("session") : []) {
     const cwd = String(s.props.cwd ?? "");
@@ -185,6 +186,9 @@ const line = (s: string, max: number) => lead(plain(String(s).trim().replace(/^[
 const isQuick = (j: NoteJob) => !j.lost && (j.code === null || j.code === 0) && j.seconds < QUICK_JOB_SECONDS;
 const jobKey = (j: NoteJob) => j.id ?? j.name;
 const jobState = (j: NoteJob) => (j.lost ? "중단(종료 기록 없음)" : j.code === null || j.code === 0 ? "완료" : `실패(종료 코드 ${j.code})`);
+
+// 노트에 쓰는 이름: 연구·프로젝트로 정한 폴더에 패널에서 붙인 이름(없으면 undefined → 폴더 이름)
+export const noteName = (m: ResearchMetaRow | undefined) => ((m?.kind === "research" || m?.kind === "project") && m.name ? m.name : undefined);
 
 // 레포 이름(Tine 페이지 링크 이름): 패널에서 바꾼 이름, 없으면 마지막 폴더 이름
 const repoName = (key: string, names?: DayNote["names"]) => (key === NO_DIR ? "" : (names?.[key] ?? splitHost(key).dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/[[\]#(){}]/g, "").trim());
@@ -300,6 +304,41 @@ export function writeNote(store: Store, graph: string, n: DayNote): WriteResult 
   renameSync(tmp, path);
   store.setMark(blockKey(path), hashMark(block));
   return "written";
+}
+
+// 노트에 쓰는 이름이 바뀌면(before → after, 없으면 폴더 이름) 저널 폴더의 모든 일지에서 우사기 블록 「작업」의 그 폴더 링크 줄만 바꾼다(#304).
+// 사용자가 고친 블록과 블록 밖은 그대로. 줄은 폴더 키를 담지 않으니, 지금 이름으로 같은 줄을 만드는 다른 폴더(세션 기록·연구 메타)가 있으면
+// 어느 폴더 줄인지 몰라 아무것도 안 바꾸고 null. 그 밖에는 바꾼 일지 수.
+// shortcut: 세션 기록에서도 지워진 옛 폴더는 겹치는지 모른다 — 일지에 폴더 키를 남기게 되면 그걸로 맞춘다
+export function relinkNotes(store: Store, graph: string, key: string, before: string | undefined, after: string | undefined): number | null {
+  const metas = new Map(store.researchMeta().map((m) => [m.path, m]));
+  const line = (k: string, name: string | undefined) => { const { host } = splitHost(k); return `\t\t- ${repoLink(k, name ? { [k]: name } : undefined)}${host ? ` ${code(plain(host, 40))}` : ""}`; }; // autoBlock 「작업」 머리줄
+  const from = line(key, before), to = line(key, after);
+  if (from === to) return 0;
+  const cwds = store.db.prepare("SELECT DISTINCT json_extract(props, '$.cwd') AS cwd FROM nodes WHERE kind = 'session'").all() as { cwd: unknown }[];
+  const others = new Set([...metas.keys(), ...cwds.flatMap((r) => (typeof r.cwd === "string" && r.cwd ? [repoKey(r.cwd)] : []))]);
+  others.delete(key);
+  if ([...others].some((k) => line(k, noteName(metas.get(k))) === from)) return null;
+  const dir = dirname(notePath(graph, localDay(Date.now())));
+  let n = 0;
+  for (const f of existsSync(dir) ? readdirSync(dir) : []) {
+    if (!f.endsWith(".md")) continue; // 예전 iCloud 의 내려받지 않은 일지(.md.icloud)
+    const path = join(dir, f);
+    try {
+      const st = statSync(path);
+      if (!st.isFile() || (st.size > 0 && st.blocks === 0)) continue; // 내려받지 않은 iCloud 파일(dataless)은 읽으면 내려받기를 기다린다
+      const { lines, at, now, frozen } = blockState(store, path);
+      if (!at || frozen) continue;
+      const block = lines.slice(at[0], at[1]).map((l) => (l === from ? to : l)).join("\n");
+      if (block === now) continue;
+      const tmp = `${path}.usagi-tmp`;
+      writeFileSync(tmp, [...lines.slice(0, at[0]), block, ...lines.slice(at[1])].join("\n"));
+      renameSync(tmp, path);
+      store.setMark(blockKey(path), hashMark(block)); // 우리가 고친 블록 — 사용자가 고친 것으로 보지 않게
+      n++;
+    } catch (e: any) { console.warn(`[research-note] ${f} 링크를 못 고침: ${e?.message ?? e}`); } // 한 일지가 안 돼도 나머지는 고친다
+  }
+  return n;
 }
 
 export async function writeDay(cfg: Config, store: Store, day: string, deps: Parameters<typeof collectDay>[3] = {}): Promise<{ path: string; result: WriteResult }> {
