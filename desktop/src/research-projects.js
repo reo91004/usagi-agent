@@ -2,12 +2,12 @@
 import { isSafeLink } from './bubbles.js';
 import { relativeTime, durationText } from './dashboard.js';
 
-export const STAGES = ['prep', 'submitted', 'review', 'rebuttal', 'revision', 'accepted', 'rejected', 'withdrawn'];
-export const STAGE_LABELS = { prep: '준비 중', submitted: '제출함', review: '리뷰 중', rebuttal: '리부탈', revision: '수정 요청', accepted: '채택', rejected: '거절', withdrawn: '철회' };
+export const STAGES = ['prep', 'submitted', 'rebuttal', 'accepted', 'rejected'];
+export const STAGE_LABELS = { prep: 'In Progress', submitted: 'Submitted', rebuttal: 'Rebuttal', accepted: 'Accepted', rejected: 'Rejected' };
 export const AI_LABEL = { claude: 'Claude', codex: 'Codex', agy: 'Agy', gemini: 'Gemini', aider: 'Aider', 'cursor-agent': 'Cursor', opencode: 'OpenCode' };
-// 단계 칩 색: 준비 중은 기본 회색
-export const STAGE_CHIP = { prep: '', submitted: 'accent', review: 'accent', rebuttal: 'warn', revision: 'warn', accepted: 'ok', rejected: 'err', withdrawn: 'err' };
-const ENDED = ['accepted', 'rejected', 'withdrawn']; // 끝난 단계는 마감이 더 뜻이 없다
+// 단계 칩 색: In Progress 는 기본 회색
+export const STAGE_CHIP = { prep: '', submitted: 'accent', rebuttal: 'warn', accepted: 'ok', rejected: 'err' };
+const ENDED = ['accepted', 'rejected']; // 끝난 단계는 마감이 더 뜻이 없다
 export const WARN_DAYS = 21, ERR_DAYS = 7;
 
 const str = (v) => (typeof v === 'string' ? v : '');

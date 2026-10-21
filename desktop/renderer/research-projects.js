@@ -148,7 +148,7 @@ export function createResearchProjects(ctx) {
     const cur = p.cur;
     const venueList = h('datalist', { id: 'rp-venues' }, venuesUsed(vm.researchProjects).map((v) => h('option', { value: v })));
     const put = (subs) => save(p.key, { subs: subsBody(subs) });
-    const ended = cur && (cur.stage === 'rejected' || cur.stage === 'withdrawn');
+    const ended = cur?.stage === 'rejected';
     let body;
     if (subForm === 'edit' && cur) body = subFormRow(cur, (venue, stage, deadline) => put(withCurrent(p.subs, { venue, stage, deadline })));
     else if (subForm) body = subFormRow({ venue: '', stage: 'prep', deadline: '' }, (venue, stage, deadline) => put(withNextVenue(p.subs, venue, deadline, stage)));

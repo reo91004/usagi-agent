@@ -6,7 +6,7 @@ import { cutHidden, gitRootOf, insideOf, isNoisePath, splitHost, type DashProjec
 import { okJobHost, tmuxSeen } from "./jobs.ts";
 import type { Node, ResearchMetaRow, Store } from "./store.ts";
 
-export const STAGES = ["prep", "submitted", "review", "rebuttal", "revision", "accepted", "rejected", "withdrawn"] as const;
+export const STAGES = ["prep", "submitted", "rebuttal", "accepted", "rejected"] as const;
 export type Stage = (typeof STAGES)[number];
 export type Submission = { venue: string; stage: Stage; deadline?: string; at: string };
 export type Experiment = {
@@ -28,7 +28,7 @@ const TMUX_FRESH = 15 * 60e3; // 이보다 오래 응답이 없던 서버의 tmu
 const AI_TOOLS = new Set(["claude", "codex", "agy", "gemini", "aider", "cursor-agent", "opencode"]);
 // tmux 에서 도는 명령의 첫 단어(basename)가 AI CLI 면 그 이름
 export const aiTool = (running: string | null | undefined): string | undefined => { const w = baseName((running ?? "").trim().split(/\s+/)[0] ?? "").toLowerCase(); return AI_TOOLS.has(w) ? w : undefined; };
-const LIVE = new Set<string>(["prep", "submitted", "review", "rebuttal", "revision"]);
+const LIVE = new Set<string>(["prep", "submitted", "rebuttal"]);
 
 // ---- 실험 이름: 보여 줄 때 계산하고 저장하지 않는다 ----
 const NAME_FLAG = /^(?:--(?:config|cfg|name|exp|exp_name|run_name|run-name|output)|-c)$/;

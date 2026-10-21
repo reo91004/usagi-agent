@@ -65,7 +65,7 @@ test("서버 job·tmux 가 서버 세션 폴더와 같은 키로 묶이고 후�
   assert.equal(r.tmux.srv.sessions[0].label, "sweep");
   assert.equal(r.tmux.srv.sessions[0].project, "srv:/work/dp");
 
-  assert.deepEqual(putResearchProject(store, { key: "srv:/work/dp", kind: "research", name: "논문", subs: [{ venue: "ICML", stage: "review", deadline: "2026-12-01" }] }, now), { ok: true });
+  assert.deepEqual(putResearchProject(store, { key: "srv:/work/dp", kind: "research", name: "논문", subs: [{ venue: "ICML", stage: "submitted", deadline: "2026-12-01" }] }, now), { ok: true });
   assert.deepEqual(putResearchProject(store, { key: "srv:/work/other", mergeInto: "srv:/work/dp" }, now), { ok: true });
   d = await build(store, tmux);
   const p = d.researchProjects[0];
