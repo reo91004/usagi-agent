@@ -934,7 +934,7 @@ function updateHover(el) {
 }
 
 const stage = document.getElementById('stage');
-// tuck: 가장자리에 숨기로 붙은 가장자리('left'|'right'|'bottom'), 꺼져 있으면 null
+// tuck: 가장자리에 숨기로 붙은 가장자리('left'|'right'|'bottom'), 꺼져 있거나 가장자리에서 떨어져 있으면 null
 cy.onVisibility(({ hidden, tuck }) => {
   stack.classList.toggle('hidden', !!hidden);
   tuckOn = !!tuck;

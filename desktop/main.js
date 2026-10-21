@@ -938,7 +938,7 @@ function menuTemplate() {
         sendVisibility();
         rebuildTrayMenu();
       },
-      // 가장자리에 숨기: 켜면 가장 가까운 가장자리(왼쪽·오른쪽·아래)로 붙는다. 들어가고 나오는 건 렌더러(#stage.tucked)
+      // 가장자리에 숨기: 켜면 가장자리(왼쪽·오른쪽·아래) 가까이 있을 때만 그쪽에 붙는다. 들어가고 나오는 건 렌더러(#stage.tucked)
       toggleTuck: () => {
         const c = win && charNow(); // 바꾸기 전 배치로 잰 캐릭터 자리
         state.tucked = !state.tucked;
@@ -1262,14 +1262,14 @@ function endDrag() {
 // 지금 캐릭터 가운데(화면 좌표)
 const charNow = () => charCenter(win.getPosition(), state.tucked ? state.tuckEdge : null, !!state.flip, SIZE);
 
-// 캐릭터가 있는 화면 작업영역에 맞춰 자리를 정하고 저장한다. 가장자리에 숨기면 가장 가까운 가장자리에 붙이고(geometry.js edgePlacement),
+// 캐릭터가 있는 화면 작업영역에 맞춰 자리를 정하고 저장한다. 가장자리에 숨기면 가장자리 가까이 놓았을 때만 그 가장자리에 붙이고(geometry.js nearestEdge·edgePlacement),
 // 아니면 화면 위쪽에 놓았을 때 뒤집어서 말풍선이 캐릭터 아래로 가게(dropPlacement)
 function settlePos(c = charNow()) {
   const workArea = screen.getDisplayNearestPoint(c).workArea;
   const [x, y] = win.getPosition();
   if (state.tucked) state.tuckEdge = nearestEdge(c, workArea);
   // 끌 때 옆 가장자리였던 캐릭터는 창 가운데로 돌아가니 캐릭터가 그 자리에 남게 창을 옮긴다(놓을 땐 c.x = x + 창 폭/2 라 그대로)
-  const p = state.tucked ? edgePlacement(state.tuckEdge, c, y, !!state.flip, workArea, SIZE) : { x: Math.round(c.x - SIZE.width / 2), ...dropPlacement(y, !!state.flip, workArea, SIZE) };
+  const p = state.tucked && state.tuckEdge ? edgePlacement(state.tuckEdge, c, y, !!state.flip, workArea, SIZE) : { x: Math.round(c.x - SIZE.width / 2), ...dropPlacement(y, !!state.flip, workArea, SIZE) };
   if (p.flip !== !!state.flip) send('flip', p.flip);
   if (p.x !== x || p.y !== y) {
     if (process.platform === 'win32') win.setBounds({ x: p.x, y: p.y, ...SIZE });
@@ -2218,7 +2218,7 @@ if (SQUIRREL) {
     setupAppActivation();
     registerDebugShortcut();
     createWindow();
-    if (state.tucked) settlePos(); // 저장 자리를 잃었거나(모니터를 뺌) 작업영역이 바뀌었어도 가장자리에 다시 붙인다
+    if (state.tucked) settlePos(); // 저장 자리를 잃었거나(모니터를 뺌) 작업영역이 바뀌었어도 가장자리 가까이면 다시 붙인다
     // 윈도우 로그오프·종료는 before-quit 을 안 거친다(창의 session-end 만 온다) → 집중 기록·데몬 끄기를 여기서 짧게
     if (process.platform === 'win32') win?.on('session-end', onSessionEnd);
     createTray();
