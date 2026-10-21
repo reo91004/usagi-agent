@@ -181,6 +181,12 @@ test("relinkNotes: 이름이 바뀌면 지난 일지 우사기 블록의 그 폴
   assert.equal(relinkNotes(store, graph, "/r/paper", "확산 [논문]", undefined), 1); // 이름을 지우면 폴더 이름으로
   assert.ok(readFileSync(p15, "utf8").split("\n").includes("\t\t- [[paper]]"));
   assert.equal(relinkNotes(store, graphDir(), "/r/paper", undefined, "x"), 0); // 저널 폴더가 없으면 아무것도 안 함
+  const before = readFileSync(p15, "utf8");
+  store.upsertNode("session:o", "session", "다른 레포", { tool: "claude", cwd: "/x/paper", turns: 1 }, at("10:00"));
+  assert.equal(relinkNotes(store, graph, "/r/paper", undefined, "다른 이름"), null); // 이름이 같은 다른 폴더가 있으면 어느 줄인지 몰라 그대로
+  store.putResearchMeta({ path: "/y/notes", kind: "project", name: "paper", subs: [], url: null, mergedInto: null });
+  assert.equal(relinkNotes(store, graph, "gpu1:/home/me/paper", undefined, "다른 이름"), 1); // 서버 폴더 줄은 서버 이름으로 가른다
+  assert.equal(readFileSync(p15, "utf8"), before.replace("[[paper]] `gpu1`", "[[다른 이름]] `gpu1`"));
 });
 
 test("writeNote: 저널이 없으면 폴더째 우사기 블록만 담아 만들고, 빈 날은 안 만들고, 같으면 안 쓴다", () => {

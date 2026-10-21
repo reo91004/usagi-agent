@@ -303,7 +303,11 @@ await bus.listen(cfg.port, {
     // 노트에 쓰는 이름이 바뀌었으면 지난 일지의 링크도(#304). 메타는 이미 저장됐으니 일지 쓰기가 실패해도 PUT 은 성공
     const after = noteName(meta());
     if (cfg.tineGraph && before !== after) {
-      try { const n = relinkNotes(store, cfg.tineGraph, key, before, after); if (n) console.log(`[research-note] 이름이 바뀌어 일지 ${n}개의 링크를 고쳤어요`); }
+      try {
+        const n = relinkNotes(store, cfg.tineGraph, key, before, after);
+        if (n === null) console.log(`[research-note] 이름이 같은 다른 폴더가 있어 지난 일지 링크는 그대로 둬요: ${key}`);
+        else if (n) console.log(`[research-note] 이름이 바뀌어 일지 ${n}개의 링크를 고쳤어요`);
+      }
       catch (e: any) { console.warn(`[research-note] 지난 일지 링크를 못 고침: ${e?.message ?? e}`); }
     }
     return r;
