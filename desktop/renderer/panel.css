@@ -193,6 +193,8 @@ button:hover:not(:disabled) { filter: brightness(0.96); }
 button:disabled { opacity: 0.5; cursor: default; }
 button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.primary { background: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { button.primary { background: var(--user); } } /* 밝은 보라(--accent) 위 흰 글자는 대비가 모자라 채팅 말풍선 색으로 */
+a { color: var(--accent); text-underline-offset: 2px; }
 button.ghost { background: none; color: var(--muted); }
 button.ghost:hover:not(:disabled) { background: var(--hover); filter: none; }
 button.small { padding: 2px 9px; font-size: var(--fs-xs); }
@@ -575,7 +577,7 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .proj-toggle .caret { width: 10px; flex: none; color: var(--faint); line-height: 1.5; }
 .proj-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .proj-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.proj .name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.proj .name { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .proj-title { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj .meta { display: flex; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .proj .meta b { color: var(--fg); font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -1050,6 +1052,7 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .group.p4 .todo.row:hover, .group.p4 .todo.row.open, .group.p4 .todo.row:focus-visible { opacity: 1; }
 .group.p4 .todo.row .t { color: var(--muted); }
 .group.p4 .card.collapsed { padding: 8px 12px; }
+body:not(.dragging-todo) .card.todos.collapsed:empty { display: none; } /* 접힌 그룹의 끌어 놓는 칸은 끌 때만 보인다 */
 .todo-tools { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; }
 .todo-tools-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
 button.rules-chip { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; }
@@ -1649,6 +1652,10 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-list { padding: 2px 10px; }
 .rp-row { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 10px 6px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; font: inherit; cursor: pointer; border-radius: 8px; min-width: 0; }
 .rp-row:first-child { border-top: 0; }
+/* 누르는 둥근 줄: border-top 은 border-radius 를 따라 양 끝이 휘어서, 구분선은 줄 위에 따로 곧게 긋는다 */
+.rp-row, .todo.row:not(.drag-ghost) { position: relative; border-top: 0; } /* 끄는 그림(.drag-ghost)은 position: fixed 그대로 */
+.todo.row.drag-ghost { border-top: 0; }
+.rp-row:not(:first-child)::before, .todo.row:not(:first-child, .drag-ghost)::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--line); pointer-events: none; }
 .rp-row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .rp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rp-l1 button { flex: none; padding-block: 0; }
@@ -1661,10 +1668,17 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-cand .rp-path { flex-basis: 100%; }
 .rp-cand-main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .rp-cand .rp-path, .rp-folder .rp-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-head { gap: 8px; margin-top: 4px; }
+.rp-head { gap: 8px; }
 .rp-title { font-size: 18px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-head input { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; }
-.rp-kinds { display: flex; gap: 4px; flex: none; }
+/* 연구·프로젝트 고르기: 설정 안쪽 탭(#set-tabs)과 같은 세그먼트 */
+.rp-kinds { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-md); background: var(--code); flex: none; }
+.rp-kinds button { padding: 2px 10px; background: none; color: var(--muted); border-radius: var(--r-sm); font-size: var(--fs-xs); }
+.rp-kinds button:hover:not(:disabled) { background: var(--hover); color: var(--fg); filter: none; }
+.rp-kinds button[aria-pressed="true"], .rp-kinds button[aria-pressed="true"]:hover { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+/* 상세 머리(← 이름 · 단추)는 스크롤해도 위에 붙어 있다. #content 의 위·옆 여백만큼 넓혀 아래가 비치지 않게 */
+.rp-headbox { position: sticky; top: -4px; z-index: 2; margin: -4px -22px 0; padding: 8px 22px 10px; background: var(--surface); border-bottom: 1px solid var(--line); }
+@media (max-width: 700px) { .rp-headbox { margin-inline: calc(-1 * var(--s4)); padding-inline: var(--s4); } } /* 좁은 창은 #content 옆 여백이 --s4 */
 .rp-fchips { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0 2px; }
 .rp-fchip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-sec { margin-top: 14px; }

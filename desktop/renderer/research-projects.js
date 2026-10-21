@@ -47,10 +47,14 @@ export function createResearchProjects(ctx) {
     rules.set(path, r?.ok ? { st: r.data } : { st: rules.get(path)?.st, err: `AI 지시를 ${add ? '넣지' : '읽지'} 못했어요 — ${ctx.why(r)}` });
     ctx.render(true);
   };
+  let listTop = 0; // 상세를 열기 전 목록 스크롤 — 돌아오면 그 자리로
   const open = (key) => {
+    const content = document.getElementById('content');
+    if (key && !detailKey) listTop = content.scrollTop;
     detailKey = key; msg = null; mergeOpen = renaming = linkOpen = false; subForm = null; rules = new Map();
     for (const f of ctx.getRaw()?.researchProjects?.find((x) => x.key === key)?.folders ?? []) rulesCall(f.path, false);
     ctx.render(true);
+    content.scrollTop = key ? 0 : listTop; // 상세는 맨 위부터(머리는 붙어 있다)
   };
   const set = (fn) => () => { fn(); ctx.render(true); };
   const toneChip = (text, tone, title) => h(`span.chip${tone ? `.${tone}` : ''}`, { text, title });
@@ -80,12 +84,17 @@ export function createResearchProjects(ctx) {
       h('div.muted.small.rp-l2', { text: p.line2, title: p.line2 }));
   }
 
+  // 연구·프로젝트 고르기(세그먼트). 후보 줄·상세 머리·작업 폴더 탭 펼친 줄이 같은 모양을 쓴다
+  const kindPicker = (cur, name, pick) => h('span.rp-kinds', { role: 'group', 'aria-label': '연구·프로젝트로 묶기' },
+    [['research', '연구'], ['project', '프로젝트']].map(([kind, text]) =>
+      h('button', { type: 'button', text, 'aria-pressed': String(cur === kind), 'aria-label': `${name}: ${text}`, onclick: () => { if (cur !== kind) pick(kind); } })));
+
   function candidateRow(p) {
-    const kinds = [['research', '연구'], ['project', '프로젝트'], ['none', '아니에요']];
     return h('div.rp-cand', null,
       h('div.rp-cand-main', null, h('span.name', { text: p.name }), h('span.muted.small', { text: p.lastRel }),
         h('div.muted.small.mono.rp-path', { text: p.key, title: p.key })),
-      ...kinds.map(([kind, text]) => h('button.ghost.small', { type: 'button', text, 'aria-label': `${p.name}: ${text}`, onclick: () => save(p.key, { kind }) })));
+      kindPicker(null, p.name, (kind) => save(p.key, { kind })),
+      h('button.ghost.small', { type: 'button', text: '아니에요', title: '후보에서 빼요', 'aria-label': `${p.name}: 아니에요`, onclick: () => save(p.key, { kind: 'none' }) }));
   }
 
   // ---- 상세 ----
@@ -95,7 +104,7 @@ export function createResearchProjects(ctx) {
     h('div.job-main', null,
       h('div.job-name', { text: e.name, title: e.where }),
       h('div.muted.small.job-sub', { text: [e.host, e.time, e.folder].filter(Boolean).join(' · '), title: e.where })),
-    e.id && e.state !== 'running' ? h('button.ghost.small', { type: 'button', text: forgetting.has(e.id) ? '지우는 중…' : '지우기', disabled: forgetting.has(e.id), title: '이 기록만 우사기에서 지워요(서버 파일은 이미 정리됐어요)', 'aria-label': `기록 지우기: ${e.name}`, onclick: () => forget(e.id) }) : null);
+    e.id && e.state !== 'running' ? h('button.ghost.small', { type: 'button', text: forgetting.has(e.id) ? '지우는 중…' : '기록 지우기', disabled: forgetting.has(e.id), title: '이 기록만 우사기에서 지워요(서버 파일은 이미 정리됐어요)', 'aria-label': `기록 지우기: ${e.name}`, onclick: () => forget(e.id) }) : null);
   // 끝난 usagi-run 기록 지우기(서버 실험 카드의 「기록 지우기」와 같은 길)
   async function forget(id) {
     forgetting.add(id); ctx.render(true);
@@ -111,12 +120,11 @@ export function createResearchProjects(ctx) {
     const saveName = () => { renaming = false; save(p.key, { name: name.value.trim() || null }); };
     name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveName(); });
     if (renaming) requestAnimationFrame(() => name.focus());
-    const kinds = h('span.rp-kinds', null, [['research', '연구'], ['project', '프로젝트']].map(([kind, text]) =>
-      h(`button.${p.kind === kind ? 'primary' : 'ghost'}.small`, { type: 'button', text, 'aria-pressed': String(p.kind === kind), onclick: () => { if (p.kind !== kind) { save(p.key, { kind }); ctx.goto(kind === 'research' ? 'research' : 'projects'); } } })));
+    const kinds = kindPicker(p.kind, p.name, (kind) => { save(p.key, { kind }); ctx.goto(kind === 'research' ? 'research' : 'projects'); });
     const where = (f) => { const { host, dir } = splitHost(f.path); return `${host || (f.onMac === false ? '서버' : '이 Mac')} ${dir || f.path}`; };
     return h('div.rp-headbox', null,
       h('div.row.rp-head', null,
-        h('button.ghost.small', { type: 'button', text: '←', 'aria-label': '목록으로', onclick: () => open(null) }),
+        h('button.ghost.small', { type: 'button', text: p.kind === 'research' ? '← 연구' : '← 작업 폴더', 'aria-label': '목록으로', onclick: () => open(null) }),
         renaming
           ? [name, h('button.primary.small', { type: 'button', text: '저장', onclick: saveName }), h('button.ghost.small', { type: 'button', text: '취소', onclick: set(() => { renaming = false; }) })]
           : [h('span.rp-title', { text: p.name, title: p.name }), h('button.ghost.small', { type: 'button', text: '이름 바꾸기', onclick: set(() => { renaming = true; }) })],
@@ -246,5 +254,5 @@ export function createResearchProjects(ctx) {
     ];
   }
 
-  return { view, inDetail: (vm, tab) => showsDetail(detailKey && find(vm, detailKey), tab), save };
+  return { view, inDetail: (vm, tab) => showsDetail(detailKey && find(vm, detailKey), tab), save, kindPicker };
 }

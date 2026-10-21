@@ -260,8 +260,10 @@ async function enterSettings() {
 
 function goto(s) {
   if (s === 'models') settingsTab = 'ai'; // 예전 「모델」 탭
+  const was = section;
   section = normalizeSection(s) ?? section;
   if (!SECTIONS.includes(section)) section = 'overview';
+  if (section !== was) $('content').scrollTop = 0; // 다른 탭의 스크롤 위치로 열리지 않게
   try { localStorage.setItem('section', section); } catch { /* 무시 */ }
   for (const b of navButtons()) b.setAttribute('aria-selected', String(b.dataset.section === section));
   $('open-setup').classList.toggle('on', section === 'setup');
@@ -1145,7 +1147,7 @@ async function setHidden(p, hide) {
     if (raw && Array.isArray(raw.projects)) raw = { ...raw, projects: raw.projects.map((x) => (x?.path === p.path ? { ...x, hidden: hide } : x)) };
     loadSoon();
   } else {
-    projMsg = { ok: false, text: `${hide ? '숨기기' : '다시 보이기'} 실패 — ${why(r)}` };
+    projMsg = { ok: false, text: `${hide ? '숨기지' : '다시 보이지'} 못했어요 — ${why(r)}` };
   }
   renderAll();
 }
@@ -1196,7 +1198,7 @@ function renderProjects(force) {
   const kids = [...top, top.length ? h('h2', null, h('span', { text: '최근 작업 폴더' })) : null, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, 연구·프로젝트로 묶을 수 있어요. VS Code 로 바로 열 수도 있어요.' })];
   if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
   if (free.length) kids.push(projectRows(free));
-  else kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : vm.projects.length ? '나머지 작업 폴더가 없어요' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
+  else kids.push(h('div.card.empty', { text: error && !raw ? '불러오지 못했어요' : vm.projects.length ? '나머지 작업 폴더가 없어요' : hidden.length ? '숨긴 작업 폴더만 있어요' : '최근 작업 폴더가 없어요' }));
   if (hidden.length) {
     kids.push(h('div.hidden-projects', null,
       h('button.ghost.hidden-toggle', { type: 'button', 'aria-expanded': String(hiddenOpen), onclick: toggleHiddenGroup },
@@ -1237,7 +1239,7 @@ function projectRows(list) {
           h('button.ghost.hide-btn', { type: 'button', text: '숨기기', title: '이 작업 폴더 숨기기 — 집계와 에이전트 맥락에서도 빠져요', 'aria-label': `숨기기: ${p.name}`, onclick: () => setHidden(p, true) }))),
       pickFor?.path === p.path
         ? h('div.proj-pick', null, h('span.muted.small', { text: '어느 서버예요?' }),
-          pickFor.hosts.map((host) => h('button.ghost', { type: 'button', text: host, onclick: () => openFolder(p, 'code', host) })))
+          pickFor.hosts.map((host) => h('button.ghost.small', { type: 'button', text: host, onclick: () => openFolder(p, 'code', host) })))
         : null,
       open
         ? h('div.proj-body', null,
@@ -1248,9 +1250,8 @@ function projectRows(list) {
               h('span.sha.mono', { text: c.sha }), h('span.subj', { text: c.subject, title: c.subject }), h('span.when', { text: c.rel }))))
             : null,
           // 연구 탭 후보에 아직 없는 폴더도 여기서 정한다(후보는 실험이 있거나 세션이 2개 이상인 것만)
-          h('div.row', null, h('span.muted.small', { text: '묶기' }),
-            [['research', '연구'], ['project', '프로젝트']].map(([kind, text]) => h('button.ghost.small', { type: 'button', text, title: `이 폴더를 ${text}로 정해요`, 'aria-label': `${p.name}: ${text}로 정하기`,
-              onclick: () => { rp.save(p.path, { kind }); if (kind === 'research') goto('research'); } }))))
+          h('div.row', null, h('span.muted.small', { text: '연구·프로젝트로 묶기' }),
+            rp.kindPicker(null, p.name, (kind) => { rp.save(p.path, { kind }); if (kind === 'research') goto('research'); })))
         : null);
   }));
 }
@@ -1299,7 +1300,7 @@ const visibleTodos = () => overlayTodos(rawTodos(), pendingOps);
 // 끌기·Alt 키로 순서·우선순위 바꾸기
 function moveTodo(id, priority, beforeId) {
   if (isNoopMove(visibleTodos(), id, priority, beforeId)) return;
-  mutate({ kind: 'reorder', id, priority, beforeId }, () => cy.todoReorder(id, priority, beforeId ?? null), '순서 바꾸기 실패',
+  mutate({ kind: 'reorder', id, priority, beforeId }, () => cy.todoReorder(id, priority, beforeId ?? null), '순서를 바꾸지 못했어요',
     () => setRawTodos(reorderLocal(rawTodos(), id, priority, beforeId)));
 }
 
@@ -1309,7 +1310,7 @@ function addTodo() {
   addDraft = '';
   const input = $('todo-add-input');
   if (input) input.value = '';
-  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body }, () => cy.todoAdd(body), '추가 실패', (r) => {
+  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body }, () => cy.todoAdd(body), '추가하지 못했어요', (r) => {
     if (typeof r.data?.id !== 'string') return;
     setRawTodos([{ id: r.data.id, source: 'user', userEdited: false, ...body }, ...rawTodos()]);
   }).then((r) => {
@@ -1324,7 +1325,7 @@ function toggleToday(t) {
   const date = vm.today?.date;
   if (!date) return;
   const on = isToday(t, date);
-  mutate({ kind: 'edit', id: t.id, patch: { today: on ? null : date }, rule: true }, () => cy.todoEdit(t.id, { today: !on }), '오늘 할 일 바꾸기 실패', () => {
+  mutate({ kind: 'edit', id: t.id, patch: { today: on ? null : date }, rule: true }, () => cy.todoEdit(t.id, { today: !on }), '오늘 할 일을 바꾸지 못했어요', () => {
     setRawTodos(rawTodos().map((x) => {
       if (x.id !== t.id) return x;
       const { today: _drop, ...rest } = x;
@@ -1337,7 +1338,7 @@ function toggleToday(t) {
 // skipped = 안 해도 돼서 닫기: 같은 끝난 칸으로 가되 「안 함」 표시가 붙는다
 function completeTodo(t, skipped = false) {
   const item = { id: t.id, title: t.title, source: t.source, priority: t.priority, link: t.linkRaw || undefined, note: t.note || undefined, userEdited: t.userEdited, ...(skipped ? { skipped: true } : {}) };
-  mutate({ kind: 'remove', id: t.id }, () => (skipped ? cy.todoEdit(t.id, { status: 'done', skipped: true }) : cy.todoDone(t.id)), skipped ? '닫기 실패' : '완료 처리 실패', () => {
+  mutate({ kind: 'remove', id: t.id }, () => (skipped ? cy.todoEdit(t.id, { status: 'done', skipped: true }) : cy.todoDone(t.id)), skipped ? '닫지 못했어요' : '완료로 바꾸지 못했어요', () => {
     setRawTodos(rawTodos().filter((x) => x.id !== t.id));
     raw = { ...raw, today: patchToday(raw.today, t.id, { done: true }) }; // 오늘 할 일이면 '오늘 끝냄'으로
     recentDone = [item, ...recentDone.filter((x) => x.id !== t.id)].slice(0, 5);
@@ -1346,7 +1347,7 @@ function completeTodo(t, skipped = false) {
 
 function reopenTodo(item) {
   recentDone = recentDone.filter((x) => x.id !== item.id);
-  mutate({ kind: 'add', tempId: item.id, body: item }, () => cy.todoEdit(item.id, { status: 'open' }), '되돌리기 실패', () => {
+  mutate({ kind: 'add', tempId: item.id, body: item }, () => cy.todoEdit(item.id, { status: 'open' }), '되돌리지 못했어요', () => {
     setRawTodos([item, ...rawTodos().filter((x) => x.id !== item.id)]);
     raw = { ...raw, today: patchToday(raw.today, item.id, { done: false }) };
   }).then((r) => { if (!r?.ok) { recentDone = [item, ...recentDone]; renderTodos(); } });
@@ -1357,7 +1358,7 @@ const reverting = new Set();
 function revertAuto(item) {
   reverting.add(item.id);
   const body = { id: item.id, title: item.title, source: item.source, priority: item.priority, link: item.link || undefined, userEdited: false };
-  mutate({ kind: 'add', tempId: item.id, body }, () => cy.todoRevert(item.id), '되돌리기 실패', () => {
+  mutate({ kind: 'add', tempId: item.id, body }, () => cy.todoRevert(item.id), '되돌리지 못했어요', () => {
     setRawTodos([body, ...rawTodos().filter((x) => x.id !== item.id)]);
     raw = { ...raw, recentDone: (raw.recentDone ?? []).filter((x) => x.id !== item.id) };
     todoMsg = { ok: true, text: `"${item.title}" 다시 열었어요. 이건 앞으로 자동으로 끝내지 않아요.` };
@@ -1402,7 +1403,7 @@ function trashTodo(t) {
   if (listSec().contains(document.activeElement)) refocusId = ids[i + 1] ?? ids[i - 1] ?? null;
   trashPending.push(op);
   undo.show(body);
-  const job = mutate({ kind: 'remove', id: t.id }, () => cy.todoDelete(t.id), '휴지통으로 옮기기 실패', () => {
+  const job = mutate({ kind: 'remove', id: t.id }, () => cy.todoDelete(t.id), '휴지통으로 옮기지 못했어요', () => {
     setRawTodos(rawTodos().filter((x) => x.id !== t.id));
     raw = commitTrash(raw, op);
     raw = { ...raw, today: patchToday(raw.today, t.id, null) };
@@ -1418,7 +1419,7 @@ async function restoreTodo(id, title, body = null) {
   if (confirmState?.id === id) confirmState = null;
   renderTodos();
   await trashing.get(id);
-  const r = await mutate(body ? { kind: 'add', tempId: id, body } : [], () => cy.todoRestore(id), '되살리기 실패', (res) => {
+  const r = await mutate(body ? { kind: 'add', tempId: id, body } : [], () => cy.todoRestore(id), '되살리지 못했어요', (res) => {
     raw = commitTrash(raw, op);
     const td = res.data?.todo;
     if (td?.status === 'done') return;
@@ -1435,7 +1436,7 @@ function purgeTodo(id) {
   const op = { kind: 'purge', id };
   trashPending.push(op);
   confirmState = null;
-  mutate([], () => cy.todoPurge(id), '영구 삭제 실패', () => { raw = commitTrash(raw, op); })
+  mutate([], () => cy.todoPurge(id), '영구 삭제하지 못했어요', () => { raw = commitTrash(raw, op); })
     .finally(() => { trashPending = trashPending.filter((x) => x !== op); renderTodos(); });
 }
 
@@ -1443,7 +1444,7 @@ function emptyTrash() {
   const op = { kind: 'empty' };
   trashPending.push(op);
   confirmState = null;
-  mutate([], () => cy.todoTrashEmpty(), '휴지통 비우기 실패', () => { raw = commitTrash(raw, op); })
+  mutate([], () => cy.todoTrashEmpty(), '휴지통을 비우지 못했어요', () => { raw = commitTrash(raw, op); })
     .finally(() => { trashPending = trashPending.filter((x) => x !== op); renderTodos(); });
 }
 
@@ -1480,7 +1481,7 @@ function doingButton(t) {
   return h(`button.ghost.row-doing${on ? '.on' : ''}`, {
     type: 'button', disabled: t.pending, 'aria-pressed': String(on),
     title: on ? '진행중 표시 끄기' : '진행중으로 표시', 'aria-label': `${on ? '진행중 끄기' : '진행중으로'}: ${t.title}`,
-    onclick: () => mutate({ kind: 'edit', id: t.id, patch: { doing: !on }, rule: true }, () => cy.todoEdit(t.id, { doing: !on }), '진행중 표시 실패'),
+    onclick: () => mutate({ kind: 'edit', id: t.id, patch: { doing: !on }, rule: true }, () => cy.todoEdit(t.id, { doing: !on }), '진행중 표시를 바꾸지 못했어요'),
   }, navIcon(on ? 'pause' : 'play'));
 }
 
@@ -1719,8 +1720,8 @@ async function ruleCall(r, pending, call, failText) {
   else loadSoon();
   renderTodos();
 }
-const toggleRule = (r) => ruleCall(r, { enabled: !r.enabled }, () => cy.todoRuleEdit(r.id, { enabled: !r.enabled }), '규칙 바꾸기 실패');
-const deleteRule = (r) => ruleCall(r, 'delete', () => cy.todoRuleDelete(r.id), '규칙 지우기 실패');
+const toggleRule = (r) => ruleCall(r, { enabled: !r.enabled }, () => cy.todoRuleEdit(r.id, { enabled: !r.enabled }), '규칙을 바꾸지 못했어요');
+const deleteRule = (r) => ruleCall(r, 'delete', () => cy.todoRuleDelete(r.id), '규칙을 지우지 못했어요');
 
 function addForm() {
   const input = h('input', { id: 'todo-add-input', type: 'text', placeholder: '할 일 추가 — Enter', 'aria-label': '새 할 일' });
@@ -1958,7 +1959,7 @@ function saveTodoEdit(t, s) {
   if (patch) {
     const prev = details.get(t.id);
     if ('description' in patch && prev?.status === 'ok') details.set(t.id, { status: 'ok', data: { ...prev.data, description: patch.description } });
-    mutate({ kind: 'edit', id: t.id, patch }, () => cy.todoEdit(t.id, patch), '고치기 실패', () => {
+    mutate({ kind: 'edit', id: t.id, patch }, () => cy.todoEdit(t.id, patch), '고치지 못했어요', () => {
       setRawTodos(rawTodos().map((x) => (x.id === t.id ? { ...x, ...patch, userEdited: true } : x)));
     }).then((res) => { if (!res?.ok && prev) { details.set(t.id, prev); renderTodos(); } });
   }
