@@ -9,7 +9,7 @@
 //   예전 pages/우사기 연구 노트___*.md 페이지는 더 만들지도 지우지도 않는다.
 import { query as sdkQuery } from "./claude-sdk.ts";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HOME_DIR, type Config } from "./config.ts";
 import { dayStart, focusDuration, localDay, nextDayStart, type Focus } from "./focus.ts";
@@ -19,7 +19,7 @@ import { modelWorkAllowed, sessionsAllowed } from "./onboarding.ts";
 import { redact } from "./runs.ts";
 import { cliStructured, featureBrain, usesCli, type CodexDeps } from "./feature-brain.ts";
 import { trackQuery, withRun } from "./runs.ts";
-import type { Node, Store } from "./store.ts";
+import type { Node, ResearchMetaRow, Store } from "./store.ts";
 import { sameAsEvent } from "./todos.ts";
 
 // config.edn 의 문자열 값. 없으면 Logseq 기본
@@ -97,7 +97,7 @@ export async function collectDay(
   const owned = (key: string | null | undefined): key is string => !!key && (metas.get(key)?.kind === "research" || metas.get(key)?.kind === "project");
   const toProject = (key: string) => { const to = metas.get(key)?.mergedInto; return owned(to) ? to : key; };
   const names: Record<string, string> = {};
-  for (const m of metas.values()) if (owned(m.path) && m.name) names[m.path] = m.name;
+  for (const m of metas.values()) { const name = noteName(m); if (name) names[m.path] = name; }
   const repoOf = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return toProject(host ? p : gitRootOf(dir)); };
   const byProject = new Map<string, DayNote["sessions"][number]["items"]>();
   for (const s of sessionsAllowed(cfg) ? nodes("session") : []) {
@@ -185,6 +185,9 @@ const line = (s: string, max: number) => lead(plain(String(s).trim().replace(/^[
 const isQuick = (j: NoteJob) => !j.lost && (j.code === null || j.code === 0) && j.seconds < QUICK_JOB_SECONDS;
 const jobKey = (j: NoteJob) => j.id ?? j.name;
 const jobState = (j: NoteJob) => (j.lost ? "중단(종료 기록 없음)" : j.code === null || j.code === 0 ? "완료" : `실패(종료 코드 ${j.code})`);
+
+// 노트에 쓰는 이름: 연구·프로젝트로 정한 폴더에 패널에서 붙인 이름(없으면 undefined → 폴더 이름)
+export const noteName = (m: ResearchMetaRow | undefined) => ((m?.kind === "research" || m?.kind === "project") && m.name ? m.name : undefined);
 
 // 레포 이름(Tine 페이지 링크 이름): 패널에서 바꾼 이름, 없으면 마지막 폴더 이름
 const repoName = (key: string, names?: DayNote["names"]) => (key === NO_DIR ? "" : (names?.[key] ?? splitHost(key).dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/[[\]#(){}]/g, "").trim());
@@ -300,6 +303,31 @@ export function writeNote(store: Store, graph: string, n: DayNote): WriteResult 
   renameSync(tmp, path);
   store.setMark(blockKey(path), hashMark(block));
   return "written";
+}
+
+// 노트에 쓰는 이름이 바뀌면(before → after, 없으면 폴더 이름) 저널 폴더의 모든 일지에서 우사기 블록 「작업」의 그 폴더 링크 줄만 바꾼다(#304).
+// 사용자가 고친 블록과 블록 밖은 그대로. 줄 끝 서버 이름까지 같아야 바꾼다(이름이 같은 다른 서버 폴더와 섞이지 않게). 바꾼 일지 수
+export function relinkNotes(store: Store, graph: string, key: string, before: string | undefined, after: string | undefined): number {
+  const { host } = splitHost(key);
+  const line = (name: string | undefined) => `\t\t- ${repoLink(key, name ? { [key]: name } : undefined)}${host ? ` ${code(plain(host, 40))}` : ""}`; // autoBlock 「작업」 머리줄
+  const from = line(before), to = line(after);
+  if (from === to) return 0;
+  const dir = dirname(notePath(graph, localDay(Date.now())));
+  let n = 0;
+  for (const f of existsSync(dir) ? readdirSync(dir) : []) {
+    if (!f.endsWith(".md")) continue; // iCloud 에서 내려받지 않은 일지(.md.icloud)는 건너뛴다
+    const path = join(dir, f);
+    const { lines, at, now, frozen } = blockState(store, path);
+    if (!at || frozen) continue;
+    const block = lines.slice(at[0], at[1]).map((l) => (l === from ? to : l)).join("\n");
+    if (block === now) continue;
+    const tmp = `${path}.usagi-tmp`;
+    writeFileSync(tmp, [...lines.slice(0, at[0]), block, ...lines.slice(at[1])].join("\n"));
+    renameSync(tmp, path);
+    store.setMark(blockKey(path), hashMark(block)); // 우리가 고친 블록 — 사용자가 고친 것으로 보지 않게
+    n++;
+  }
+  return n;
 }
 
 export async function writeDay(cfg: Config, store: Store, day: string, deps: Parameters<typeof collectDay>[3] = {}): Promise<{ path: string; result: WriteResult }> {

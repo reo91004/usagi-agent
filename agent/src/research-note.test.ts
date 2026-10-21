@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { Store } from "./store.ts";
-import { REPORT_EVERY_MS, autoBlock, autoId, collectDay, formatDay, noteFrozen, notePath, plain, reportDay, reportInput, sharedGit, writeNote, type DayNote } from "./research-note.ts";
+import { REPORT_EVERY_MS, autoBlock, autoId, collectDay, formatDay, noteFrozen, notePath, plain, relinkNotes, reportDay, reportInput, sharedGit, writeNote, type DayNote } from "./research-note.ts";
 import type { ExecFileLike } from "./providers.ts";
 
 const cfg = { repoRoots: [], gitAuthor: { name: "me", email: "me@x" }, onboarded: true, readSessions: true };
@@ -156,6 +156,31 @@ test("notePath: config.edn 의 저널 폴더·파일 이름 형식, 없으면 Lo
   assert.match(notePath(graphDir(), "2026-10-17"), /\/journals\/2026_10_17\.md$/);
   assert.match(notePath(graphDir('{:journals-directory "일지" :journal/file-name-format "yyyy-MM-dd" :journal/page-title-format "MMM do, yyyy"}'), "2026-10-07"), /\/일지\/2026-10-07\.md$/);
   assert.match(notePath(mkdtempSync(join(tmpdir(), "cy-tine-")), "2026-10-17"), /\/journals\/2026_10_17\.md$/); // config.edn 없음
+});
+
+test("relinkNotes: 이름이 바뀌면 지난 일지 우사기 블록의 그 폴더 링크 줄만, 사용자가 고친 블록·블록 밖·다른 서버 폴더는 그대로(#304)", () => {
+  const graph = graphDir();
+  const store = new Store(":memory:");
+  const item = { title: "그림 고치기", tool: "Claude Code", turns: 1, files: 0 };
+  const day = (d: string): DayNote => ({ ...empty, day: d, sessions: [{ project: "/r/paper", items: [item] }, { project: "gpu1:/home/me/paper", items: [item] }] });
+  for (const d of ["2026-10-15", "2026-10-16"]) assert.equal(writeNote(store, graph, day(d)), "written");
+  const p15 = notePath(graph, "2026-10-15"), p16 = notePath(graph, "2026-10-16");
+  writeFileSync(p15, `- 내 메모 [[paper]]\n${readFileSync(p15, "utf8")}`); // 블록 밖 사용자 글
+  const edited = readFileSync(p16, "utf8").replace("그림 고치기 진행", "그림 고치기 진행(내가 고침)");
+  writeFileSync(p16, edited); // 사용자가 고친 블록
+  writeFileSync(join(dirname(p15), "2026_10_14.md.icloud"), "x"); // 내려받지 않은 일지
+
+  assert.equal(relinkNotes(store, graph, "/r/paper", undefined, "확산 [논문]"), 1);
+  const md = readFileSync(p15, "utf8").split("\n");
+  assert.equal(md[0], "- 내 메모 [[paper]]");
+  assert.ok(md.includes("\t\t- [[확산 논문]]") && md.includes("\t\t- [[paper]] `gpu1`"));
+  assert.equal(readFileSync(p16, "utf8"), edited);
+  assert.equal(writeNote(store, graph, { ...day("2026-10-15"), names: { "/r/paper": "확산 [논문]" } }), "same"); // 고친 블록을 우리 것으로 안다(다음 쓰기가 사용자 수정으로 보지 않음)
+
+  assert.equal(relinkNotes(store, graph, "/r/paper", "확산 [논문]", "확산 [논문]"), 0);
+  assert.equal(relinkNotes(store, graph, "/r/paper", "확산 [논문]", undefined), 1); // 이름을 지우면 폴더 이름으로
+  assert.ok(readFileSync(p15, "utf8").split("\n").includes("\t\t- [[paper]]"));
+  assert.equal(relinkNotes(store, graphDir(), "/r/paper", undefined, "x"), 0); // 저널 폴더가 없으면 아무것도 안 함
 });
 
 test("writeNote: 저널이 없으면 폴더째 우사기 블록만 담아 만들고, 빈 날은 안 만들고, 같으면 안 쓴다", () => {
