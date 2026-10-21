@@ -323,7 +323,7 @@ export function mountModels({ section, voiceSection, h, cy, getSisa, onSisa, got
     const kids = [];
     if (!connected.length) {
       kids.push(h('div.card.models-card.empty', null,
-        h('p', { text: '연결된 AI 없음' }),
+        h('p', { text: '연결된 AI 가 없어요' }),
         h('button.primary', { type: 'button', text: '연결 도우미 열기', onclick: gotoSetup })));
     } else {
       kids.push(chatCard(sisa), priorityCard(sisa), addCard(sisa), codeCard(sisa));
