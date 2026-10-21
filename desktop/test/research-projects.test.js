@@ -20,7 +20,7 @@ test('deadlineChip: D-day 글자, 21일 이하 warn, 7일 이하 err, 지난 마
   assert.deepEqual(deadlineChip(ymd(8), 'prep', NOW), { text: 'D-8', tone: 'warn' });
   assert.deepEqual(deadlineChip(ymd(7), 'prep', NOW), { text: 'D-7', tone: 'err' });
   assert.deepEqual(deadlineChip(ymd(0), 'prep', NOW), { text: 'D-day', tone: 'err' });
-  assert.deepEqual(deadlineChip(ymd(-3), 'review', NOW), { text: 'D+3', tone: '' });
+  assert.deepEqual(deadlineChip(ymd(-3), 'submitted', NOW), { text: 'D+3', tone: '' });
   assert.equal(deadlineChip(ymd(5), 'rejected', NOW), null);
   assert.equal(deadlineChip('', 'prep', NOW), null);
 });
@@ -42,7 +42,7 @@ test('shapeResearchProjects: 목록 줄은 마지막 제출만, 프로젝트는 
   assert.equal(shapeResearchProjects([{ key: '/q', kind: 'research', recent: { items: [{ id: 'evil', name: 'f', running: false }] } }], NOW)[0].recent.items[0].id, ''); // job 노드 id 가 아니면 비움
   assert.equal(list.length, 3);
   const [r, p, c] = list;
-  assert.equal(r.chip, 'CHES 2027 · 제출함');
+  assert.equal(r.chip, 'CHES 2027 · Submitted');
   assert.equal(r.subs.length, 2);
   assert.equal(r.dday.text, 'D-38');
   assert.equal(r.cur.tone, 'accent');
