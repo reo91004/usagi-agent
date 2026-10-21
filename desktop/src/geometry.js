@@ -38,10 +38,12 @@ export const charCenter = ([x, y], edge, flip, size) => ({
   y: y + charOffset(flip, size) + CHAR_SIZE / 2,
 });
 
-// 캐릭터 가운데 c 에서 가장 가까운 작업영역 가장자리. 위는 메뉴 막대라 뺀다
+// 캐릭터 가운데 c 에서 가장 가까운 작업영역 가장자리. 위는 메뉴 막대라 뺀다.
+// 캐릭터와 가장자리 사이가 캐릭터 반 개(가운데에서 CHAR_SIZE) 넘게 떨어졌으면 null — 놓은 자리에 두고 숨지 않는다(#300)
 export function nearestEdge(c, workArea) {
   const d = { left: c.x - workArea.x, right: workArea.x + workArea.width - c.x, bottom: workArea.y + workArea.height - c.y };
-  return Object.keys(d).reduce((a, b) => (d[b] < d[a] ? b : a));
+  const edge = Object.keys(d).reduce((a, b) => (d[b] < d[a] ? b : a));
+  return d[edge] <= CHAR_SIZE ? edge : null;
 }
 
 // 그 가장자리에 붙인 창 자리. 아래면 캐릭터가 c.x 에 오게 작업영역 아래에(뒤집지 않음),

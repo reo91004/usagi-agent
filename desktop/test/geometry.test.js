@@ -54,7 +54,13 @@ test('가장자리에 숨기: 캐릭터 가운데, 가까운 가장자리, 붙�
   assert.equal(nearestEdge({ x: 60, y: 500 }, area), 'left');
   assert.equal(nearestEdge({ x: 1750, y: 500 }, area), 'right');
   assert.equal(nearestEdge({ x: 900, y: 1000 }, area), 'bottom');
-  assert.equal(nearestEdge({ x: 900, y: 80 }, area), 'left'); // 위는 고르지 않는다
+  assert.equal(nearestEdge({ x: 140, y: 80 }, area), 'left'); // 위는 고르지 않는다
+  assert.equal(nearestEdge({ x: -30, y: 500 }, area), 'left'); // 화면 밖으로 밀어 놓아도
+  // 가장자리에서 캐릭터 반 개(70px) 넘게 떨어지면 붙이지 않는다(#300)
+  assert.equal(nearestEdge({ x: 141, y: 500 }, area), null);
+  assert.equal(nearestEdge({ x: 900, y: 500 }, area), null);
+  assert.equal(nearestEdge({ x: 900, y: 80 }, area), null);
+  assert.equal(nearestEdge({ x: 900, y: 1115 - 74 }, area), 'bottom'); // 기본 자리(창 아랫변이 작업영역 아래)는 아래에 붙는다
   // 아래: 캐릭터를 c.x 에 두고 창 아랫변을 작업영역 아래에, 뒤집기 풀기
   assert.deepEqual(edgePlacement('bottom', { x: 900, y: 600 }, 100, true, area, s), { x: 690, y: 1115 - 580, flip: false });
   // 옆: 창을 화면 안 그 쪽 끝에, 위아래는 dropPlacement(화면 위쪽이면 뒤집기)
