@@ -205,10 +205,12 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     }
   }
 
-  // 한 방향: 미리알림에서 지운 것 → 휴지통(양방향의 짝 지움과 같게). 휴지통에서 되살린 할 일은 사용자가 남기기로 한 것이라 다시 버리지 않는다
+  // 한 방향: 미리알림에서 지운 것 → 휴지통(양방향의 짝 지움과 같게). 휴지통에서 되살린 할 일은 사용자가 남기기로 한 것이라 다시 버리지 않는다.
+  // 아직 할 일이 없는 열린 미리알림에 같은 제목이 있으면(iCloud 전체 동기화로 id 만 바뀜, 이 할 일로 합쳐진 미리알림) 남긴다 — 그 미리알림이 아래에서 이 할 일로 합쳐진다
   if (!twoWay && Array.isArray(r.linked)) {
-    const alive = new Set(r.linked.map((x: any) => `reminder:${x.id}`));
-    const gone = mine.filter((t) => !alive.has(t.id) && !store.ledger({ todoId: t.id, actions: ["restored"], limit: 1 }).length);
+    const alive = new Set([...r.linked, ...(r.open ?? [])].map((x: any) => `reminder:${x.id}`));
+    const again = new Set((r.open ?? []).filter((y: any) => !store.getTodo(`reminder:${y.id}`)).map((y: any) => norm(y.title)));
+    const gone = mine.filter((t) => !alive.has(t.id) && !again.has(norm(t.title)) && !store.ledger({ todoId: t.id, actions: ["restored"], limit: 1 }).length);
     if (!tooMany(gone.length, mine.length)) for (const t of gone) if (store.trashTodo(t.id, now.toISOString(), "user")) trashed++;
   }
 

@@ -169,7 +169,7 @@ function fakeReminders(items: Record<string, any> = {}) {
   return { state, calls, run, writes: () => calls.filter((c) => c[0] === "write").map((c) => JSON.parse(c[1])) };
 }
 
-test("syncReminders 한 방향: 미리알림에서 지운 것은 휴지통으로, 되살린 것·한꺼번에 많이 사라진 것·옛 도우미면 그대로", async () => {
+test("syncReminders 한 방향: 미리알림에서 지운 것은 휴지통으로, 되살린 것·id 만 바뀐 것·한꺼번에 많이 사라진 것·옛 도우미면 그대로", async () => {
   const store = new Store(":memory:");
   const f = fakeReminders({ R1: { title: "논문" }, R2: { title: "장보기" } });
   assert.equal((await syncReminders(store, f.run, NOW)).added, 2);
@@ -185,6 +185,13 @@ test("syncReminders 한 방향: 미리알림에서 지운 것은 휴지통으로
   store.restoreTodo("reminder:R1");
   assert.equal((await syncReminders(store, f.run, NOW)).trashed, 0);
   assert.equal(store.getTodo("reminder:R1")!.status, "open", "되살린 것은 다시 버리지 않는다");
+  // id 만 바뀐 같은 미리알림(iCloud 전체 동기화 뒤) → 버리지 않고 새 id 가 그 할 일로 합쳐진다
+  f.state.set("R3", { id: "R3", title: "세미나", list: "개인", completed: false });
+  await syncReminders(store, f.run, NOW);
+  f.state.set("R4", { ...f.state.get("R3"), id: "R4" }); f.state.delete("R3");
+  assert.equal((await syncReminders(store, f.run, NOW)).trashed, 0);
+  assert.equal(store.getTodo("reminder:R3")!.status, "open");
+  assert.equal(store.getTodo("reminder:R4"), undefined);
 
   const many = new Store(":memory:");
   const g = fakeReminders(Object.fromEntries(["A", "B", "C", "D", "E"].map((k) => [k, { title: `일 ${k}` }])));
