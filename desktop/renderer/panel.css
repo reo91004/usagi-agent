@@ -617,7 +617,7 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row .t { user-select: none; -webkit-user-select: none; }
 .todo.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .todo.row.open { background: var(--code); }
-.todo.row .check, .imp-row .check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--ok); }
+.todo.row .check, .imp-row .check { --cb: var(--ok); width: 18px; height: 18px; border-radius: 50%; } /* 할 일 완료는 미리알림처럼 동그라미 */
 .todo .chip.mine { flex: none; }
 .todo .chip { flex: none; }
 #sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select,
@@ -1060,7 +1060,6 @@ button.rules-chip.on, button.rules-chip:hover { background: var(--accent-soft); 
 .rules-list { display: flex; flex-direction: column; padding: 2px 4px; }
 .rule-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-top: 1px solid var(--line); }
 .rule-row:first-child { border-top: 0; }
-.rule-row input { margin: 0; flex: none; accent-color: var(--accent); }
 .rule-row .rule-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rule-row .rule-text { word-break: break-word; }
 .rule-row.off .rule-text { color: var(--faint); text-decoration: line-through; }
@@ -1447,11 +1446,19 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .model-row .lock { color: var(--warn); }
 #sec-settings select { padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); }
 
-/* 브리핑 출처 */
+/* 켜고 끄는 칩(브리핑 출처·알림 시각 등): 켜면 강조색으로 칠한다. 라디오 묶음은 .rp-kinds 와 같은 세그먼트 */
 #sec-settings .toggles { display: flex; flex-wrap: wrap; gap: 8px; }
-#sec-settings .toggle { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; user-select: none; }
-#sec-settings .toggle input { margin: 0; accent-color: var(--accent); }
+#sec-settings .toggle { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; user-select: none; transition: background-color 0.12s, border-color 0.12s; }
+#sec-settings .toggle:hover { background: var(--hover); }
+#sec-settings .toggle:has(:checked) { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); }
 #sec-settings .toggle.off { color: var(--faint); text-decoration: line-through; }
+#sec-settings .toggles[role="radiogroup"] { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-md); background: var(--code); }
+#sec-settings [role="radiogroup"] .toggle { padding: 4px 14px; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); font-size: var(--fs-sm); }
+#sec-settings [role="radiogroup"] .toggle:hover { background: var(--hover); color: var(--fg); }
+#sec-settings [role="radiogroup"] .toggle:has(:checked) { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+#sec-settings [role="radiogroup"] .toggle:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+#sec-settings [role="radiogroup"] input { position: absolute; opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { #sec-settings .toggle { transition: none; } }
 
 /* 연결 상태 */
 #sec-settings .conn-list { display: grid; gap: 6px; }
@@ -1478,10 +1485,8 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .gl-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); }
 #sec-settings .gl-row.sv-row { grid-template-columns: minmax(80px, 1fr) auto auto minmax(140px, 1.4fr); }
 #sec-settings .sv-opt { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; white-space: nowrap; }
-#sec-settings .sv-opt input { margin: 0; accent-color: var(--accent); }
 #sec-settings .gl-row.am-row { grid-template-columns: 1fr auto; }
 #sec-settings .gl-row.off .gl-text { color: var(--faint); text-decoration: line-through; }
-#sec-settings .gl-row input[type="checkbox"] { margin: 0; accent-color: var(--accent); }
 #sec-settings .gl-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
 #sec-settings .gl-text { overflow-wrap: anywhere; cursor: text; border-radius: 5px; padding: 1px 3px; }
 #sec-settings .gl-text:hover { background: var(--code); }
@@ -1550,11 +1555,17 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
   #sec-settings .conn { grid-template-columns: 14px 1fr; }
   #sec-settings .conn .acts { grid-column: 2; justify-content: flex-start; }
 }
+#sec-settings .rem-auto { display: grid; gap: 10px; }
 #sec-settings .rem-auto[hidden] { display: none; }
-#sec-settings .rem-line { display: inline-flex; align-items: center; gap: 6px; }
+#sec-settings .rem-auto .gl-add { margin-top: 0; }
+#sec-settings #rem-mode + .rem-auto { margin-top: 12px; }
+#sec-settings .rem-line { display: inline-flex; align-items: center; gap: 6px; justify-self: start; }
+#sec-settings :is(#rem-summary, #cal-summary) { margin: 10px 0 0; }
+#sec-settings :is(#rem-summary, #cal-summary):empty { display: none; }
 
 /* 일정 알림 */
 #sec-settings .cal-off-line { margin-top: 10px; }
+#sec-settings #cal-on[hidden] + .cal-off-line { margin-top: 0; }
 
 
 /* 캐릭터 고르기: 그림 카드(기본 다섯 + 만든 캐릭터) */
@@ -1585,7 +1596,6 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .char-add-plus { font-size: 30px; line-height: 64px; height: 64px; }
 #sec-settings .char-new-hint { margin: 8px 0 0; }
 #sec-settings .slot-frame { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); margin-right: auto; cursor: pointer; }
-#sec-settings .slot-frame input { margin: 0; accent-color: var(--accent); }
 #sec-settings .char-editor { margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
 #sec-settings .ce-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #sec-settings .ce-head h3 { margin: 0; font-size: 13px; color: var(--fg); }
