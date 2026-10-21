@@ -697,7 +697,11 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, rulesState[body.path]);
   }
   if (req.method === 'PUT' && p === '/research/projects') {
-    const cur = rps.find((x) => x.key === body.key);
+    let cur = rps.find((x) => x.key === body.key);
+    // 후보에 없는 작업 폴더를 작업 폴더 탭에서 바로 정한 것(진짜 데몬은 어느 폴더 키든 받는다)
+    if (!cur && (body.kind === 'research' || body.kind === 'project')) {
+      rps.push(cur = { key: body.key, kind: null, name: body.key.split(/[/:]/).pop(), folders: [{ path: body.key, onMac: !body.key.includes(':') }], subs: [], lastActive: null, running: [], recent: { done: 0, failed: 0, lost: 0, items: [] }, sessions: [] });
+    }
     if (!cur && body.mergeInto !== null) return json(res, 404, { error: 'no such project' });
     if (cur && body.kind === 'none') rps = rps.filter((x) => x !== cur); // cur 없음 = 합친 폴더 풀기
     else if (cur) {

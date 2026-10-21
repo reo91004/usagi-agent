@@ -127,6 +127,27 @@ test("collectDay: 그날 「일정」을 그대로 옮긴 캘린더 할 일은 �
   assert.deepEqual(n.added, ["피아노 학원 준비물 챙기기", "피아노 학원", "논문 초안 제출"]);
 });
 
+test("collectDay·autoBlock: 연구·프로젝트로 정한 폴더는 바꾼 이름으로, 합친 폴더는 그 프로젝트 아래에(#299)", async () => {
+  const store = new Store(":memory:");
+  store.upsertNode("session:a", "session", "그림 고치기", { tool: "claude", cwd: "/r/paper", turns: 2 }, at("10:00"));
+  store.upsertNode("session:b", "session", "실험 코드", { tool: "claude", cwd: "gpu1:/home/me/exp", turns: 1 }, at("10:30"));
+  store.upsertNode("session:c", "session", "옆 폴더", { tool: "codex", cwd: "/r/tools", turns: 1 }, at("11:00"));
+  const meta = { subs: [], url: null, mergedInto: null };
+  store.putResearchMeta({ ...meta, path: "/r/paper", kind: "research", name: "확산 [모델] 논문" });
+  store.putResearchMeta({ ...meta, path: "gpu1:/home/me/exp", kind: null, name: null, mergedInto: "/r/paper" });
+  store.putResearchMeta({ ...meta, path: "/r/tools", kind: "none", name: "안 쓰는 이름" }); // 「아니에요」로 뺀 폴더는 폴더 이름 그대로
+  const git = async () => [{ path: "/r/paper", name: "paper", commitsToday: [{ sha: "abc1234", subject: "fix: 그림", time: at("15:00") }], recentCommits: [] }];
+  const n = await collectDay(cfg, store, "2026-10-17", { git });
+  assert.deepEqual(n.sessions.map((p) => [p.project, p.items.map((s) => s.title)]), [["/r/paper", ["그림 고치기", "실험 코드"]], ["/r/tools", ["옆 폴더"]]]);
+  assert.deepEqual(n.names, { "/r/paper": "확산 [모델] 논문" });
+  const md = autoBlock(n).split("\n");
+  assert.deepEqual(md.slice(md.indexOf("\t- ### 작업") + 1), [
+    "\t\t- [[확산 모델 논문]]", "\t\t\t- `abc1234` fix: 그림", "\t\t\t- 그림 고치기 진행", "\t\t\t- 실험 코드 진행",
+    "\t\t- [[tools]]", "\t\t\t- 옆 폴더 진행",
+  ]);
+  assert.match(reportInput(n).prompt, /"name":"확산 모델 논문"/);
+});
+
 const empty: DayNote = { day: "2026-10-17", focus: { seconds: 0, longest: 0 }, sessions: [], jobs: [], meetings: [], done: [], skipped: [], added: [], commits: [] };
 const one: DayNote = { ...empty, done: ["a"] };
 const oneBlock = `- ## 오늘 한 일\n  id:: ${autoId("2026-10-17")}\n\t- 할 일 완료 1건\n\t- ### 할 일\n\t\t- 완료\n\t\t\t- a`;

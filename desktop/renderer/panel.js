@@ -1193,7 +1193,7 @@ function renderProjects(force) {
   if (rp.inDetail(vm, 'projects')) return el.replaceChildren(...top);
   const free = vm.projects.filter((p) => !p.byResearch);
   const hidden = vm.hiddenProjects;
-  const kids = [...top, top.length ? h('h2', null, h('span', { text: '최근 작업 폴더' })) : null, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, VS Code 로 바로 열 수 있어요.' })];
+  const kids = [...top, top.length ? h('h2', null, h('span', { text: '최근 작업 폴더' })) : null, h('p.muted.small.proj-intro', { text: '최근 7일 동안 Claude Code·Codex 로 작업한 폴더와 커밋이 있는 레포예요. 서버 폴더는 ssh 로 작업 기록만 받아 와요. 줄을 누르면 마지막 요청과 최근 커밋이 펼쳐지고, 연구·프로젝트로 묶을 수 있어요. VS Code 로 바로 열 수도 있어요.' })];
   if (projMsg) kids.push(h(`div.result.${projMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: projMsg.text }));
   if (free.length) kids.push(projectRows(free));
   else kids.push(h('div.empty', { text: error && !raw ? '불러오지 못함' : vm.projects.length ? '나머지 작업 폴더가 없어요' : hidden.length ? '숨긴 작업 폴더만 있음' : '최근 작업 폴더 없음' }));
@@ -1246,7 +1246,11 @@ function projectRows(list) {
           p.recentCommits.length
             ? h('ul.commits', null, p.recentCommits.map((c) => h('li', null,
               h('span.sha.mono', { text: c.sha }), h('span.subj', { text: c.subject, title: c.subject }), h('span.when', { text: c.rel }))))
-            : null)
+            : null,
+          // 연구 탭 후보에 아직 없는 폴더도 여기서 정한다(후보는 실험이 있거나 세션이 2개 이상인 것만)
+          h('div.row', null, h('span.muted.small', { text: '묶기' }),
+            [['research', '연구'], ['project', '프로젝트']].map(([kind, text]) => h('button.ghost.small', { type: 'button', text, title: `이 폴더를 ${text}로 정해요`, 'aria-label': `${p.name}: ${text}로 정하기`,
+              onclick: () => { rp.save(p.path, { kind }); if (kind === 'research') goto('research'); } }))))
         : null);
   }));
 }
