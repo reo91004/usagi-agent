@@ -1,0 +1,67 @@
+/* 고르기 칸(select)·체크박스 — 패널·작업 세션 창 공용. 칸 크기·테두리는 화면마다 규칙이 덮는다 */
+
+/* select: 펼친 목록은 macOS 기본 메뉴 대신 슬래시 메뉴(.slash-menu)와 같은 팝업.
+   appearance: base-select(Chromium 135+)라 키보드·스크린리더 동작은 기본 select 그대로 */
+select, ::picker(select) { appearance: base-select; }
+select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+select:disabled { cursor: default; opacity: 0.6; }
+select::picker-icon {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--faint);
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2.5 4 5 6.5 7.5 4' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat;
+  transition: rotate 0.15s;
+}
+select:open::picker-icon { rotate: 180deg; }
+::picker(select) {
+  margin-block: 4px;
+  padding: 4px;
+  border: none;
+  border-radius: 10px;
+  background: var(--pop, var(--surface));
+  color: var(--fg);
+  box-shadow: var(--pop-shadow, 0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line));
+  font-size: 13px;
+  transition: opacity 0.12s;
+}
+@starting-style { select:open::picker(select) { opacity: 0; } }
+option { gap: 6px; padding: 5px 12px 5px 8px; border-radius: 6px; line-height: 1.4; white-space: nowrap; }
+option:is(:hover, :focus-visible) { background: var(--accent-soft); outline: none; }
+option:checked { font-weight: 600; }
+option::checkmark { color: var(--accent); }
+
+/* 체크박스: 둥근 네모, 켜면 --cb(기본 강조색)로 칠하고 흰 체크. 스위치(.switch)는 따로. :where 로 낮춘 우선순위라 화면 규칙(.check 등)이 덮는다 */
+input[type="checkbox"]:where(:not(.switch)) {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--faint) 75%, transparent);
+  border-radius: 5px;
+  background: var(--surface) center / 12px no-repeat;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+input[type="checkbox"]:where(:not(.switch)):hover:not(:disabled) { border-color: var(--cb, var(--accent)); }
+input[type="checkbox"]:where(:not(.switch)):checked {
+  border-color: var(--cb, var(--accent));
+  background-color: var(--cb, var(--accent));
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.75 6.25 5 8.5 9.25 3.75' fill='none' stroke='white' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+input[type="checkbox"]:where(:not(.switch)):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type="checkbox"]:where(:not(.switch)):disabled { opacity: 0.5; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) { select::picker-icon, ::picker(select), input[type="checkbox"] { transition: none; } }
