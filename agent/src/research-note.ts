@@ -63,13 +63,14 @@ export type DayReport = { summary: string[]; experiments: Record<string, string>
 export type DayNote = {
   day: string;
   focus: { seconds: number; longest: number };
-  sessions: { project: string; items: NoteSession[] }[]; // project = 레포 단위 폴더(워크트리·하위 폴더는 레포로)
+  sessions: { project: string; items: NoteSession[] }[]; // project = 레포 단위 폴더(워크트리·하위 폴더는 레포로, 프로젝트에 합친 폴더는 그 프로젝트로)
   jobs: NoteJob[];
   meetings: { time: string; title: string }[];
   done: string[];
   skipped: string[]; // 안 해도 돼서 닫은 일 — 한 일(done)과 따로
   added: string[];
   commits: { repo: string; path: string; sha: string; subject: string }[];
+  names?: Record<string, string>; // 레포 키 → 연구·프로젝트로 정하고 패널에서 바꾼 이름
   report?: DayReport;
 };
 
@@ -91,7 +92,13 @@ export async function collectDay(
 
   const hidden = store.hiddenProjects();
   // 레포 단위로: 숨은 폴더(.claude/worktrees …) 아래는 그 위로, 이 맥의 하위 폴더는 가장 가까운 git 루트로(대시보드와 같은 규칙)
-  const repoOf = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return host ? p : gitRootOf(dir); };
+  // 연구·프로젝트로 정한 폴더(research_meta): 합친 폴더는 그 프로젝트로 모으고, 이름을 바꿨으면 그 이름으로 쓴다
+  const metas = new Map(store.researchMeta().map((m) => [m.path, m]));
+  const owned = (key: string | null | undefined): key is string => !!key && (metas.get(key)?.kind === "research" || metas.get(key)?.kind === "project");
+  const toProject = (key: string) => { const to = metas.get(key)?.mergedInto; return owned(to) ? to : key; };
+  const names: Record<string, string> = {};
+  for (const m of metas.values()) if (owned(m.path) && m.name) names[m.path] = m.name;
+  const repoOf = (cwd: string) => { const p = cutHidden(cwd), { host, dir } = splitHost(p); return toProject(host ? p : gitRootOf(dir)); };
   const byProject = new Map<string, DayNote["sessions"][number]["items"]>();
   for (const s of sessionsAllowed(cfg) ? nodes("session") : []) {
     const cwd = String(s.props.cwd ?? "");
@@ -145,7 +152,8 @@ export async function collectDay(
     done: [...done.values()],
     skipped: [...skipped.values()],
     added: [...added.values()],
-    commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, path: r.path, sha: c.sha, subject: c.subject }))),
+    commits: repos.flatMap((r) => r.commitsToday.filter((c) => inDay(c.time, day)).map((c) => ({ repo: r.name, path: toProject(r.path), sha: c.sha, subject: c.subject }))),
+    ...(Object.keys(names).length ? { names } : {}),
     ...(rep ? { report: reportOf(rep.props) } : {}),
   };
 }
@@ -178,12 +186,12 @@ const isQuick = (j: NoteJob) => !j.lost && (j.code === null || j.code === 0) && 
 const jobKey = (j: NoteJob) => j.id ?? j.name;
 const jobState = (j: NoteJob) => (j.lost ? "중단(종료 기록 없음)" : j.code === null || j.code === 0 ? "완료" : `실패(종료 코드 ${j.code})`);
 
-// 레포 이름(Tine 페이지 링크 이름). 서버 폴더면 마지막 폴더 이름
-const repoName = (key: string) => (key === NO_DIR ? "" : (splitHost(key).dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/[[\]#(){}]/g, "").trim());
+// 레포 이름(Tine 페이지 링크 이름): 패널에서 바꾼 이름, 없으면 마지막 폴더 이름
+const repoName = (key: string, names?: DayNote["names"]) => (key === NO_DIR ? "" : (names?.[key] ?? splitHost(key).dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/[[\]#(){}]/g, "").trim());
 // 레포 이름을 Tine 페이지 링크로: 그 페이지의 「연결된 참조」에 날마다 그 레포에서 한 일이 모인다
-function repoLink(key: string): string {
+function repoLink(key: string, names?: DayNote["names"]): string {
   if (key === NO_DIR) return "폴더 모름";
-  const name = repoName(key);
+  const name = repoName(key, names);
   return name ? `[[${name}]]` : code(plain(key, 200));
 }
 
@@ -236,7 +244,7 @@ export function autoBlock(n: DayNote): string {
   sec("작업", projects.flatMap((p) => {
     const { host } = splitHost(p.key);
     const lines = r?.projects[p.key]?.length ? r.projects[p.key].map((l) => line(l, 200)) : projectFallback(p);
-    return [`\t\t- ${repoLink(p.key)}${host ? ` ${code(plain(host, 40))}` : ""}`, ...lines.map((l) => `\t\t\t- ${l}`)];
+    return [`\t\t- ${repoLink(p.key, n.names)}${host ? ` ${code(plain(host, 40))}` : ""}`, ...lines.map((l) => `\t\t\t- ${l}`)];
   }));
   sec("일정", n.meetings.map((m) => `\t\t- **${m.time}** ${plain(m.title, 100)}`));
   const group = (title: string, ts: string[]) => (ts.length ? [`\t\t- ${title}`, ...ts.map((t) => `\t\t\t- ${line(t, 100)}`)] : []);
@@ -338,7 +346,7 @@ export function reportInput(n: DayNote): { prompt: string; fp: string; jobKeys: 
       experiments: cut(jobs, FEW.experiments, few).map((j, i) => ({ i, name: j.name, where: [j.host, j.cwd].filter(Boolean).join(":"), cmd: j.cmd, state: jobState(j), ...(j.lost ? {} : { time: focusDuration(j.seconds) }), files: j.files })),
       ...(few && jobs.length > FEW.experiments ? { experimentsOmitted: jobs.length - FEW.experiments } : {}),
       projects: projects.map((p, i) => ({
-        i, name: repoName(p.key) || p.key, where: p.key, commits: cut(p.commits, FEW.commits, few).map((c) => c.subject),
+        i, name: repoName(p.key, n.names) || p.key, where: p.key, commits: cut(p.commits, FEW.commits, few).map((c) => c.subject),
         sessions: cut(p.items, FEW.sessions, few).map((s) => ({ title: s.title, ...(rich.has(s) ? { ask: s.ask && redact(s.ask), result: s.result && redact(s.result) } : {}) })),
         ...(few && p.items.length > FEW.sessions ? { sessionsOmitted: p.items.length - FEW.sessions } : {}),
       })),
