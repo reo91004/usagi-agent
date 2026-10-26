@@ -230,6 +230,7 @@ function dashboard() {
     trashCount: trash.length,
     meetings: fakeMeetings(),
     important: fakeImportant(),
+    reminderLists: [{ id: 'L-todo', title: '할 일', source: 'iCloud' }, { id: 'L-study', title: '공부', source: 'iCloud' }, { id: 'L-me', title: '개인', source: 'iCloud' }],
     connectors: fakeConnectors(),
     research: {
       hosts: ['pacl-208', 'pacl-reo'],
@@ -800,8 +801,8 @@ const server = http.createServer(async (req, res) => {
     if (!title || ![undefined, 1, 2, 3, 4].includes(body.priority) || !validLink(body.link ?? null)) return json(res, 400, { error: 'bad todo' });
     return later(() => {
       if (FAIL.test(title)) return json(res, 500, { error: '가짜 실패' });
-      const id = `user:${Date.now().toString(36)}`;
-      todos = [fakeRules.applyToNew({ id, title, source: 'user', priority: body.priority ?? 2, ...(body.link ? { link: body.link } : {}), ...(body.note ? { note: body.note } : {}), ...(body.today === true ? { today: today() } : {}), userEdited: false }), ...todos];
+      const id = `${body.reminderList ? 'reminder' : 'user'}:${Date.now().toString(36)}`; // 미리알림 목록을 고르면 미리알림 할 일
+      todos = [fakeRules.applyToNew({ id, title, source: body.reminderList ? 'reminders' : 'user', priority: body.priority ?? 2, ...(body.link ? { link: body.link } : {}), ...(body.note ? { note: body.note } : {}), ...(body.today === true ? { today: today() } : {}), ...(body.due ? { due: body.due } : {}), userEdited: false }), ...todos];
       todos.sort((a, b) => a.priority - b.priority);
       json(res, 201, { id });
       emit('dashboard', {});
@@ -909,7 +910,7 @@ const server = http.createServer(async (req, res) => {
           cur.userEdited = true;
         }
         if (body.today !== undefined) { if (body.today === true) cur.today = today(); else delete cur.today; } // 오늘 할 일 고르기·빼기
-        for (const k of ['title', 'priority', 'link', 'note']) {
+        for (const k of ['title', 'priority', 'link', 'note', 'due']) {
           if (body[k] === undefined) continue;
           if (body[k] === null || body[k] === '') delete cur[k];
           else cur[k] = typeof body[k] === 'string' ? body[k].trim() : body[k];

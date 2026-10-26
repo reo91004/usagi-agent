@@ -1,5 +1,6 @@
-// 할 일 줄 그 자리 고치기(제목·설명). 순수 로직이다. 줄을 두 번 누르거나 Shift+Enter 로 연다. AI 없이 POST /todos/:id 패치.
+// 할 일 줄 그 자리 고치기(제목·설명·마감). 순수 로직이다. 줄을 두 번 누르거나 Shift+Enter 로 연다. AI 없이 POST /todos/:id 패치.
 import { cleanTitle, descriptionPatch } from './todos.js';
+import { parseDue } from './todo-date.js';
 
 const str = (v) => (typeof v === 'string' ? v : '');
 
@@ -29,16 +30,27 @@ export function editKey(e, field = 'title') {
   return 'save';
 }
 
+// 마감은 직접 넣은 할 일(user:)만 고친다(미리알림·일정에서 온 것은 그쪽이 정함). 바꾼 제목에서 읽은 날짜(dueOff 로 끔) > ✕ 로 지움(dueClear) > 그대로.
+// → { title(저장할 제목 글), due: ISO | null(지움) | undefined(그대로), label?, words? }
+export function editDue(t, s, now = new Date()) {
+  if (!t || !s || !String(t.id).startsWith('user:')) return { title: s?.title ?? '', due: undefined };
+  const p = s.title !== str(t.title) && !s.dueOff ? parseDue(s.title, now) : null;
+  if (p) return { title: p.title, due: p.due, label: p.label, words: p.words };
+  return { title: s.title, due: s.dueClear && t.due ? null : undefined };
+}
+
 // 저장할 패치: 바뀐 필드만. 빈 제목은 저장하지 않고(원래 제목 그대로) 안내 한 줄.
-// → { patch: { title?, description? } | null, notice: string | null }
+// → { patch: { title?, description?, due? } | null, notice: string | null }
 export function editPatch(t, s) {
   if (!t || !s) return { patch: null, notice: null };
   const patch = {};
   let notice = null;
-  const title = cleanTitle(s.title);
+  const d = editDue(t, s);
+  const title = cleanTitle(d.title);
+  if (d.due !== undefined && d.due !== (t.due ?? null)) patch.due = d.due;
   if (!title) notice = '제목은 비워 둘 수 없어서 원래 제목을 그대로 뒀어요.';
   else if (title !== (cleanTitle(t.title) ?? '')) patch.title = title;
-  const d = descriptionPatch(s.descBase, s.desc).patch;
-  if (d) Object.assign(patch, d);
+  const desc = descriptionPatch(s.descBase, s.desc).patch;
+  if (desc) Object.assign(patch, desc);
   return { patch: Object.keys(patch).length ? patch : null, notice };
 }

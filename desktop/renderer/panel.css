@@ -615,6 +615,8 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row { cursor: pointer; border-radius: 8px; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
 .todo.row:hover { background: var(--code); }
 .todo.row .t { user-select: none; -webkit-user-select: none; }
+/* 좁은 창(패널 최소 560px): 칩·단추가 제목 자리를 다 먹지 않게 제목 아랫줄로 */
+@media (max-width: 700px) { .todo.row { flex-wrap: wrap; gap: 4px 6px; } .todo.row .t { flex-basis: calc(100% - 28px); } .todo.row .t + * { margin-left: 28px; } }
 .todo.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .todo.row.open { background: var(--code); }
 .todo.row .check, .imp-row .check { --cb: var(--ok); width: 18px; height: 18px; border-radius: 50%; } /* 할 일 완료는 미리알림처럼 동그라미 */
@@ -625,9 +627,24 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
   padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); outline: none;
 }
 #sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus, :is(#sec-research, #sec-projects) :is(input, select):focus { border-color: var(--accent); }
-#sec-todos select.prio { padding: 3px 4px; font-size: 12px; flex: none; }
-.todo-add { display: flex; gap: 8px; align-items: center; margin: 4px 0 6px; }
-.todo-add input { flex: 1; min-width: 0; }
+/* 할 일 추가 막대: 윗줄 동그라미 · 입력, 아랫줄 마감 칩 · 미리알림 목록 … 묶음 세그먼트(.rp-kinds) · ↵. 동그라미 색 = 들어갈 묶음(묶음 제목 점과 같은 색) */
+.todo-add { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: border-color 0.12s; }
+.todo-add:focus-within { border-color: var(--accent); }
+.add-line { display: flex; align-items: center; gap: 10px; }
+.add-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-left: 28px; }
+.add-gap { flex: 1; }
+#sec-todos .todo-add input { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; font-size: var(--fs-lg); }
+.add-ring { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--p2); transition: border-color 0.12s; }
+.todo-add[data-pick="today"] .add-ring { border-color: var(--accent); }
+.todo-add[data-pick="3"] .add-ring { border-color: var(--p3); }
+.todo-add[data-pick="4"] .add-ring { border-color: var(--faint); }
+.chip.due.add-due[hidden] { display: none; }
+.chip.due:has(.due-off) { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; cursor: default; }
+button.ghost.due-off { padding: 0 4px; border-radius: var(--r-pill); font-size: 10px; line-height: 16px; color: inherit; }
+button.ghost.add-go { flex: none; padding: 2px 9px; font-size: var(--fs-md); }
+#sec-todos select.add-rem { flex: none; padding: 3px 8px; border-color: transparent; border-radius: var(--r-pill); background: var(--code); color: var(--muted); font-size: var(--fs-xs); }
+#sec-todos select.add-rem.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.edit-due:not(:empty) { margin-right: 8px; }
 .todo-wrap { border-top: 1px solid var(--line); }
 .todo-wrap:first-child { border-top: 0; }
 .todo-wrap > .todo { border-top: 0; }
@@ -1053,13 +1070,13 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .group.p4 .todo.row .t { color: var(--muted); }
 .group.p4 .card.collapsed { padding: 8px 12px; }
 body:not(.dragging-todo) .card.todos.collapsed:empty { display: none; } /* 접힌 그룹의 끌어 놓는 칸은 끌 때만 보인다 */
-.todo-tools { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; }
+.todo-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0 2px 4px; } /* 추가 막대 아래 오른쪽: 자동 분류 규칙(있을 때만) */
 .todo-tools-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
-button.rules-chip { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; }
-button.rules-chip.on, button.rules-chip:hover { background: var(--accent-soft); color: var(--accent); }
+button.ghost.rules-chip { padding: 2px 8px; border-radius: var(--r-sm); font-size: var(--fs-xs); }
+button.ghost.rules-chip.on, button.ghost.rules-chip:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .rules-list { display: flex; flex-direction: column; padding: 2px 4px; }
+.rules-about { padding: 8px 8px 6px; }
 .rule-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-top: 1px solid var(--line); }
-.rule-row:first-child { border-top: 0; }
 .rule-row .rule-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rule-row .rule-text { word-break: break-word; }
 .rule-row.off .rule-text { color: var(--faint); text-decoration: line-through; }

@@ -4,6 +4,7 @@ import { chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { DEDUPE, refsOf, sameItem } from "./todo-match.ts";
+import { duePriority } from "./todos.ts";
 import type { Attachment } from "./attachments.ts";
 import { IS_WIN, pathWithin } from "./plat.ts";
 
@@ -45,9 +46,9 @@ export const kstDay = (iso: string | number | Date) => {
   return localDate(new Date(Number.isFinite(t) ? t : Date.now())); // 예전 행의 이상한 시각은 오늘로
 };
 export type AutoEvidence = { ids: string[]; permalink?: string };
-export type TodoField = "title" | "priority" | "link" | "note" | "status" | "description";
+export type TodoField = "title" | "priority" | "link" | "note" | "status" | "description" | "due";
 // today: true = 오늘(KST)로 고름, 날짜 글 = 그날로, false·null = 오늘 할 일에서 뺌(할 일은 그대로)
-export type TodoPatch = { title?: string; priority?: number; link?: string | null; note?: string | null; status?: "open" | "done"; skipped?: boolean; description?: string | null; doing?: boolean | null; today?: boolean | string | null };
+export type TodoPatch = { title?: string; priority?: number; link?: string | null; note?: string | null; status?: "open" | "done"; skipped?: boolean; description?: string | null; doing?: boolean | null; today?: boolean | string | null; due?: string | null };
 // 휴지통에 든 할 일(패널 '휴지통' 그룹). priority·status는 옮기기 전 것
 export type TrashedTodo = Todo & { trashedAt: string; prevStatus: string };
 export const TRASH_KEEP_DAYS = 30; // 휴지통에 이보다 오래 있으면 영구 삭제
@@ -371,15 +372,33 @@ export class Store {
   }
 
   // 사용자가 직접 추가한 할 일
-  addTodo(t: { title: string; priority?: number; link?: string | null; note?: string | null; source?: string; description?: string | null; sourceRef?: string | null; origin?: TodoSource; today?: boolean | string | null }, by: TodoActor = "user"): Todo {
-    const id = `user:${randomUUID()}`;
+  // 마감이 있는데 그 날짜 기준과 다른 묶음을 고른 것은 사용자가 정한 것으로 기억한다(마감이 다가와도 rebucketDue 가 안 옮김)
+  // id 는 우사기에서 미리알림에 만든 할 일(reminder:<id>, eventkit.ts addReminderTodo)만 준다
+  addTodo(t: { id?: string; title: string; priority?: number; link?: string | null; note?: string | null; source?: string; description?: string | null; sourceRef?: string | null; origin?: TodoSource; today?: boolean | string | null; due?: string | null }, by: TodoActor = "user"): Todo {
+    const id = t.id ?? `user:${randomUUID()}`;
     const at = now();
+    const priority = t.priority ?? (t.due ? duePriority(t.due) : 2);
+    const edited = !t.id && t.due && priority !== duePriority(t.due) ? ["priority"] : []; // 미리알림 할 일(id 줌)의 묶음은 맞추기가 정한다
     this.db
-      .prepare("INSERT INTO todos (id, title, source, link, priority, status, created, note, updated, description, source_ref, origin, plan_day) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, t.title, t.source ?? "user", t.link ?? null, t.priority ?? 2, at, t.note ?? null, at,
-        t.description ?? null, t.sourceRef ?? null, t.origin ? JSON.stringify(t.origin) : null, planDay(t.today));
+      .prepare("INSERT INTO todos (id, title, source, link, priority, status, created, note, updated, description, source_ref, origin, plan_day, due, user_edited) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, t.title, t.source ?? "user", t.link ?? null, priority, at, t.note ?? null, at,
+        t.description ?? null, t.sourceRef ?? null, t.origin ? JSON.stringify(t.origin) : null, planDay(t.today), t.due ?? null, JSON.stringify(edited));
     this.log(id, t.title, "added", by, undefined, at);
     return this.getTodo(id)!;
+  }
+
+  // 직접 넣은 할 일(user:)의 마감이 다가오면 묶음을 올린다(내리지 않음). 사용자가 옮긴 것·언젠가는 그대로. 옮긴 개수
+  rebucketDue(at = new Date()): number {
+    let n = 0;
+    for (const t of this.openTodos()) {
+      if (!t.due || !t.id.startsWith("user:") || t.priority > 3 || t.userEdited?.includes("priority")) continue;
+      const p = duePriority(t.due, at);
+      if (p >= t.priority) continue;
+      this.db.prepare("UPDATE todos SET priority = ?, updated = ? WHERE id = ?").run(p, now(), t.id);
+      this.log(t.id, t.title, "edited", "auto", `P${t.priority} → P${p} (마감)`);
+      n++;
+    }
+    return n;
   }
 
   // 설명·원본 캐시(사용자 편집 아님 — user_edited 안 건드림)
@@ -431,12 +450,17 @@ export class Store {
     if (!cur) return undefined;
     const sets: string[] = [], vals: (string | number | null)[] = [];
     const mine = new Set(cur.userEdited);
-    const col = { title: "title", priority: "priority", link: "link", note: "note", status: "status", description: "description" } as const;
+    const col = { title: "title", priority: "priority", link: "link", note: "note", status: "status", description: "description", due: "due" } as const;
     for (const k of Object.keys(col) as TodoField[]) {
       if (!(k in patch) || patch[k] === undefined) continue;
       sets.push(`${col[k]} = ?`);
       vals.push((patch[k] as string | number | null) ?? null);
       mine.add(k);
+    }
+    // 직접 넣은 할 일의 마감을 바꾸면 묶음도 그 날짜로(사용자가 옮긴 것·언젠가는 그대로, 사용자 편집으로 치지 않음)
+    if (patch.due && patch.priority === undefined && cur.id.startsWith("user:") && cur.priority <= 3 && !cur.userEdited?.includes("priority")) {
+      sets.push("priority = ?");
+      vals.push(duePriority(patch.due));
     }
     // (진행중) 토글: 사용자 필드로 치지 않는다(브리핑이 제목 등을 덮지 못하게 하는 userEdited 와 무관)
     if (patch.doing !== undefined) { sets.push("doing = ?"); vals.push(patch.doing === null ? null : patch.doing ? 1 : 0); }

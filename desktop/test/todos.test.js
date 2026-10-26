@@ -41,6 +41,9 @@ test('입력 검증: 제목·링크·새 할 일·상세 패치', () => {
 });
 
 test('sanitizeTodoPatch: IPC 값은 아는 키·타입만', () => {
+  assert.deepEqual(sanitizeTodoPatch({ title: 'x', due: '2026-10-30T07:00:00.000Z', today: true }), { title: 'x', due: '2026-10-30T07:00:00.000Z', today: true });
+  assert.deepEqual(sanitizeTodoPatch({ due: null }), { due: null });
+  assert.equal(sanitizeTodoPatch({ due: '내일' }), null);
   assert.deepEqual(sanitizeTodoPatch({ title: 'x', priority: 1, link: null, note: 'n', status: 'done', evil: 1 }), { title: 'x', priority: 1, link: null, note: 'n', status: 'done' });
   assert.deepEqual(sanitizeTodoPatch({ title: 'x', status: 'done' }, { allowStatus: false }), { title: 'x' });
   assert.equal(sanitizeTodoPatch({ priority: '1', status: 'gone' }), null);

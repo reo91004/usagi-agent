@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Store } from "./store.ts";
 import { Bus } from "./bus.ts";
 import { resolveConnectors } from "./connectors.ts";
-import { IMPORTANT_CAL, TWO_WAY_LIST, ekToCalEvent, eventkitSource, importantEvents, pushDone, reminderPriority, reminderTodo, setAppleFlags, syncReminders, urgentReminders, watchStore, type EkRun } from "./eventkit.ts";
+import { IMPORTANT_CAL, TWO_WAY_LIST, addReminderTodo, ekToCalEvent, eventkitSource, importantEvents, pushDone, reminderPriority, reminderTodo, setAppleFlags, syncReminders, urgentReminders, watchStore, type EkRun } from "./eventkit.ts";
 
 const NOW = new Date("2026-10-17T03:00:00Z"); // KST 12:00
 
@@ -139,6 +139,7 @@ test("syncReminders: 안 끝난 것은 할 일로(한 번만), 미리알림에�
 
 // 가짜 미리알림 앱: reminders(linked 포함)·write 를 흉내 낸다
 // 진짜 도우미처럼 set 결과에 저장한 뒤 모습을 준다. repeats: 끝내면 원본은 열린 채 마감이 하루 뒤로, 끝낸 사본은 새 id(2026-10-20 실측)
+const LIST_TITLES: Record<string, string> = { L1: "공부" }; // 사용자가 고른 목록(id)의 이름
 function fakeReminders(items: Record<string, any> = {}) {
   const state = new Map<string, any>(Object.entries(items).map(([id, x]) => [id, { id, list: "개인", completed: false, ...x }]));
   const calls: string[][] = [];
@@ -150,7 +151,7 @@ function fakeReminders(items: Record<string, any> = {}) {
       return { ok: true, open: all.filter((x) => !x.completed), completed: all.filter((x) => x.completed), linked: args.slice(2).map((id) => state.get(id)).filter(Boolean) };
     }
     const results = (JSON.parse(args[1]) as any[]).map((o) => {
-      if (o.op === "add") { const id = `N${++n}`; state.set(id, { id, list: o.list, title: o.title, completed: false, ...(o.due ? { due: o.due } : {}) }); return { ok: true, id }; }
+      if (o.op === "add") { const id = `N${++n}`; state.set(id, { id, list: o.list ?? LIST_TITLES[o.listId], title: o.title, completed: false, ...(o.due ? { due: o.due, dueHasTime: !!o.dueHasTime } : {}) }); return { ok: true, ...state.get(id) }; } // 진짜 도우미처럼 저장한 모습까지
       const x = state.get(o.id);
       if (o.op === "delete") { state.delete(o.id); return { ok: true }; }
       if (!x) return { ok: false, missing: true };
@@ -495,4 +496,28 @@ test("HTTP: /apple/status·connect·disconnect 는 헤더 필수, 몸통은 cale
   } finally {
     bus.close();
   }
+});
+
+test("addReminderTodo(#316): 고른 목록(id)에 미리알림을 만들고(시각이 있으면 그 시각 알림) 미리알림 할 일로, 고른 묶음·오늘은 맞추기가 안 덮음, 목록, 실패는 오류", async () => {
+  const store = new Store(":memory:");
+  const f = fakeReminders();
+  const due = new Date(2026, 9, 18, 15).toISOString(); // NOW(10/17 12시) 다음 날 15시
+  const t = await addReminderTodo(store, { title: "선형대수 과제", listId: "L1", due, priority: 2 }, f.run, NOW);
+  assert.deepEqual(f.writes()[0], [{ op: "add", listId: "L1", title: "선형대수 과제", due, dueHasTime: true, alarm: true }]);
+  assert.deepEqual([t.id, t.source, t.priority, t.due, t.userEdited], ["reminder:N1", "reminders", 2, due, []]);
+  assert.match(t.note!, /^미리알림 「공부」 · 마감 10월 18일 15:00/);
+  const day = new Date(2026, 9, 18).toISOString();
+  const u = await addReminderTodo(store, { title: "단어 외우기", listId: "L1", due: day, priority: 1, today: true }, f.run, NOW);
+  assert.deepEqual(f.writes()[1], [{ op: "add", listId: "L1", title: "단어 외우기", due: day, dueHasTime: false }], "날짜만이면 알림 없이(미리알림의 하루 알림 시각을 따름)");
+  assert.deepEqual([u.priority, u.userEdited, !!u.today], [1, ["priority"], true]);
+  const plain = await addReminderTodo(store, { title: "복습", listId: "L1" }, f.run, NOW);
+  assert.deepEqual([plain.priority, plain.due], [3, undefined]);
+  const lists = [{ id: "L0", title: "개인", source: "iCloud" }, { id: "L1", title: "공부", source: "iCloud" }];
+  const withLists: EkRun = async (a) => (a[0] === "reminders" ? { ...(await f.run(a)), lists: [...lists, { id: "L9", title: TWO_WAY_LIST, source: "iCloud" }, "옛 모양", { id: "L8" }] } : f.run(a));
+  const r = await syncReminders(store, withLists, NOW);
+  assert.deepEqual([r.added, r.lists], [0, lists]);
+  assert.equal(store.getTodo(u.id)!.priority, 1, "고른 묶음은 맞추기가 덮지 않는다");
+  assert.equal(store.openTodos().filter((x) => x.source === "reminders").length, 3);
+  await assert.rejects(addReminderTodo(store, { title: "x", listId: "L1" }, async () => ({ ok: false, error: "not-granted" }), NOW), /권한/);
+  await assert.rejects(addReminderTodo(store, { title: "x", listId: "gone" }, async () => ({ ok: true, results: [{ ok: false, error: "그 미리알림 목록을 찾지 못했어요" }] }), NOW), /찾지 못했어요/);
 });

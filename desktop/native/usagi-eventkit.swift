@@ -149,9 +149,11 @@ case "reminders":
   let open = await fetch(store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: lists))
   let done = await fetch(store.predicateForCompletedReminders(withCompletionDateStarting: since, ending: Date(), calendars: lists))
   let linked = args.dropFirst(3).compactMap { reminder($0) }
-  emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict)])
+  // lists: 쓸 수 있는 목록(우사기 할 일 추가 막대에서 고른다. 같은 이름이 여러 계정에 있을 수 있어 id·계정도)
+  emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict),
+        "lists": lists.filter { $0.allowsContentModifications }.map { ["id": $0.calendarIdentifier, "title": $0.title, "source": $0.source?.title ?? ""] }])
 case "write":
-  // ops: [{op:"add", list, title, priority?, due?, dueHasTime?, url?} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서(add·set 은 저장한 뒤 미리알림 모습도)
+  // ops: [{op:"add", list | listId(사용자가 고른 목록, 없으면 만들지 않고 실패), title, priority?, due?, dueHasTime?, url?, alarm?(마감 시각에 알림)} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서(add·set 은 저장한 뒤 미리알림 모습도)
   guard args.count >= 3, let ops = (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [[String: Any]] else { emit(["ok": false, "error": "usage: write <ops JSON>"]); exit(2) }
   guard granted(.reminder) else { emit(["ok": false, "error": "not-granted", "reminders": statusName(.reminder)]); exit(0) }
   var results: [[String: Any]] = []
@@ -162,10 +164,14 @@ case "write":
       switch o["op"] as? String {
       case "add":
         let r = EKReminder(eventStore: store)
-        r.calendar = try reminderList(o["list"] as? String ?? "우사기 비서")
+        if let id = o["listId"] as? String {
+          guard let c = store.calendar(withIdentifier: id), c.allowsContentModifications else { results.append(["ok": false, "error": "그 미리알림 목록을 찾지 못했어요"]); continue }
+          r.calendar = c
+        } else { r.calendar = try reminderList(o["list"] as? String ?? "우사기 비서") }
         r.title = o["title"] as? String ?? ""
         if let p = o["priority"] as? Int { r.priority = p }
         setDue(r, o)
+        if o["alarm"] as? Bool == true, let due = (o["due"] as? String).flatMap(parseIso) { r.addAlarm(EKAlarm(absoluteDate: due)) } // 미리알림 앱에서 시각을 넣은 것과 같게
         if let u = (o["url"] as? String).flatMap(URL.init(string:)) { r.url = u }
         try store.save(r, commit: false)
         saved += 1
