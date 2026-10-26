@@ -249,9 +249,24 @@ test('splitHost: 「host:/경로」 만 서버로 보고, 이 Mac 경로·윈도
   assert.deepEqual([vm.projects[0].path, vm.projects[0].host, vm.projects[0].dir], ['gpu1:/home/me/proj', 'gpu1', '/home/me/proj']);
 });
 
-test('reminderLists(#316): id·이름 있는 것만, 같은 이름이 여러 계정이면 계정을 붙인다', () => {
-  assert.deepEqual(reminderLists([{ id: 'a', title: '공부', source: 'iCloud' }, { id: 'b', title: '공부', source: 'Google' }, { id: 'c', title: '할 일', source: 'iCloud' }, '옛 모양', { id: 'd' }]), [
-    { id: 'a', title: '공부', label: '공부 (iCloud)' }, { id: 'b', title: '공부', label: '공부 (Google)' }, { id: 'c', title: '할 일', label: '할 일' },
+test('reminderLists(#316): id·이름 있는 것만, 같은 이름이 여러 계정이면 계정을 붙이고, 색은 #RRGGBB 만(아니면 주황)', () => {
+  assert.deepEqual(reminderLists([{ id: 'a', title: '공부', source: 'iCloud', color: '#34C759' }, { id: 'b', title: '공부', source: 'Google', color: 'red;}' }, { id: 'c', title: '할 일', source: 'iCloud' }, '옛 모양', { id: 'd' }]), [
+    { id: 'a', title: '공부', label: '공부 (iCloud)', color: '#34C759' }, { id: 'b', title: '공부', label: '공부 (Google)', color: '#FF9500' }, { id: 'c', title: '할 일', label: '할 일', color: '#FF9500' },
   ]);
   assert.deepEqual(shapeDashboard({}).reminderLists, []);
+});
+
+test('groupTodos: 「나중에」만 마감 가까운 순, 날짜 없는 일은 맨 아래(원래 순서 그대로), 다른 묶음은 원래 순서', () => {
+  const at = (m, d) => new Date(2026, m - 1, d).toISOString();
+  const g = groupTodos([
+    { id: 'a', title: '생신', priority: 3, due: at(12, 15) },
+    { id: 'b', title: '책 공부', priority: 3 },
+    { id: 'c', title: '결제', priority: 3, due: at(11, 21) },
+    { id: 'd', title: '논문', priority: 3 },
+    { id: 'e', title: '먼 결제', priority: 3, due: at(9, 14) + '' },
+    { id: 'f', title: '이번 주 늦은 것', priority: 2, due: at(10, 30) },
+    { id: 'g', title: '이번 주 이른 것', priority: 2, due: at(10, 27) },
+  ]);
+  assert.deepEqual(g.find((x) => x.priority === 3).items.map((t) => t.id), ['e', 'c', 'a', 'b', 'd']);
+  assert.deepEqual(g.find((x) => x.priority === 2).items.map((t) => t.id), ['f', 'g']);
 });

@@ -111,7 +111,17 @@ export function dueChip(due, now = Date.now()) {
   const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   if (day(d) < day(n)) return { text: '지남', kind: 'late' };
   const hm = d.getHours() || d.getMinutes() ? ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
-  return day(d) === day(n) ? { text: `오늘${hm}`, kind: 'today' } : { text: `${d.getMonth() + 1}/${d.getDate()}${hm}`, kind: 'soon' };
+  const year = d >= new Date(n.getFullYear() + 1, n.getMonth(), n.getDate()) ? `${d.getFullYear()}/` : ''; // 1년 넘게 남은 날만 해를 붙인다(그 안의 M/D 는 다가오는 그날 하나뿐)
+  return day(d) === day(n) ? { text: `오늘${hm}`, kind: 'today' } : { text: `${year}${d.getMonth() + 1}/${d.getDate()}${hm}`, kind: 'soon' };
+}
+
+// 「나중에」 안 나눔: 한 달 안(다음 달 같은 날까지) · 한 달 뒤 · 날짜 없음. 줄은 이미 마감 순(dashboard.js groupTodos)
+export const LATER_PARTS = { month: '한 달 안', far: '한 달 뒤', none: '날짜 없음' };
+export function laterPart(due, now = Date.now()) {
+  const t = Date.parse(due ?? '');
+  if (!Number.isFinite(t)) return 'none';
+  const n = new Date(now);
+  return t < new Date(n.getFullYear(), n.getMonth() + 1, n.getDate() + 1).getTime() ? 'month' : 'far';
 }
 
 // ---- 상세(펼침) ----

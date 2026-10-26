@@ -23,7 +23,7 @@ import { stamp, withDayDividers } from '../src/chat-time.js';
 import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
 import { PRIORITIES, TODAY_GROUP, mergeRecentDone, newTodoBody, overlayTodos, isDoing, patchToday, isToday } from '../src/todos.js';
 import { parseDue, dueBucket } from '../src/todo-date.js';
-import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
+import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, laterPart, LATER_PARTS, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch, editDue } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
 import { trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey, createUndo, readTrashOpen, writeTrashOpen, overTrash, CONFIRM_TEXT, UNDO_MS } from '../src/todo-trash.js';
@@ -1272,7 +1272,9 @@ let addDraft = '';
 let addPick = 2; // 추가 막대 세그먼트에서 고른 묶음: 'today'(오늘로 고르고 오늘 꼭) | 2 | 3 | 4
 let addPickTouched = false; // 이 글에서 세그먼트를 직접 눌렀나(누르면 날짜로 정한 묶음보다 앞선다)
 let addDateOff = false; // 이 글에서 읽은 날짜를 ✕ 로 껐나
-let addList = ''; // 같이 넣을 미리알림 목록 id(빈 값 = 우사기에만). 바꿀 때까지 이어진다
+const ADD_LIST_KEY = 'todoAddList'; // localStorage — 동그라미에서 고른 미리알림 목록 id(다음에 켜도 기억)
+let addList = (() => { try { return localStorage.getItem(ADD_LIST_KEY) ?? ''; } catch { return ''; } })();
+let addRem = false; // 미리알림에도 넣기(토글). 끌 때까지 이어진다
 
 const why = (r) => (typeof r?.data?.error === 'string' ? r.data.error : r?.status ? `HTTP ${r.status}` : `${who()} 연결 확인`);
 
@@ -1321,7 +1323,7 @@ function addTodo() {
   if (!body) return;
   if (pick === 'today') body.today = true;
   if (parsed) body.due = parsed.due;
-  const list = vm.reminderLists.some((l) => l.id === addList) ? addList : '';
+  const list = addRem ? remList()?.id ?? '' : '';
   const draft = addDraft;
   addDraft = '';
   addPickTouched = addDateOff = false;
@@ -1663,6 +1665,16 @@ function withEmptyGroups(groups) {
 // 묶음 이름 + 기준 한 줄
 const groupHead = (g, ...more) => [h('span', { text: g.label }), h('span.chip', { text: String(g.items.length) }), g.hint ? h('span.group-hint', { text: g.hint }) : null, ...more];
 
+// 「나중에」(마감 순)는 한 달 안·한 달 뒤·날짜 없음을 작은 제목으로 나눈다(둘 이상 섞였을 때만). 끌기는 .todo.row 만 재서 제목은 상관없다
+function groupRows(g) {
+  const parts = g.priority === 3 ? g.items.map((t) => laterPart(t.due)) : [];
+  if (new Set(parts).size < 2) return g.items.map(todoRow);
+  return g.items.flatMap((t, i) => [
+    parts[i] !== parts[i - 1] ? h('div.todo-sub', null, LATER_PARTS[parts[i]], h('span.n', { text: String(parts.filter((p) => p === parts[i]).length) })) : null,
+    todoRow(t),
+  ]).filter(Boolean);
+}
+
 // 우선순위 묶음. 맨 위 「오늘」(0)은 오늘로 고른 일 + 접힌 「오늘 끝냄」. 백로그(P4)는 기본 접힘(기억) — 접혀 있어도 끌어 놓을 칸은 남는다
 function todoGroup(g) {
   if (g.priority === 0) return todayGroup(g);
@@ -1675,7 +1687,7 @@ function todoGroup(g) {
     : h('h2', null, ...groupHead(g));
   const body = collapsed
     ? h('div.card.todos.drop-empty.collapsed', null, g.items.length ? null : h('div.muted.small', { text: '끌어 놓기' }))
-    : h(`div.card.todos${g.items.length ? '' : '.drop-empty'}`, null, g.items.length ? g.items.map(todoRow) : h('div.muted.small', { text: '끌어 놓기' }));
+    : h(`div.card.todos${g.items.length ? '' : '.drop-empty'}`, null, g.items.length ? groupRows(g) : h('div.muted.small', { text: '끌어 놓기' }));
   return h(`div.group.p${g.priority}`, { dataset: [1, 2, 3, BACKLOG].includes(g.priority) ? { priority: String(g.priority) } : null }, head, body);
 }
 
@@ -1742,9 +1754,10 @@ async function ruleCall(r, pending, call, failText) {
 const toggleRule = (r) => ruleCall(r, { enabled: !r.enabled }, () => cy.todoRuleEdit(r.id, { enabled: !r.enabled }), '규칙을 바꾸지 못했어요');
 const deleteRule = (r) => ruleCall(r, 'delete', () => cy.todoRuleDelete(r.id), '규칙을 지우지 못했어요');
 
-// 할 일 추가 막대: 윗줄 동그라미(색 = 들어갈 묶음) · 입력, 아랫줄 읽은 마감 칩 · 미리알림 목록 … 묶음 세그먼트 · ↵.
+// 할 일 추가 막대: 윗줄 동그라미 · 입력, 아랫줄 읽은 마감 칩 · 미리알림 토글 … 묶음 세그먼트 · ↵.
 // 「내일 3시」「금요일까지」 같은 말은 마감으로 읽어 제목에서 빼고, 묶음도 그 날짜로 고른다(세그먼트를 누르면 그쪽).
-// 미리알림 목록을 고르면 그 목록에 미리알림으로도 만들어 미리알림 할 일이 된다(체크·지움·알림이 미리알림과 같이 감)
+// 동그라미를 누르면 미리알림 목록(공부 등)을 고르고, 토글을 켜면 그 목록에 미리알림으로도 만들어 미리알림 할 일이 된다(체크·지움·알림이 같이 감).
+// 동그라미는 끄면 들어갈 묶음 색 점선, 켜면 미리알림 앱처럼 목록 색 실선
 const ADD_PICKS = [{ ...TODAY_GROUP, value: 'today' }, ...PRIORITIES.slice(1)];
 const keepFocus = (e) => e.preventDefault(); // 막대 안 단추를 눌러도 입력 칸 포커스·한글 조합 그대로
 function addForm() {
@@ -1761,11 +1774,11 @@ function addForm() {
     addTodo();
   });
   const box = h('div.todo-add', { role: 'group', 'aria-label': '할 일 추가' },
-    h('div.add-line', null, h('span.add-ring', { 'aria-hidden': 'true' }), input),
+    h('div.add-line', null, ringPicker(), input),
     h('div.add-meta', null,
       h('span.chip.due.add-due', null, h('span.add-due-text'),
         h('button.ghost.due-off', { type: 'button', text: '✕', title: '날짜로 읽지 않기', 'aria-label': '날짜로 읽지 않고 글 그대로 두기', onmousedown: keepFocus, onclick: () => { addDateOff = true; syncAdd(box); } })),
-      reminderListSelect(),
+      reminderToggle(),
       h('span.add-gap'),
       h('span.rp-kinds.add-pick', { role: 'group', 'aria-label': '넣을 묶음' }, ADD_PICKS.map(({ value, label, hint }) =>
         h('button', { type: 'button', text: label, title: hint, dataset: { pick: String(value) }, onmousedown: keepFocus, onclick: () => { addPick = value; addPickTouched = true; syncAdd(box); } }))),
@@ -1774,15 +1787,36 @@ function addForm() {
   return box;
 }
 
-function reminderListSelect() {
+// 고른 미리알림 목록(없어졌으면 첫 목록). 미리알림이 연결 안 됐으면 undefined
+const remList = () => vm.reminderLists.find((l) => l.id === addList) ?? vm.reminderLists[0];
+
+// 동그라미: 미리알림이 연결돼 있으면 목록 고르기 칸(앱 모양 팝업, 목록 색 점), 아니면 그냥 동그라미
+function ringPicker() {
   const lists = vm.reminderLists;
-  if (!lists.length) return null;
-  if (!lists.some((l) => l.id === addList)) addList = '';
-  const sel = h(`select.add-rem${addList ? '.on' : ''}`, { 'aria-label': '미리알림 목록', title: '고른 미리알림 목록에도 넣어요. 체크·알림이 미리알림과 같이 가요' },
-    h('option', { value: '', text: '미리알림 안 넣음' }), lists.map((l) => h('option', { value: l.id, text: `미리알림 · ${l.label}` })));
-  sel.value = addList;
-  sel.addEventListener('change', () => { addList = sel.value; sel.classList.toggle('on', !!addList); $('todo-add-input')?.focus(); });
+  if (!lists.length) return h('span.add-ring', { 'aria-hidden': 'true' });
+  const sel = h('select.add-ring', { 'aria-label': '미리알림 목록 고르기', title: '미리알림 목록 고르기' },
+    lists.map((l) => {
+      const dot = h('span.list-dot', { 'aria-hidden': 'true' });
+      dot.style.background = l.color; // style 속성은 CSP 가 막아서 CSSOM 으로
+      return h('option', { value: l.id }, dot, l.label);
+    }));
+  sel.value = remList().id;
+  sel.addEventListener('change', () => {
+    addList = sel.value;
+    addRem = true; // 목록을 고르면 그 목록에 넣는 것으로
+    try { localStorage.setItem(ADD_LIST_KEY, addList); } catch { /* 저장소 없음 */ }
+    syncAdd(sel.closest('.todo-add'));
+    $('todo-add-input')?.focus();
+  });
   return sel;
+}
+
+// 미리알림 토글: 「미리알림 · 공부」, 켜면 목록 이름을 목록 색으로
+function reminderToggle() {
+  if (!vm.reminderLists.length) return null;
+  const sw = h('input.switch', { type: 'checkbox', 'aria-label': '미리알림에도 넣기', onchange: () => { addRem = sw.checked; syncAdd(sw.closest('.todo-add')); } });
+  return h('label.add-rem', { title: '켜면 고른 미리알림 목록에도 넣어요. 체크·알림이 미리알림과 같이 가요', onmousedown: (e) => { if (e.target !== sw) e.preventDefault(); } },
+    sw, h('span', { text: '미리알림' }), h('span.add-rem-list'));
 }
 
 // 글을 칠 때마다 칩·세그먼트·동그라미만 고친다(목록 전체를 다시 그리지 않아 한글 조합이 끊기지 않음)
@@ -1797,6 +1831,12 @@ function syncAdd(box) {
     chip.firstChild.textContent = parsed.label;
   }
   for (const b of box.querySelectorAll('.add-pick button')) b.setAttribute('aria-pressed', String(b.dataset.pick === String(pick)));
+  const l = remList();
+  if (!l) return;
+  box.dataset.rem = addRem ? 'on' : 'off';
+  box.style.setProperty('--lc', l.color);
+  box.querySelector('.add-rem .switch').checked = addRem;
+  box.querySelector('.add-rem-list').textContent = `· ${l.label}`;
 }
 
 // ---- 할 일 줄: 한 번 = 펼침, 두 번 = 제목·설명 고치기, 꾹 눌러 끌기 = 순서·우선순위, Alt+↑↓/1·2·3 = 키보드로 같은 일 ----

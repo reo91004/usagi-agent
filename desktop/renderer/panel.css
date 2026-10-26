@@ -607,6 +607,11 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todos { padding: 2px 4px; }
 .todo { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-top: 1px solid var(--line); transition: opacity 0.25s ease; }
 .todo:first-child { border-top: 0; }
+/* 「나중에」 안 나눔(한 달 안·한 달 뒤·날짜 없음): 작은 제목, 바로 아래 줄은 구분선 없이 */
+.todo-sub { display: flex; align-items: baseline; gap: 6px; padding: 12px 10px 4px; border-top: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.todo-sub:first-child { border-top: 0; padding-top: 6px; }
+.todo-sub .n { font-weight: 400; color: var(--faint); }
+.todo-sub + .todo, .todo-sub + .todo-wrap { border-top: 0; }
 .todo .t { flex: 1; min-width: 0; user-select: text; overflow-wrap: anywhere; } /* 띄어쓰기 없는 긴 제목·주소도 줄 안에서 */
 .todo.leaving { opacity: 0; }
 .todo .note { color: var(--err); font-size: 11.5px; }
@@ -634,16 +639,26 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .add-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-left: 28px; }
 .add-gap { flex: 1; }
 #sec-todos .todo-add input { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; font-size: var(--fs-lg); }
-.add-ring { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--p2); transition: border-color 0.12s; }
-.todo-add[data-pick="today"] .add-ring { border-color: var(--accent); }
-.todo-add[data-pick="3"] .add-ring { border-color: var(--p3); }
-.todo-add[data-pick="4"] .add-ring { border-color: var(--faint); }
+#sec-todos .add-ring { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--p2); transition: border-color 0.12s; }
+#sec-todos .todo-add[data-pick="today"] .add-ring { border-color: var(--accent); }
+#sec-todos .todo-add[data-pick="3"] .add-ring { border-color: var(--p3); }
+#sec-todos .todo-add[data-pick="4"] .add-ring { border-color: var(--faint); }
 .chip.due.add-due[hidden] { display: none; }
 .chip.due:has(.due-off) { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; cursor: default; }
 button.ghost.due-off { padding: 0 4px; border-radius: var(--r-pill); font-size: 10px; line-height: 16px; color: inherit; }
 button.ghost.add-go { flex: none; padding: 2px 9px; font-size: var(--fs-md); }
-#sec-todos select.add-rem { flex: none; padding: 3px 8px; border-color: transparent; border-radius: var(--r-pill); background: var(--code); color: var(--muted); font-size: var(--fs-xs); }
-#sec-todos select.add-rem.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* 동그라미 = 미리알림 목록 고르기 칸: 칸 글자는 숨기고 동그라미만, 펼친 목록은 앱 공용 팝업(controls.css)에 목록 색 점. 켜면 목록 색 실선(미리알림 앱의 체크 동그라미처럼) */
+#sec-todos select.add-ring { box-sizing: border-box; width: 18px; height: 18px; min-width: 0; min-height: 0; padding: 0; background: none; font-size: 0; line-height: 0; color: transparent; }
+#sec-todos select.add-ring::picker-icon { display: none; }
+#sec-todos select.add-ring:hover { box-shadow: 0 0 0 3px var(--hover); }
+#sec-todos select.add-ring option { font-size: var(--fs-md); color: var(--fg); }
+.list-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+#sec-todos .todo-add[data-rem="on"] .add-ring { border: 2px solid var(--lc); }
+/* 미리알림 토글: 설정의 스위치 모양, 켜면 목록 이름을 목록 색으로 */
+.add-rem { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--muted); cursor: pointer; user-select: none; }
+.add-rem .switch { transform: scale(0.85); }
+#sec-todos .add-rem .switch:checked { background: var(--lc, var(--accent)); }
+.todo-add[data-rem="on"] .add-rem-list { color: var(--lc); font-weight: 600; }
 .edit-due:not(:empty) { margin-right: 8px; }
 .todo-wrap { border-top: 1px solid var(--line); }
 .todo-wrap:first-child { border-top: 0; }
@@ -1537,15 +1552,15 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .sk-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #sec-settings .sk-row:has(.switch:not(:checked)) :is(.sk-name, .nav-ico) { opacity: 0.45; }
 #sec-settings .sk-empty { padding: 14px 12px; color: var(--faint); font-size: var(--fs-sm); border: 1px dashed var(--line); border-radius: var(--r-lg); }
-#sec-settings .switch { appearance: none; flex: none; position: relative; width: 30px; height: 18px; margin: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--faint) 45%, transparent); cursor: pointer; transition: background 0.15s; }
-#sec-settings .switch::before { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
-#sec-settings .switch:checked { background: var(--accent); }
-#sec-settings .switch:checked::before { transform: translateX(12px); }
-#sec-settings .switch:indeterminate { background: color-mix(in srgb, var(--accent) 45%, transparent); }
-#sec-settings .switch:indeterminate::before { transform: translateX(6px); }
-#sec-settings .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#sec-settings .switch:disabled { opacity: 0.6; cursor: progress; }
-@media (prefers-reduced-motion: reduce) { #sec-settings .switch, #sec-settings .switch::before, #sec-settings .sk-caret { transition: none; } }
+:is(#sec-settings, #sec-todos) .switch { appearance: none; flex: none; position: relative; width: 30px; height: 18px; margin: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--faint) 45%, transparent); cursor: pointer; transition: background 0.15s; }
+:is(#sec-settings, #sec-todos) .switch::before { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+:is(#sec-settings, #sec-todos) .switch:checked { background: var(--accent); }
+:is(#sec-settings, #sec-todos) .switch:checked::before { transform: translateX(12px); }
+:is(#sec-settings, #sec-todos) .switch:indeterminate { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+:is(#sec-settings, #sec-todos) .switch:indeterminate::before { transform: translateX(6px); }
+:is(#sec-settings, #sec-todos) .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(#sec-settings, #sec-todos) .switch:disabled { opacity: 0.6; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { :is(#sec-settings, #sec-todos) .switch, :is(#sec-settings, #sec-todos) .switch::before, #sec-settings .sk-caret { transition: none; } }
 
 /* 문구 */
 #sec-settings .card code { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 0 4px; border-radius: 4px; }

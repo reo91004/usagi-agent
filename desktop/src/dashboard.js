@@ -67,7 +67,8 @@ const num = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
 const arr = (v) => (Array.isArray(v) ? v : []);
 
 // 할 일을 묶는다: 오늘로 고른 일(todayDate, 묶음 0) → 우선순위 1 → 2 → 3 → 4 백로그 → 기타. 오늘 묶음에 든 일은 아래에 다시 안 나온다.
-// 그룹 안 순서는 원래 순서. 오늘 묶음 줄도 priority 는 본래 값 그대로.
+// 그룹 안 순서는 원래 순서(끌어서 정한 순서 → 들어온 순서). 「나중에」(3)만 마감 가까운 것부터, 날짜 없는 일은 맨 아래(그 안은 원래 순서).
+// 오늘 묶음 줄도 priority 는 본래 값 그대로.
 export function groupTodos(todos, todayDate = '') {
   const groups = new Map();
   for (const t of arr(todos)) {
@@ -95,8 +96,14 @@ export function groupTodos(todos, todayDate = '') {
   }
   return [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([priority, items]) => ({ priority, label: priorityLabel(priority), hint: priorityHint(priority), items }));
+    .map(([priority, items]) => ({ priority, label: priorityLabel(priority), hint: priorityHint(priority), items: priority === 3 ? byDue(items) : items }));
 }
+
+const dueAt = (t) => (t.due ? Date.parse(t.due) : NaN);
+const byDue = (items) => [...items].sort((a, b) => { // sort 는 안정 정렬이라 같은 날·날짜 없음은 원래 순서
+  const x = dueAt(a), y = dueAt(b);
+  return Number.isNaN(x) || Number.isNaN(y) ? Number.isNaN(x) - Number.isNaN(y) : x - y;
+});
 
 // 서버가 준 최근 완료(자동 완료 포함). 자동이면 이유·근거 링크
 export function shapeRecentDone(list, now = Date.now()) {
@@ -312,11 +319,11 @@ export function shapeDirectives(d, now = Date.now()) {
   };
 }
 
-// 미리알림 목록 { id, title, label }: 같은 이름이 여러 계정에 있으면 이름 뒤에 계정을 붙여 구분한다
+// 미리알림 목록 { id, title, label, color }: 같은 이름이 여러 계정에 있으면 이름 뒤에 계정을 붙여 구분한다. color 는 미리알림 앱의 목록 색(#RRGGBB, 없으면 주황)
 export function reminderLists(v) {
   const xs = arr(v).filter((x) => x && str(x.id) && str(x.title));
   const dup = (t) => xs.filter((x) => x.title === t).length > 1;
-  return xs.map((x) => ({ id: x.id, title: x.title, label: dup(x.title) && str(x.source) ? `${x.title} (${x.source})` : x.title }));
+  return xs.map((x) => ({ id: x.id, title: x.title, label: dup(x.title) && str(x.source) ? `${x.title} (${x.source})` : x.title, color: /^#[0-9a-f]{6}$/i.test(str(x.color)) ? x.color : '#FF9500' }));
 }
 
 export function shapeDashboard(raw, now = Date.now()) {
