@@ -55,7 +55,7 @@ import { notePathFor, researchSummary } from "./research.ts";
 import { putResearchProject } from "./research-projects.ts";
 import { agentRules } from "./agent-rules.ts";
 import { directivesView } from "./directives.ts";
-import { appleStatus, ekRun, eventkitAvailable, importantDaysOf, importantEvents, pushDone, setAppleFlags, syncReminders, watchStore, type ImportantEvent, type UrgentReminder } from "./eventkit.ts";
+import { addReminderTodo, appleStatus, ekRun, eventkitAvailable, importantDaysOf, importantEvents, pushDone, setAppleFlags, syncReminders, watchStore, type ImportantEvent, type ReminderList, type UrgentReminder } from "./eventkit.ts";
 import { remoteGpuData } from "./remote-fs.ts";
 import { agyPrewarm, agyWarm, BrainLimitError, brainAuthFailed, brainCreditNeeded, onBrainAuthChange, setCliMcpUrl } from "./providers.ts";
 import { mcpHandler, mcpToken, mcpUrl, removeAgyUsagi } from "./mcp-http.ts";
@@ -144,7 +144,11 @@ function remindToday(opened = false) {
   if (r.kind === "ask") bus.openPanel("todos");
 }
 bus.onOverlay = () => remindToday(true);
-setInterval(() => { try { remindToday(false); } catch (e: any) { console.warn("[today] 알림:", e?.message ?? e); } }, 60e3).unref?.();
+setInterval(() => {
+  try { remindToday(false); } catch (e: any) { console.warn("[today] 알림:", e?.message ?? e); }
+  try { agent.rebucketDue(); } catch (e: any) { console.warn("[todos] 마감 묶음:", e?.message ?? e); }
+}, 60e3).unref?.();
+agent.rebucketDue();
 
 // 설정: 모델·브리핑 출처(바로 반영 + config.json) · 연결 상태(읽기만). KG 상태는 아래에서 kgBackfill 이 생긴 뒤에 붙는다
 // 뇌·이름·레포 폴더를 바꾸면 바로 반영되고(재시작 불필요) 데스크톱에 SSE status 로 알린다
@@ -220,7 +224,7 @@ function watchReminders() {
   }, () => { if (unwatch === stop) unwatch = undefined; }); // 다음 맞추기가 다시 띄운다
 }
 // 개요 「꼭 챙길 것」(#279): 긴급 미리알림(맞출 때마다)과 「중요」 캘린더 일정(회의 동기화 30분·↻ 때, 맥 안 DB 만). 메모리에만, 바뀌면 패널을 다시 그린다
-let urgent = new Map<string, UrgentReminder>(), important: ImportantEvent[] = [];
+let urgent = new Map<string, UrgentReminder>(), important: ImportantEvent[] = [], reminderLists: ReminderList[] = []; // reminderLists: 할 일 추가 막대에서 고를 미리알림 목록
 const calLocal = () => conns.calendar.mode === "api" && !!(conns.calendar as any).local;
 async function syncImportant() {
   if (!calLocal() || !eventkitAvailable()) return;
@@ -240,6 +244,7 @@ async function syncRemindersNow() {
     const urgentNow = new Map((r.urgent ?? []).map((u) => [u.id, u]));
     const urgentChanged = JSON.stringify([...urgentNow]) !== JSON.stringify([...urgent]);
     urgent = urgentNow;
+    if (r.lists && JSON.stringify(r.lists) !== JSON.stringify(reminderLists)) { reminderLists = r.lists; bus.dashboardChanged(); }
     if (r.added || r.done || r.wrote || r.trashed) console.log(`[reminders] 새 할 일 ${r.added}개 · 미리알림에서 끝낸 것 ${r.done}개 · 미리알림에 쓴 것 ${r.wrote ?? 0}개 · 미리알림에서 지워 휴지통 ${r.trashed ?? 0}개`);
     if (r.added || r.done || r.wrote || r.trashed || r.edited || urgentChanged) bus.dashboardChanged(); // 제목·마감만 바뀌어도 패널을 다시 그린다
   } catch (e: any) { console.warn("[reminders]", e?.message ?? e); }
@@ -287,6 +292,7 @@ await bus.listen(cfg.port, {
     ...dash,
     todos: cfg.appleReminders && urgent.size ? dash.todos.map((t) => (urgent.has(t.id) ? { ...t, urgent: urgent.get(t.id) } : t)) : dash.todos, // 긴급 미리알림 표시
     important: calLocal() ? important : [],
+    reminderLists: cfg.appleReminders ? reminderLists : [],
     meetings: calendar.enabled ? calendar.upcoming().map(({ webLink: _w, ...m }) => m) : [],
     connectors: withMcpBrain(cfg, connectorStatus(conns), () => cliMcpServers(conns).map((s) => s.name)), // Codex·agy 뇌면 넘길 수 있는 MCP 연결만(채팅에서)
     ...(() => { const r = researchSummary(cfg, store, new Date(), tmuxSeen, dash.researchProjects); return r ? { research: r } : {}; })(), // 연구 카드(연구 쪽 연결이 있을 때만)
@@ -359,7 +365,13 @@ await bus.listen(cfg.port, {
   },
   researchNote: (day) => notePathFor(cfg, day),
   todoDone: (id) => agent.todoDone(id),
-  todoAdd: (t) => agent.addTodo(t),
+  todoAdd: async ({ reminderList, ...t }) => {
+    if (!reminderList) return agent.addTodo(t);
+    if (!cfg.appleReminders || !eventkitAvailable()) throw new Error("미리알림이 연결돼 있지 않아요");
+    const todo = await addReminderTodo(store, { title: t.title, listId: reminderList, due: t.due, priority: t.priority, today: t.today === true });
+    bus.dashboardChanged();
+    return todo;
+  },
   todoEdit: (id, patch) => agent.editTodo(id, patch),
   todoDelete: (id) => agent.deleteTodo(id),
   todoRestore: (id) => agent.restoreTodo(id),

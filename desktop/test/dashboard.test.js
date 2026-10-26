@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, clockTime, groupTodos, shapeDashboard, normalizeSection, overlayHidden, shapeConnectors, SECTIONS, navGroups, shapeMeetings, shapeImportant, splitHost } from '../src/dashboard.js';
+import { relativeTime, clockTime, groupTodos, shapeDashboard, reminderLists, normalizeSection, overlayHidden, shapeConnectors, SECTIONS, navGroups, shapeMeetings, shapeImportant, splitHost } from '../src/dashboard.js';
 
 const NOW = Date.parse('2026-10-09T05:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -53,7 +53,7 @@ test('shapeDashboard: 숫자 요약과 프로젝트 정리', () => {
     proposals: [{ id: 'p', title: 'x', status: 'pending' }, { id: 'q', title: 'y', status: 'done' }],
     today: { date: '2026-10-09', items: [{ id: '1', title: '리뷰', done: false, priority: 1 }, { id: 'd', title: '끝', done: true, priority: 2 }] },
   }, NOW);
-  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 1, p1Todos: 1, backlogTodos: 0, pendingProposals: 1 });
+  assert.deepEqual(vm.stats, { commitsToday: 4, openTodos: 1, p1Todos: 1, pendingProposals: 1 });
   assert.equal(vm.projects[0].lastActiveRel, '10분 전');
   assert.deepEqual(vm.projects[0].recentCommits, [{ sha: 'abcdef1', subject: 'feat: x', time: ago(HOUR), rel: '1시간 전' }]);
   assert.equal(vm.briefing.rel, '2시간 전');
@@ -63,7 +63,7 @@ test('shapeDashboard: 숫자 요약과 프로젝트 정리', () => {
 
 test('shapeDashboard: 빈/깨진 응답도 안전', () => {
   const vm = shapeDashboard(null, NOW);
-  assert.deepEqual(vm.stats, { commitsToday: 0, openTodos: 0, p1Todos: 0, backlogTodos: 0, pendingProposals: 0 });
+  assert.deepEqual(vm.stats, { commitsToday: 0, openTodos: 0, p1Todos: 0, pendingProposals: 0 });
   assert.equal(vm.briefing, null);
   assert.equal(vm.today.date, '');
 });
@@ -247,4 +247,11 @@ test('splitHost: 「host:/경로」 만 서버로 보고, 이 Mac 경로·윈도
   assert.deepEqual(splitHost(''), { host: '', dir: '' });
   const vm = shapeDashboard({ projects: [{ name: 'proj', path: 'gpu1:/home/me/proj', lastActive: ago(MIN) }] }, NOW);
   assert.deepEqual([vm.projects[0].path, vm.projects[0].host, vm.projects[0].dir], ['gpu1:/home/me/proj', 'gpu1', '/home/me/proj']);
+});
+
+test('reminderLists(#316): id·이름 있는 것만, 같은 이름이 여러 계정이면 계정을 붙인다', () => {
+  assert.deepEqual(reminderLists([{ id: 'a', title: '공부', source: 'iCloud' }, { id: 'b', title: '공부', source: 'Google' }, { id: 'c', title: '할 일', source: 'iCloud' }, '옛 모양', { id: 'd' }]), [
+    { id: 'a', title: '공부', label: '공부 (iCloud)' }, { id: 'b', title: '공부', label: '공부 (Google)' }, { id: 'c', title: '할 일', label: '할 일' },
+  ]);
+  assert.deepEqual(shapeDashboard({}).reminderLists, []);
 });

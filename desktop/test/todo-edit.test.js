@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
+import { openEdit, fillDescription, editKey, editPatch, editDue } from '../src/todo-edit.js';
 
 const T = { id: 'mail:1', title: '견적 회신', description: '줄 설명' };
 
@@ -72,4 +72,21 @@ test('패널: 줄을 두 번 누르거나 Shift+Enter 면 그 자리 편집기, 
   assert.doesNotMatch(css, /\.ask-pop|\.ask-diff/);
   const pre = readFileSync(new URL('../preload-panel.cjs', import.meta.url), 'utf8');
   assert.doesNotMatch(pre, /todo-ask|todo-apply|todo-reject/);
+});
+
+test('editDue·editPatch 마감(#316): 직접 넣은 할 일만, 바꾼 제목의 날짜를 읽고 ✕ 로 끄거나 지운다', () => {
+  const NOW = new Date(2026, 9, 26, 10);
+  const U = { id: 'user:1', title: '보고서', due: new Date(2026, 9, 30).toISOString() };
+  const s = (o) => ({ ...openEdit(U), ...o });
+  assert.deepEqual(editDue(U, s({}), NOW), { title: '보고서', due: undefined }); // 제목 그대로면 마감도 그대로
+  const moved = editDue(U, s({ title: '보고서 내일 3시' }), NOW);
+  assert.equal(moved.title, '보고서');
+  assert.equal(moved.due, new Date(2026, 9, 27, 15).toISOString());
+  assert.equal(editDue(U, s({ title: '보고서 내일', dueOff: true }), NOW).due, undefined);
+  assert.equal(editDue(U, s({ dueClear: true }), NOW).due, null);
+  assert.equal(editDue({ ...U, id: 'reminder:R' }, s({ title: '보고서 내일' }), NOW).due, undefined); // 미리알림 마감은 그쪽이 정함
+  assert.deepEqual(editPatch(U, s({ dueClear: true })).patch, { due: null });
+  const p = editPatch(U, s({ title: '발표 모레' })).patch;
+  assert.equal(p.title, '발표');
+  assert.ok(typeof p.due === 'string');
 });

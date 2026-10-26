@@ -312,6 +312,13 @@ export function shapeDirectives(d, now = Date.now()) {
   };
 }
 
+// 미리알림 목록 { id, title, label }: 같은 이름이 여러 계정에 있으면 이름 뒤에 계정을 붙여 구분한다
+export function reminderLists(v) {
+  const xs = arr(v).filter((x) => x && str(x.id) && str(x.title));
+  const dup = (t) => xs.filter((x) => x.title === t).length > 1;
+  return xs.map((x) => ({ id: x.id, title: x.title, label: dup(x.title) && str(x.source) ? `${x.title} (${x.source})` : x.title }));
+}
+
 export function shapeDashboard(raw, now = Date.now()) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const all = arr(r.projects).filter((p) => p && typeof p === 'object').map((p) => shapeProject(p, now));
@@ -324,7 +331,6 @@ export function shapeDashboard(raw, now = Date.now()) {
   const groupLen = (p) => todoGroups.find((g) => g.priority === p)?.items.length ?? 0;
   // 열린 할 일 수·배지 = 오늘로 고른 일 + 오늘 꼭 + 이번 주(나중에·언젠가·기타는 뺀다). 오늘 묶음에 든 일은 아래 묶음에 없으니 겹치지 않는다
   const openTodos = groupLen(0) + groupLen(1) + groupLen(2);
-  const backlogTodos = groupLen(4);
   const p1Todos = todoGroups.flatMap((g) => (g.priority <= 1 ? g.items : [])).filter((t) => t.priority === 1).length;
   const proposals = arr(r.proposals)
     .filter((p) => p && str(p.id))
@@ -344,7 +350,6 @@ export function shapeDashboard(raw, now = Date.now()) {
       commitsToday: num(r.commitsToday),
       openTodos,
       p1Todos,
-      backlogTodos,
       pendingProposals: proposals.filter((p) => p.status === 'pending').length,
     },
     briefing: b ? { at: str(b.at), time: clockTime(b.at), rel: relativeTime(b.at, now), bubble: str(b.bubble), md: str(b.replyMd) } : null,
@@ -359,6 +364,7 @@ export function shapeDashboard(raw, now = Date.now()) {
     todayDone,
     meetings: shapeMeetings(r.meetings, now),
     important: shapeImportant(r.important, now),
+    reminderLists: reminderLists(r.reminderLists), // 할 일 추가 막대에서 고를 미리알림 목록(미리알림 연결 때만)
     urgent: urgentTodos(todoGroups),
     research: shapeResearch(r.research, now),
     researchProjects: shapeResearchProjects(r.researchProjects, now),

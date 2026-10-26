@@ -19,7 +19,7 @@ export function shapeRules(list) {
 export function rulesChip(rules) {
   const all = arr(rules);
   const on = all.filter((r) => r.enabled).length;
-  return on === all.length ? `규칙 ${on}` : `규칙 ${on}/${all.length}`;
+  return on === all.length ? `자동 분류 규칙 ${on}개` : `자동 분류 규칙 ${all.length}개 중 ${on}개 켜짐`;
 }
 
 // 응답 오기 전 바꾼 것 겹치기: pending = Map(id → { enabled } | 'delete')

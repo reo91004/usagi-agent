@@ -191,8 +191,8 @@ type Bubble = {
 
 | | |
 |---|---|
-| `POST /todos { title, priority?, link?, note? }` | 201 `{ id }`(`user:<uuid>`) |
-| `POST /todos/:id { title?, priority?, link?, note?, description?, status?: open\|done, doing?: boolean\|null }` | 200 `{ ok, todo }`. 사용자가 고친 필드는 브리핑이 덮지 않는다(`doing`은 예외) |
+| `POST /todos { title, priority?, link?, note?, today?, due? }` | 201 `{ id }`(`user:<uuid>`). `due`(ISO)만 주면 묶음은 날짜로(오늘까지 1, 7일 안 2, 그 뒤 3). 날짜와 다른 묶음을 주면 사용자가 정한 것으로 기억 |
+| `POST /todos/:id { title?, priority?, link?, note?, description?, status?: open\|done, doing?: boolean\|null, due?: ISO\|null }` | 200 `{ ok, todo }`. 사용자가 고친 필드는 브리핑이 덮지 않는다(`doing`은 예외). 직접 넣은 할 일(`user:`)은 마감을 바꾸면 묶음도 그 날짜로, 날짜가 바뀌면 다가온 마감만큼 묶음을 올린다(옮긴 것·언젠가는 그대로) |
 | `POST /todos/:id/done` | 완료 |
 | `POST /todos/:id/delete` → `/restore` → `/purge`, `POST /todos/trash/empty` | 휴지통(30일 뒤 자동 비움) |
 | `POST /todos/:id/revert` | 자동 완료 되돌리기. 409 = 자동 완료가 아님 |

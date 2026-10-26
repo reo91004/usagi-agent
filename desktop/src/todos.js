@@ -72,8 +72,10 @@ export function sanitizeTodoPatch(v, { allowStatus = true } = {}) {
   if (v.description === null || typeof v.description === 'string') out.description = v.description === null ? null : v.description;
   if (v.doing === null || typeof v.doing === 'boolean') out.doing = v.doing; // (진행중) 토글: true·false·null(자동)
   if (v.today === null || typeof v.today === 'boolean') out.today = v.today; // 오늘 할 일로 고르기(true)·빼기(false·null)
+  if (v.due === null || (typeof v.due === 'string' && Number.isFinite(Date.parse(v.due)))) out.due = v.due; // 마감(ISO)·지우기(null)
   if (v.skipped === true) out.skipped = true; // 안 해도 돼서 닫기(status 'done' 과 함께)
   if (allowStatus && (v.status === 'open' || v.status === 'done')) out.status = v.status;
+  if (!allowStatus && typeof v.reminderList === 'string' && v.reminderList.trim()) out.reminderList = v.reminderList.trim(); // 추가에만: 그 미리알림 목록에도
   return Object.keys(out).length ? out : null;
 }
 

@@ -1042,6 +1042,17 @@ ${meetingsContext(this.store) || "(로컬에 저장된 다가오는 회의 없�
     return done;
   }
 
+  // 날짜가 바뀌면(main 의 1분 타이머) 마감이 다가온 직접 넣은 할 일의 묶음을 올린다
+  private dueDay = "";
+  rebucketDue(now = new Date()): number {
+    const day = now.toDateString();
+    if (day === this.dueDay) return 0;
+    this.dueDay = day;
+    const n = this.store.rebucketDue(now);
+    if (n) this.changed();
+    return n;
+  }
+
   // 할 일 진행 확인(todo-progress.ts): 어디까지 됐는지 한 줄씩. 사용자 필드는 안 건드린다. 바뀐 id
   noteProgress(items: { id: string; note: string }[]): string[] {
     const changed = items.filter((i) => this.store.setTodoProgress(i.id, i.note, "auto")).map((i) => i.id);

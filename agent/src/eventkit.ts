@@ -9,7 +9,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CalEvent, CalendarSource } from "./calendar-sync.ts";
-import type { Store, Todo } from "./store.ts";
+import type { Store, Todo, TodoPatch } from "./store.ts";
+import { duePriority } from "./todos.ts";
 
 export const helperPath = () => process.env.CY_AGENT_EVENTKIT ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "usagi-eventkit");
 export const eventkitAvailable = () => process.platform === "darwin" && existsSync(helperPath());
@@ -101,9 +102,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 // 묶음 이름(오늘 꼭·이번 주·나중에)이 날짜 기준이라, 중요도로 올리면 마감이 먼 일이 오늘 마감처럼 보인다
 export function reminderPriority(r: { due?: string; priority?: number }, now = new Date()): number {
   const p = Number(r.priority) || 0; // Apple: 1~4 높음, 5 보통, 6~9 낮음, 0 없음
-  const due = r.due ? Date.parse(r.due) : NaN;
-  const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  if (Number.isFinite(due)) return due < endToday ? 1 : due < endToday + 6 * 86400e3 ? 2 : 3;
+  if (r.due && Number.isFinite(Date.parse(r.due))) return duePriority(r.due, now);
   return p >= 1 && p <= 5 ? 2 : 3;
 }
 export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsertTodo"]>[0] | null {
@@ -123,7 +122,8 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
 const AUTO_NOTE = /^미리알림 「[^」]*」(?: · 마감 \d+월 \d+일(?: \d\d:\d\d)?)?/;
 const freshNote = (cur?: string, note?: string) => (note && cur && AUTO_NOTE.test(cur) ? cur.replace(AUTO_NOTE, () => note) : undefined);
 
-export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number; urgent?: UrgentReminder[] };
+export type ReminderList = { id: string; title: string; source: string };
+export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number; urgent?: UrgentReminder[]; lists?: ReminderList[] }; // lists: 우사기에서 넣을 수 있는 목록(옛 도우미면 없음)
 export const TWO_WAY_LIST = "우사기 비서";
 // 긴급(#279, 개요 「긴급 미리알림」): 우선순위 「높음」(Apple 1~4)이거나 목록·제목에 「긴급」. EventKit 은 깃발·태그를 내주지 않는다.
 // 우사기가 쓴 목록은 뺀다(할 일 우선순위를 옮겨 적은 것이라). id 는 그 미리알림의 할 일
@@ -261,7 +261,23 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     const fail = (w.results ?? []).find((res: any) => res && !res.ok && !res.missing);
     if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, edited, added_: added };
   }
-  return { added: added.length, done, ok: true, wrote, trashed, edited, urgent: urgentReminders(r.open), added_: added };
+  const lists: ReminderList[] | undefined = Array.isArray(r.lists)
+    ? r.lists.filter((x: any) => typeof x?.id === "string" && x.id && typeof x.title === "string" && x.title && x.title !== TWO_WAY_LIST).map((x: any) => ({ id: x.id, title: x.title, source: String(x.source ?? "") }))
+    : undefined;
+  return { added: added.length, done, ok: true, wrote, trashed, edited, urgent: urgentReminders(r.open), added_: added, ...(lists ? { lists } : {}) };
+}
+
+// 우사기에서 넣으면서 미리알림 목록을 고른 할 일(#316): 그 목록에 미리알림을 만들고(마감에 시각이 있으면 그 시각 알림도) 미리알림 할 일(reminder:<id>)로 넣는다.
+// 그 뒤는 미리알림에서 온 할 일과 같다(체크는 바로 미리알림에, 미리알림에서 고치거나 지운 것은 따라옴). 고른 묶음이 미리알림 기준과 다르면 사용자가 정한 것으로 둔다
+export async function addReminderTodo(store: Store, t: { title: string; listId: string; due?: string | null; priority?: number; today?: boolean }, run: EkRun = ekRun, now = new Date()): Promise<Todo> {
+  const due = t.due ? dueOp(t.due) : {};
+  const w = await run(["write", JSON.stringify([{ op: "add", listId: t.listId, title: t.title, ...due, ...("dueHasTime" in due && due.dueHasTime ? { alarm: true } : {}) }])]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  const res = w?.ok ? w.results?.[0] : undefined;
+  const auto = res?.ok && res.id ? reminderTodo(res, now) : null;
+  if (!auto) throw new Error(`미리알림에 넣지 못했어요: ${String(res?.error ?? (w?.error === "not-granted" ? "macOS 미리알림 권한이 없어요" : w?.error ?? "실패"))}`);
+  const todo = store.getTodo(auto.id) ?? store.addTodo(auto, "user"); // 그사이 맞추기가 먼저 넣었으면 그것
+  const patch: TodoPatch = { ...(t.priority !== undefined && t.priority !== todo.priority ? { priority: t.priority } : {}), ...(t.today ? { today: true } : {}) };
+  return Object.keys(patch).length ? store.editTodo(todo.id, patch)! : todo;
 }
 
 // 우사기에서 체크·체크 해제한 할 일을 그 미리알림에 바로 쓴다(지금 상태로). 양방향 짝이 있으면 짝의 미리알림, 없으면 미리알림에서 온 할 일(reminder:<id>)만.

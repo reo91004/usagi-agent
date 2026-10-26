@@ -21,9 +21,10 @@ import { connectCard, chatLock } from '../src/brain-state.js';
 import { initialChat, chatReducer, isBusy, isRunning, busyLabel, busyThreads, sendButton, stopTargets, localState, queuedChats, queuedLabel, sentLabel } from '../src/chat.js';
 import { stamp, withDayDividers } from '../src/chat-time.js';
 import { KIND_ICONS, KIND_LABELS, normThread, normThreads, upsertThread, groupThreads, filterThreads, initSeen, isUnread, markSeen, pruneSeen, unreadCount, pickInitial, neighborThread, afterRemoval, mergeMessages, appendLocal, tagLocal, dropLocal, dropFailed, markSent, isDoubleSend, todoChip, okThreadId, editTarget, dropFrom } from '../src/threads.js';
-import { PRIORITIES, mergeRecentDone, newTodoBody, overlayTodos, isDoing, patchToday, isToday } from '../src/todos.js';
+import { PRIORITIES, TODAY_GROUP, mergeRecentDone, newTodoBody, overlayTodos, isDoing, patchToday, isToday } from '../src/todos.js';
+import { parseDue, dueBucket } from '../src/todo-date.js';
 import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
-import { openEdit, fillDescription, editKey, editPatch } from '../src/todo-edit.js';
+import { openEdit, fillDescription, editKey, editPatch, editDue } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
 import { trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey, createUndo, readTrashOpen, writeTrashOpen, overTrash, CONFIRM_TEXT, UNDO_MS } from '../src/todo-trash.js';
 import { BACKLOG, rulesChip, overlayRules, hitsLabel, readBacklogOpen, writeBacklogOpen, isCollapsed } from '../src/todo-rules.js';
@@ -1267,8 +1268,11 @@ let refocusId = null; // 다시 그린 뒤 키보드 포커스를 돌려줄 줄
 let recentDone = []; // 이 창에서 방금 완료한 것 — 되돌리기용
 let todoMsg = null; // { ok, text }
 let todosStale = false;
-let addPriority = 2;
 let addDraft = '';
+let addPick = 2; // 추가 막대 세그먼트에서 고른 묶음: 'today'(오늘로 고르고 오늘 꼭) | 2 | 3 | 4
+let addPickTouched = false; // 이 글에서 세그먼트를 직접 눌렀나(누르면 날짜로 정한 묶음보다 앞선다)
+let addDateOff = false; // 이 글에서 읽은 날짜를 ✕ 로 껐나
+let addList = ''; // 같이 넣을 미리알림 목록 id(빈 값 = 우사기에만). 바꿀 때까지 이어진다
 
 const why = (r) => (typeof r?.data?.error === 'string' ? r.data.error : r?.status ? `HTTP ${r.status}` : `${who()} 연결 확인`);
 
@@ -1304,18 +1308,32 @@ function moveTodo(id, priority, beforeId) {
     () => setRawTodos(reorderLocal(rawTodos(), id, priority, beforeId)));
 }
 
+// 추가 막대의 지금 뜻: 글에서 읽은 마감(✕ 로 끄면 없음)과 들어갈 묶음(직접 고르지 않았으면 마감 날짜로)
+function addState() {
+  const parsed = addDateOff ? null : parseDue(addDraft);
+  const b = parsed && dueBucket(parsed.due);
+  return { parsed, pick: parsed && !addPickTouched ? (b === 1 ? 'today' : b) : addPick };
+}
+
 function addTodo() {
-  const body = newTodoBody(addDraft, addPriority);
+  const { parsed, pick } = addState();
+  const body = newTodoBody(parsed ? parsed.title : addDraft, pick === 'today' ? 1 : pick);
   if (!body) return;
+  if (pick === 'today') body.today = true;
+  if (parsed) body.due = parsed.due;
+  const list = vm.reminderLists.some((l) => l.id === addList) ? addList : '';
+  const draft = addDraft;
   addDraft = '';
+  addPickTouched = addDateOff = false;
   const input = $('todo-add-input');
   if (input) input.value = '';
-  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body }, () => cy.todoAdd(body), '추가하지 못했어요', (r) => {
+  const shown = { ...body, today: body.today ? vm.today?.date : undefined, ...(list ? { source: 'reminders' } : {}) }; // 낙관적 줄은 오늘 날짜로(데몬은 true 를 오늘로 바꾼다)
+  mutate({ kind: 'add', tempId: `tmp:${opSeq + 1}`, body: shown }, () => cy.todoAdd(list ? { ...body, reminderList: list } : body), '추가하지 못했어요', (r) => {
     if (typeof r.data?.id !== 'string') return;
-    setRawTodos([{ id: r.data.id, source: 'user', userEdited: false, ...body }, ...rawTodos()]);
+    setRawTodos([{ id: r.data.id, source: 'user', userEdited: false, ...shown }, ...rawTodos()]);
   }).then((r) => {
     if (r?.ok) return;
-    addDraft = body.title;
+    addDraft = draft;
     renderTodos();
   });
 }
@@ -1616,7 +1634,7 @@ function renderTodos() {
 function todoListKids() {
   // 끄는 동안엔 빈 우선순위 칸도 보여서 거기로 옮길 수 있게
   const groups = dragGroups ? withEmptyGroups(vm.todoGroups) : vm.todoGroups;
-  const kids = [addForm(), rulesBar()];
+  const kids = [addForm(), rulesBar()].filter(Boolean);
   const imp = importantSection();
   if (imp) kids.push(imp);
   if (todoMsg) kids.push(h(`div.result.${todoMsg.ok ? 'ok' : 'err'}`, { role: 'status', text: todoMsg.text }));
@@ -1687,27 +1705,28 @@ function toggleBacklog() {
   renderTodos();
 }
 
-// ---- 할 일 규칙: '규칙 N' 칩 → 짧은 목록(글·적용 횟수·켜기/끄기·지우기) ----
+// ---- 할 일 규칙(자동 분류): 채팅에서 「앞으로 ~는 ~로」라고 하면 생기고, 새 할 일이 들어올 때 묶음·메모를 정한다.
+// 규칙이 있을 때만 추가 막대 아래 오른쪽에 「자동 분류 규칙 N개」 → 펼치면 설명 한 줄 + 목록(글·적용 횟수·켜기/끄기·지우기) ----
 let rulesOpen = false;
 const rulePending = new Map(); // id → { enabled } | 'delete' (응답 대기)
 const visibleRules = () => overlayRules(vm.todoRules, rulePending);
 
 function rulesBar() {
   const rules = visibleRules();
-  const chip = h(`button.chip.rules-chip${rulesOpen ? '.on' : ''}`, {
-    type: 'button', text: rulesChip(rules), 'aria-expanded': String(rulesOpen),
-    title: '할 일 규칙',
+  if (!rules.length) { rulesOpen = false; return null; }
+  const chip = h(`button.ghost.rules-chip${rulesOpen ? '.on' : ''}`, {
+    type: 'button', text: `${rulesChip(rules)} ${rulesOpen ? '▴' : '▾'}`, 'aria-expanded': String(rulesOpen),
+    title: '새 할 일의 묶음·메모를 정하는 규칙',
     onclick: () => { rulesOpen = !rulesOpen; renderTodos(); },
   });
-  const bar = h('div.todo-tools', null, chip, vm.stats.backlogTodos ? h('span.muted.small', { text: `언젠가 ${vm.stats.backlogTodos}개` }) : null);
+  const bar = h('div.todo-tools', null, chip);
   if (!rulesOpen) return bar;
-  const list = rules.length
-    ? rules.map((r) => h(`div.rule-row${r.enabled ? '' : '.off'}`, { dataset: { id: r.id } },
+  return h('div.todo-tools-wrap', null, bar, h('div.card.rules-list', null,
+    h('div.rules-about.muted.small', { text: '새 할 일이 들어올 때 이 규칙대로 묶음·메모를 정해요. 채팅에서 「앞으로 세미나는 언젠가로 해 줘」처럼 말하면 생겨요.' }),
+    rules.map((r) => h(`div.rule-row${r.enabled ? '' : '.off'}`, { dataset: { id: r.id } },
       h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `규칙 켜기: ${r.text}`, title: r.enabled ? '끄기' : '켜기', onchange: () => toggleRule(r) }),
       h('div.rule-main', null, h('span.rule-text', { text: r.text }), h('span.muted.small', { text: [r.summary, hitsLabel(r.hits)].filter(Boolean).join(' · ') })),
-      h('button.ghost.rule-del', { type: 'button', text: '✕', title: '규칙 지우기', 'aria-label': `규칙 지우기: ${r.text}`, onclick: () => deleteRule(r) })))
-    : [h('div.muted.small', { text: '규칙 없음' })];
-  return h('div.todo-tools-wrap', null, bar, h('div.card.rules-list', null, list));
+      h('button.ghost.rule-del', { type: 'button', text: '✕', title: '규칙 지우기', 'aria-label': `규칙 지우기: ${r.text}`, onclick: () => deleteRule(r) })))));
 }
 
 async function ruleCall(r, pending, call, failText) {
@@ -1723,26 +1742,61 @@ async function ruleCall(r, pending, call, failText) {
 const toggleRule = (r) => ruleCall(r, { enabled: !r.enabled }, () => cy.todoRuleEdit(r.id, { enabled: !r.enabled }), '규칙을 바꾸지 못했어요');
 const deleteRule = (r) => ruleCall(r, 'delete', () => cy.todoRuleDelete(r.id), '규칙을 지우지 못했어요');
 
+// 할 일 추가 막대: 윗줄 동그라미(색 = 들어갈 묶음) · 입력, 아랫줄 읽은 마감 칩 · 미리알림 목록 … 묶음 세그먼트 · ↵.
+// 「내일 3시」「금요일까지」 같은 말은 마감으로 읽어 제목에서 빼고, 묶음도 그 날짜로 고른다(세그먼트를 누르면 그쪽).
+// 미리알림 목록을 고르면 그 목록에 미리알림으로도 만들어 미리알림 할 일이 된다(체크·지움·알림이 미리알림과 같이 감)
+const ADD_PICKS = [{ ...TODAY_GROUP, value: 'today' }, ...PRIORITIES.slice(1)];
+const keepFocus = (e) => e.preventDefault(); // 막대 안 단추를 눌러도 입력 칸 포커스·한글 조합 그대로
 function addForm() {
-  const input = h('input', { id: 'todo-add-input', type: 'text', placeholder: '할 일 추가 — Enter', 'aria-label': '새 할 일' });
+  const input = h('input', { id: 'todo-add-input', type: 'text', placeholder: '할 일 추가 · 「금요일 3시」처럼 날짜도 적을 수 있어요', 'aria-label': '새 할 일', autocomplete: 'off' });
   input.value = addDraft;
-  input.addEventListener('input', () => { addDraft = input.value; });
+  input.addEventListener('input', () => {
+    addDraft = input.value;
+    if (!addDraft.trim()) addPickTouched = addDateOff = false;
+    syncAdd(box);
+  });
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     addTodo();
   });
-  return h('div.todo-add', null,
-    input,
-    prioritySelect(addPriority, (p) => { addPriority = p; }),
-    h('button.primary', { type: 'button', text: '추가', onclick: () => addTodo() }));
+  const box = h('div.todo-add', { role: 'group', 'aria-label': '할 일 추가' },
+    h('div.add-line', null, h('span.add-ring', { 'aria-hidden': 'true' }), input),
+    h('div.add-meta', null,
+      h('span.chip.due.add-due', null, h('span.add-due-text'),
+        h('button.ghost.due-off', { type: 'button', text: '✕', title: '날짜로 읽지 않기', 'aria-label': '날짜로 읽지 않고 글 그대로 두기', onmousedown: keepFocus, onclick: () => { addDateOff = true; syncAdd(box); } })),
+      reminderListSelect(),
+      h('span.add-gap'),
+      h('span.rp-kinds.add-pick', { role: 'group', 'aria-label': '넣을 묶음' }, ADD_PICKS.map(({ value, label, hint }) =>
+        h('button', { type: 'button', text: label, title: hint, dataset: { pick: String(value) }, onmousedown: keepFocus, onclick: () => { addPick = value; addPickTouched = true; syncAdd(box); } }))),
+      h('button.ghost.add-go', { type: 'button', text: '↵', title: '추가 (Enter)', 'aria-label': '추가', onmousedown: keepFocus, onclick: () => addTodo() })));
+  syncAdd(box);
+  return box;
 }
 
-function prioritySelect(value, onChange) {
-  const sel = h('select.prio', { 'aria-label': '우선순위' }, PRIORITIES.map((p) => h('option', { value: String(p.value), text: p.label })));
-  sel.value = String(value);
-  sel.addEventListener('change', () => onChange(Number(sel.value)));
+function reminderListSelect() {
+  const lists = vm.reminderLists;
+  if (!lists.length) return null;
+  if (!lists.some((l) => l.id === addList)) addList = '';
+  const sel = h(`select.add-rem${addList ? '.on' : ''}`, { 'aria-label': '미리알림 목록', title: '고른 미리알림 목록에도 넣어요. 체크·알림이 미리알림과 같이 가요' },
+    h('option', { value: '', text: '미리알림 안 넣음' }), lists.map((l) => h('option', { value: l.id, text: `미리알림 · ${l.label}` })));
+  sel.value = addList;
+  sel.addEventListener('change', () => { addList = sel.value; sel.classList.toggle('on', !!addList); $('todo-add-input')?.focus(); });
   return sel;
+}
+
+// 글을 칠 때마다 칩·세그먼트·동그라미만 고친다(목록 전체를 다시 그리지 않아 한글 조합이 끊기지 않음)
+function syncAdd(box) {
+  const { parsed, pick } = addState();
+  box.dataset.pick = String(pick);
+  const chip = box.querySelector('.add-due');
+  chip.hidden = !parsed;
+  if (parsed) {
+    chip.className = `chip due add-due due-${dueChip(parsed.due)?.kind ?? 'soon'}`;
+    chip.title = `「${parsed.words.join(' ')}」을 마감으로 읽었어요`;
+    chip.firstChild.textContent = parsed.label;
+  }
+  for (const b of box.querySelectorAll('.add-pick button')) b.setAttribute('aria-pressed', String(b.dataset.pick === String(pick)));
 }
 
 // ---- 할 일 줄: 한 번 = 펼침, 두 번 = 제목·설명 고치기, 꾹 눌러 끌기 = 순서·우선순위, Alt+↑↓/1·2·3 = 키보드로 같은 일 ----
@@ -1804,7 +1858,7 @@ function todoRow(t) {
 // 미리알림 날짜 칩(「10/21」·「오늘 14:00」·「지남」). 날짜가 없으면 null
 function dueBadge(t) {
   const d = t.due && dueChip(t.due);
-  return d ? h(`span.chip.due.due-${d.kind}`, { text: d.text, title: '미리알림 날짜' }) : null;
+  return d ? h(`span.chip.due.due-${d.kind}`, { text: d.text, title: t.source === 'reminders' ? '미리알림 날짜' : '마감' }) : null;
 }
 
 function onRowKey(t, e) {
@@ -1915,10 +1969,22 @@ function todoEditRow(t) {
   title.value = s.title;
   const desc = h('textarea.edit-desc', { rows: '2', 'aria-label': '설명 고치기', placeholder: '설명' });
   desc.value = s.desc;
+  const due = h('span.edit-due');
   const box = h('div.todo.todo-edit', { dataset: { id: t.id } },
     title, desc,
-    h('div.edit-hint.muted.small', { text: 'Enter 저장 · 설명 줄바꿈은 Shift+Enter · Esc 취소' }));
-  title.addEventListener('input', () => { if (todoEditing?.id === t.id) todoEditing = { ...todoEditing, title: title.value }; });
+    h('div.edit-hint.muted.small', null, due, 'Enter 저장 · 설명 줄바꿈은 Shift+Enter · Esc 취소'));
+  // 마감(직접 넣은 할 일만): 바꾼 제목에서 읽은 날짜나 지금 마감을 칩으로, ✕ 로 끄거나 지운다
+  const syncDue = () => {
+    const d = editDue(t, todoEditing);
+    const iso = d.due === undefined ? t.due : d.due;
+    const c = iso && t.id.startsWith('user:') && dueChip(iso);
+    due.replaceChildren(...(c ? [h(`span.chip.due.due-${c.kind}`, { title: d.words ? `「${d.words.join(' ')}」을 마감으로 읽었어요` : '마감' },
+      d.label ?? c.text,
+      h('button.ghost.due-off', { type: 'button', text: '✕', title: d.words ? '날짜로 읽지 않기' : '마감 지우기', 'aria-label': d.words ? '날짜로 읽지 않고 글 그대로 두기' : '마감 지우기',
+        onclick: () => { todoEditing = { ...todoEditing, ...(d.words ? { dueOff: true } : { dueClear: true }) }; syncDue(); } }))] : []));
+  };
+  syncDue();
+  title.addEventListener('input', () => { if (todoEditing?.id === t.id) { todoEditing = { ...todoEditing, title: title.value }; syncDue(); } });
   desc.addEventListener('input', () => {
     if (todoEditing?.id === t.id) todoEditing = { ...todoEditing, desc: desc.value, descTouched: true };
     growDesc(desc);

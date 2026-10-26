@@ -17,9 +17,9 @@ const RULES = [
 test('shapeRules·rulesChip·overlayRules: 최근 것 먼저, 깨진 건 빼고, 꺼진 건 칩 수에서 뺀다', () => {
   const rs = shapeRules(RULES);
   assert.deepEqual(rs.map((r) => r.id), ['rule:b', 'rule:a']);
-  assert.equal(rulesChip(rs), '규칙 1/2');
-  assert.equal(rulesChip(rs.filter((r) => r.enabled)), '규칙 1');
-  assert.equal(rulesChip([]), '규칙 0');
+  assert.equal(rulesChip(rs), '자동 분류 규칙 2개 중 1개 켜짐');
+  assert.equal(rulesChip(rs.filter((r) => r.enabled)), '자동 분류 규칙 1개');
+  assert.equal(rulesChip([]), '자동 분류 규칙 0개');
   assert.deepEqual(shapeRules(null), []);
   const pend = new Map([['rule:a', 'delete'], ['rule:b', { enabled: true }]]);
   assert.deepEqual(overlayRules(rs, pend).map((r) => [r.id, r.enabled]), [['rule:b', true]]);
@@ -55,7 +55,6 @@ test('P4 묶음 모델: 네 번째 묶음 "백로그", 열린 수·P1 수에서 
   assert.deepEqual(vm.todoGroups.map((g) => [g.priority, g.label, g.items.length]), [[1, '오늘 꼭', 1], [3, '나중에', 1], [4, '언젠가', 2], [9, '기타', 1]]);
   assert.equal(vm.stats.openTodos, 1); // 오늘 꼭만(나중에·언젠가·기타 제외)
   assert.equal(vm.stats.p1Todos, 1);
-  assert.equal(vm.stats.backlogTodos, 2);
   assert.deepEqual(vm.todoGroups[2].items[0].appliedRule, { id: 'rule:a', text: '뉴스레터는 백로그' });
   assert.equal('appliedRule' in vm.todoGroups[2].items[1], false);
   assert.deepEqual([vm.todoGroups[1].items[0].progress, vm.todoGroups[1].items[0].progressAt], ['PR 올림 · 리뷰 대기', '2026-10-13T06:00:00Z']); // 진행 확인 한 줄

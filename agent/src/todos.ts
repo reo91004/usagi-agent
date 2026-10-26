@@ -6,7 +6,7 @@ export type TodoOp = {
   id?: string; title?: string; priority?: number; link?: string | null; note?: string | null;
   description?: string; source_ref?: string; // add 전용: 설명·원본 참조(원문은 데몬이 찾는다)
 };
-export type NewTodo = { title: string; priority?: number; link?: string | null; note?: string | null; today?: boolean | string };
+export type NewTodo = { title: string; priority?: number; link?: string | null; note?: string | null; today?: boolean | string; due?: string | null; reminderList?: string }; // reminderList: 그 미리알림 목록(id)에도 만든다(main.ts)
 
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -36,6 +36,20 @@ function cleanTitle(v: unknown): Result<string> {
   return { ok: true, value: s };
 }
 
+// 마감: 시각 글(ISO 등 Date.parse 가 읽는 것) → ISO, null·"" 는 지우기
+function cleanDue(v: unknown): Result<string | null> {
+  if (v === null || v === "") return { ok: true, value: null };
+  const t = typeof v === "string" ? Date.parse(v) : NaN;
+  return Number.isFinite(t) ? { ok: true, value: new Date(t).toISOString() } : fail("due must be a date string or null");
+}
+
+// 마감으로 정하는 묶음(미리알림과 같은 기준): 오늘까지·지난 것 1(오늘 꼭), 7일 안 2(이번 주), 그 뒤 3(나중에). 날짜는 이 맥 시간대
+export function duePriority(due: string, now = new Date()): number {
+  const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  const t = Date.parse(due);
+  return t < endToday ? 1 : t < endToday + 6 * 86400e3 ? 2 : 3;
+}
+
 function cleanPriority(v: unknown): Result<number> {
   return Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 4 ? { ok: true, value: v as number } : fail("priority must be 1..4");
 }
@@ -43,11 +57,12 @@ function cleanPriority(v: unknown): Result<number> {
 // POST /todos/:id 본문. 모르는 키는 400
 export function parsePatch(body: Record<string, unknown>): Result<TodoPatch> {
   const out: TodoPatch = {};
-  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "status", "skipped", "description", "doing", "today"].includes(k)) return fail(`unknown field: ${k}`);
+  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "status", "skipped", "description", "doing", "today", "due"].includes(k)) return fail(`unknown field: ${k}`);
   if (body.title !== undefined) { const r = cleanTitle(body.title); if (!r.ok) return r; out.title = r.value; }
   if (body.priority !== undefined) { const r = cleanPriority(body.priority); if (!r.ok) return r; out.priority = r.value; }
   if (body.link !== undefined) { const r = cleanLink(body.link); if (!r.ok) return r; out.link = r.value; }
   if (body.note !== undefined) { const r = cleanNote(body.note); if (!r.ok) return r; out.note = r.value; }
+  if (body.due !== undefined) { const r = cleanDue(body.due); if (!r.ok) return r; out.due = r.value; }
   if (body.description !== undefined) {
     // 설명(패널에서 직접 고침). 빈 값은 지우기(null) — 사용자 편집으로 기억돼서 다시 자동으로 채우지 않는다
     if (body.description !== null && typeof body.description !== "string") return fail("description must be string or null");
@@ -76,10 +91,13 @@ export function parsePatch(body: Record<string, unknown>): Result<TodoPatch> {
 
 // POST /todos 본문
 export function parseNew(body: Record<string, unknown>): Result<NewTodo> {
-  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "today"].includes(k)) return fail(`unknown field: ${k}`);
-  const p = parsePatch({ ...body, title: body.title ?? "" });
+  for (const k of Object.keys(body)) if (!["title", "priority", "link", "note", "today", "due", "reminderList"].includes(k)) return fail(`unknown field: ${k}`);
+  const { reminderList, ...rest } = body;
+  const list = typeof reminderList === "string" ? reminderList.trim() : "";
+  if (reminderList !== undefined && (!list || list.length > 200)) return fail("reminderList must be a list id");
+  const p = parsePatch({ ...rest, title: rest.title ?? "" });
   if (!p.ok) return p;
-  return { ok: true, value: { title: p.value.title!, priority: p.value.priority ?? 2, link: p.value.link ?? null, note: p.value.note ?? null, ...(p.value.today ? { today: true } : {}) } };
+  return { ok: true, value: { title: p.value.title!, priority: p.value.priority ?? (p.value.due ? duePriority(p.value.due) : 2), link: p.value.link ?? null, note: p.value.note ?? null, ...(p.value.today ? { today: true } : {}), ...(p.value.due ? { due: p.value.due } : {}), ...(list ? { reminderList: list } : {}) } };
 }
 
 // 모델이 낸 op 한 개 → 패치. 모델은 안 쓰는 필드를 ""로 채우기도 하니 ""는 '안 바꿈', null만 '지우기'
