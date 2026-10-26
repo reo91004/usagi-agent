@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, dueChip } from '../src/todo-rows.js';
+import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, dueChip, laterPart, LATER_PARTS } from '../src/todo-rows.js';
 import { overlayTodos } from '../src/todos.js';
 
 function fakeTimers() {
@@ -130,6 +130,19 @@ test('dueChip: 지남(빨강)·「오늘」·「10/21」, 시각이 있으면 �
   assert.deepEqual(dueChip(at(10, 17, 0), now), { text: '오늘', kind: 'today' }); // 날짜만(미리알림 「오늘」 목록에 넣은 것)
   assert.deepEqual(dueChip(at(10, 21, 17), now), { text: '10/21 17:00', kind: 'soon' });
   assert.deepEqual(dueChip(at(10, 21, 0), now), { text: '10/21', kind: 'soon' });
+  assert.deepEqual(dueChip(new Date(2027, 8, 14).toISOString(), now), { text: '9/14', kind: 'soon' }); // 1년 안이면 해 없이
+  assert.deepEqual(dueChip(new Date(2031, 0, 1, 9).toISOString(), now), { text: '2031/1/1 09:00', kind: 'soon' }); // 1년 넘게 남으면 해를 붙인다
   assert.equal(dueChip(undefined, now), null);
   assert.equal(dueChip('아무거나', now), null);
+});
+
+test('laterPart(#319): 다음 달 같은 날까지 한 달 안, 그 뒤는 한 달 뒤, 날짜 없으면 날짜 없음', () => {
+  const now = new Date(2026, 9, 26, 10).getTime();
+  assert.equal(laterPart(new Date(2026, 10, 3).toISOString(), now), 'month');
+  assert.equal(laterPart(new Date(2026, 10, 26, 23, 30).toISOString(), now), 'month');
+  assert.equal(laterPart(new Date(2026, 10, 27).toISOString(), now), 'far');
+  assert.equal(laterPart(new Date(2027, 8, 14).toISOString(), now), 'far');
+  assert.equal(laterPart(undefined, now), 'none');
+  assert.equal(laterPart('엉망', now), 'none');
+  assert.deepEqual(Object.values(LATER_PARTS), ['한 달 안', '한 달 뒤', '날짜 없음']);
 });

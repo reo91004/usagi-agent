@@ -121,6 +121,11 @@ func reminderList(_ name: String) throws -> EKCalendar {
   listsByName[name] = c
   return c
 }
+// 목록 색 → "#RRGGBB"(sRGB). 못 바꾸면 ""
+func hexColor(_ c: CGColor?) -> String {
+  guard let s = CGColorSpace(name: CGColorSpace.sRGB), let p = c?.converted(to: s, intent: .defaultIntent, options: nil)?.components, p.count >= 3 else { return "" }
+  return String(format: "#%02X%02X%02X", Int((p[0] * 255).rounded()), Int((p[1] * 255).rounded()), Int((p[2] * 255).rounded()))
+}
 func reminder(_ id: Any?) -> EKReminder? { (id as? String).flatMap { store.calendarItem(withIdentifier: $0) as? EKReminder } }
 // 마감: ISO 면 그 날(dueHasTime 이면 시각까지), null 이면 지운다
 func setDue(_ r: EKReminder, _ o: [String: Any]) {
@@ -149,9 +154,9 @@ case "reminders":
   let open = await fetch(store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: lists))
   let done = await fetch(store.predicateForCompletedReminders(withCompletionDateStarting: since, ending: Date(), calendars: lists))
   let linked = args.dropFirst(3).compactMap { reminder($0) }
-  // lists: 쓸 수 있는 목록(우사기 할 일 추가 막대에서 고른다. 같은 이름이 여러 계정에 있을 수 있어 id·계정도)
+  // lists: 쓸 수 있는 목록(우사기 할 일 추가 막대에서 고른다. 같은 이름이 여러 계정에 있을 수 있어 id·계정도, 미리알림 앱의 목록 색)
   emit(["ok": true, "open": open.map(reminderDict), "completed": done.map(reminderDict), "linked": linked.map(reminderDict),
-        "lists": lists.filter { $0.allowsContentModifications }.map { ["id": $0.calendarIdentifier, "title": $0.title, "source": $0.source?.title ?? ""] }])
+        "lists": lists.filter { $0.allowsContentModifications }.map { ["id": $0.calendarIdentifier, "title": $0.title, "source": $0.source?.title ?? "", "color": hexColor($0.cgColor)] }])
 case "write":
   // ops: [{op:"add", list | listId(사용자가 고른 목록, 없으면 만들지 않고 실패), title, priority?, due?, dueHasTime?, url?, alarm?(마감 시각에 알림)} | {op:"set", id, title?, done?, due?(null 이면 지움), dueHasTime?} | {op:"delete", id}] → results 같은 순서(add·set 은 저장한 뒤 미리알림 모습도)
   guard args.count >= 3, let ops = (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [[String: Any]] else { emit(["ok": false, "error": "usage: write <ops JSON>"]); exit(2) }

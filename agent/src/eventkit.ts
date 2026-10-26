@@ -122,7 +122,7 @@ export function reminderTodo(r: any, now = new Date()): Parameters<Store["upsert
 const AUTO_NOTE = /^미리알림 「[^」]*」(?: · 마감 \d+월 \d+일(?: \d\d:\d\d)?)?/;
 const freshNote = (cur?: string, note?: string) => (note && cur && AUTO_NOTE.test(cur) ? cur.replace(AUTO_NOTE, () => note) : undefined);
 
-export type ReminderList = { id: string; title: string; source: string };
+export type ReminderList = { id: string; title: string; source: string; color: string }; // color: 미리알림 앱의 목록 색 #RRGGBB(없으면 "")
 export type ReminderSync = { added: number; done: number; ok: boolean; error?: string; wrote?: number; trashed?: number; edited?: number; urgent?: UrgentReminder[]; lists?: ReminderList[] }; // lists: 우사기에서 넣을 수 있는 목록(옛 도우미면 없음)
 export const TWO_WAY_LIST = "우사기 비서";
 // 긴급(#279, 개요 「긴급 미리알림」): 우선순위 「높음」(Apple 1~4)이거나 목록·제목에 「긴급」. EventKit 은 깃발·태그를 내주지 않는다.
@@ -262,7 +262,7 @@ export async function syncReminders(store: Store, run: EkRun = ekRun, now = new 
     if (fail && !wrote) return { added: added.length, done, ok: false, error: `미리알림에 쓰지 못했어요: ${String(fail.error ?? "실패")}`, trashed, edited, added_: added };
   }
   const lists: ReminderList[] | undefined = Array.isArray(r.lists)
-    ? r.lists.filter((x: any) => typeof x?.id === "string" && x.id && typeof x.title === "string" && x.title && x.title !== TWO_WAY_LIST).map((x: any) => ({ id: x.id, title: x.title, source: String(x.source ?? "") }))
+    ? r.lists.filter((x: any) => typeof x?.id === "string" && x.id && typeof x.title === "string" && x.title && x.title !== TWO_WAY_LIST).map((x: any) => ({ id: x.id, title: x.title, source: String(x.source ?? ""), color: /^#[0-9a-f]{6}$/i.test(x.color) ? x.color : "" }))
     : undefined;
   return { added: added.length, done, ok: true, wrote, trashed, edited, urgent: urgentReminders(r.open), added_: added, ...(lists ? { lists } : {}) };
 }

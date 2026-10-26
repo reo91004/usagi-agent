@@ -512,8 +512,8 @@ test("addReminderTodo(#316): 고른 목록(id)에 미리알림을 만들고(시�
   assert.deepEqual([u.priority, u.userEdited, !!u.today], [1, ["priority"], true]);
   const plain = await addReminderTodo(store, { title: "복습", listId: "L1" }, f.run, NOW);
   assert.deepEqual([plain.priority, plain.due], [3, undefined]);
-  const lists = [{ id: "L0", title: "개인", source: "iCloud" }, { id: "L1", title: "공부", source: "iCloud" }];
-  const withLists: EkRun = async (a) => (a[0] === "reminders" ? { ...(await f.run(a)), lists: [...lists, { id: "L9", title: TWO_WAY_LIST, source: "iCloud" }, "옛 모양", { id: "L8" }] } : f.run(a));
+  const lists = [{ id: "L0", title: "개인", source: "iCloud", color: "#FF9500" }, { id: "L1", title: "공부", source: "iCloud", color: "" }];
+  const withLists: EkRun = async (a) => (a[0] === "reminders" ? { ...(await f.run(a)), lists: [lists[0], { ...lists[1], color: "red; x" }, { id: "L9", title: TWO_WAY_LIST, source: "iCloud" }, "옛 모양", { id: "L8" }] } : f.run(a));
   const r = await syncReminders(store, withLists, NOW);
   assert.deepEqual([r.added, r.lists], [0, lists]);
   assert.equal(store.getTodo(u.id)!.priority, 1, "고른 묶음은 맞추기가 덮지 않는다");
