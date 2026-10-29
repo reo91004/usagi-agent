@@ -182,7 +182,7 @@ function renderAppPrefs() {
     ...(typeof appPrefs.showInDock === 'boolean' ? [{ key: 'showInDock', on: appPrefs.showInDock, label: 'Dock에 아이콘 보이기 (꺼도 메뉴 막대 아이콘과 캐릭터로 계속 쓸 수 있어요)' }] : []),
   ];
   for (const r of rows) {
-    const lab = el('label', `toggle${r.on ? '' : ' off'}`);
+    const lab = el('label', 'toggle');
     const cb = el('input');
     cb.type = 'checkbox';
     cb.checked = r.on;

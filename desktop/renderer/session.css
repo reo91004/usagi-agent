@@ -8,6 +8,8 @@
   --muted: #6e6e73;
   --faint: #a1a1a6;
   --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.2);  /* 입력칸 위에 올렸을 때 */
+  --field: var(--card);                /* 입력칸 배경 */
   --accent: #6b5cff;
   --accent-soft: rgba(107, 92, 255, 0.12);
   --ok: #30b158;
@@ -31,6 +33,7 @@
     --muted: #a1a1a6;
     --faint: #6e6e73;
     --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.24);
     --accent: #8e83ff;
     --accent-soft: rgba(142, 131, 255, 0.16);
     --btn: #333336;
@@ -54,7 +57,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--accent); color: #fff; }
 button.ghost { background: transparent; border: 1px solid var(--line); }
 button.danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
-button:focus-visible, textarea:focus-visible, .run:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button:focus-visible, .run:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 #app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
 
@@ -128,7 +131,6 @@ button.linkish:disabled { color: var(--muted); text-decoration: none; }
 #newtask h2 { margin: 0 0 2px; font-size: 15px; }
 #newtask .hint { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
 #newtask label { font-size: 12px; font-weight: 600; margin-top: 6px; }
-#newtask select, #newtask textarea, #newtask input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; }
 #newtask textarea { resize: vertical; min-height: 90px; }
 #newtask .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 #nt-err { color: var(--err); font-size: 12px; }
@@ -221,14 +223,12 @@ pre.diff .ctx { color: var(--muted); }
 #readonly { color: var(--muted); font-size: 12px; }
 #compose-row { display: flex; gap: 8px; align-items: flex-end; }
 #compose-row[hidden] { display: none; }
-#input { flex: 1; resize: none; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: var(--card); color: var(--fg); font: inherit; max-height: 180px; overflow-y: hidden; }
+#input { flex: 1; resize: none; padding: 8px 10px; max-height: 180px; overflow-y: hidden; }
 #compose-err { color: var(--err); font-size: 12px; min-height: 0; }
-#model { border: 1px solid var(--line); border-radius: 9px; padding: 7px 6px; background: var(--card); color: var(--fg); font: inherit; font-size: 12.5px; max-width: 120px; }
+#model { padding: 7px 6px; font-size: 12.5px; max-width: 120px; }
 #model[hidden] { display: none; }
-#model:disabled { opacity: 0.6; }
 #compose-hint { color: var(--muted); font-size: 11.5px; margin-bottom: 6px; }
 #compose-hint:empty { display: none; }
-#input:disabled { opacity: 0.6; }
 #compose-err:empty { display: none; }
 
 /* md */
