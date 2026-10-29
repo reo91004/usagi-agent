@@ -2,6 +2,7 @@
 // 데몬 GET/PUT /settings, GET /connections, POST /connections/check (docs/contract.md "설정").
 
 import { okCharacterId, MEDIA_SLOTS } from './character.js';
+import { SHORTCUTS } from './shortcuts.js';
 
 export const CHECK_IDS = ['net', 'claude', 'services', 'gh', 'local'];
 export const okCheckId = (id) => typeof id === 'string' && CHECK_IDS.includes(id);
@@ -343,13 +344,21 @@ export function metaText(row, now = new Date()) {
   return [latencyText(row?.latencyMs), row?.checkedAt ? `${agoText(row.checkedAt, now)} 확인` : ''].filter(Boolean).join(' · ');
 }
 
-// 설정 「이 앱」 칸(앱이 state.json 에 두는 값): { openAtLogin?: boolean, updateCheck?: boolean, showInDock?: boolean, panelPinned?: boolean } — 그 밖의 키·모양이면 null
+// 설정 「이 앱」 칸(앱이 state.json 에 두는 값): { openAtLogin?, updateCheck?, showInDock?, panelPinned?: boolean, shortcut?: { id, value: string | null } } — 그 밖의 키·모양이면 null.
+// 단축키 값이 쓸 수 있는 키인지는 main 의 applyShortcut 이 본다
+const okShortcutPatch = (s) => !!s && typeof s === 'object' && Object.keys(s).length === 2 && SHORTCUTS.some((x) => x.id === s.id)
+  && (s.value === null || (typeof s.value === 'string' && s.value.length <= 40));
 export function sanitizeAppPrefs(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
   const keys = Object.keys(p);
-  if (!keys.length || !keys.every((k) => k === 'openAtLogin' || k === 'updateCheck' || k === 'showInDock' || k === 'panelPinned')) return null;
+  if (!keys.length || !keys.every((k) => ['openAtLogin', 'updateCheck', 'showInDock', 'panelPinned', 'shortcut'].includes(k))) return null;
   const out = {};
   for (const k of keys) {
+    if (k === 'shortcut') {
+      if (!okShortcutPatch(p[k])) return null;
+      out[k] = { id: p[k].id, value: p[k].value };
+      continue;
+    }
     if (typeof p[k] !== 'boolean') return null;
     out[k] = p[k];
   }
