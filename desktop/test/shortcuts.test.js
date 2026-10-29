@@ -73,7 +73,7 @@ test('main: ⌘⇧D 는 전역 단축키가 아니고, 메뉴 단축키는 설�
   for (const id of SHORTCUTS.map((s) => s.id)) assert.match(m, new RegExp(`\\.\\.\\.key\\('${id}'\\)`), id);
   assert.match(m, /label: '새 대화', \.\.\.key\('newChat'\), click: \(\) => showPanel\('chat', NEW_CHAT\)/);
   // 새 키를 받는 동안은 메뉴를 비운다(맥 메뉴 단축키가 창보다 먼저 키를 가져감) · 패널을 벗어나면 되돌린다
-  assert.match(m, /function createAppMenu\(\) \{[^}]*if \(shortcutRecording\) \{ Menu\.setApplicationMenu\(null\); return; \}/);
+  assert.match(m, /function createAppMenu\(\) \{\n[^\n]*\n  if \(shortcutRecording\) \{ Menu\.setApplicationMenu\(Menu\.buildFromTemplate\(\[\{ label: app\.name, submenu: \[\{ label: '새 단축키를 받는 중…', enabled: false \}\] \}\]\)\); return; \}/);
   assert.match(m, /panel\.on\('blur', \(\) => appPrefs\.recording\(false\)\)/);
   const w = readFileSync(new URL('../src/settings-window.js', import.meta.url), 'utf8');
   assert.match(w, /ipcMain\.on\('settings-shortcut-recording', \(e, on\) => \{ if \(isMine\(e\)\) deps\.appPrefs\?\.recording\(on === true\); \}\)/);

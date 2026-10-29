@@ -928,6 +928,7 @@ function menuTemplate() {
       briefing: triggerBriefing,
       settings: () => showPanel('settings'),
       tour: startTour,
+      help: () => showDebugWindow(),
       toggleBubbles: () => {
         state.bubblesHidden = !state.bubblesHidden;
         saveState();
@@ -989,8 +990,8 @@ function setCharacterHidden(hidden) {
 }
 
 function createAppMenu() {
-  // 설정에서 새 단축키를 받는 동안은 메뉴를 비운다 — 맥은 메뉴 단축키(⌘A·⌘Q 등)가 창보다 먼저 키를 가져간다
-  if (shortcutRecording) { Menu.setApplicationMenu(null); return; }
+  // 설정에서 새 단축키를 받는 동안은 단축키 없는 메뉴로 — 맥은 메뉴 단축키(⌘A·⌘Q 등)가 창보다 먼저 키를 가져간다(null 은 맥에서 무시됨)
+  if (shortcutRecording) { Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: app.name, submenu: [{ label: '새 단축키를 받는 중…', enabled: false }] }])); return; }
   const mac = process.platform === 'darwin';
   const sc = resolveShortcuts(state.shortcuts);
   const key = (id) => (sc[id] ? { accelerator: sc[id] } : {}); // 설정에서 끈 단축키는 메뉴 글자만
@@ -1161,7 +1162,7 @@ function keepOverlayPos(fn) {
   return out;
 }
 
-// ---- 도움 보내기 (⌘⇧D) — 오버레이가 클릭 통과여도 전역 단축키로 연다 ----
+// ---- 도움 보내기: 메뉴 막대 아이콘 메뉴 · 윈도우 메뉴(기본 ⌘⇧D, 설정에서 바꿈) ----
 async function probeDaemon() {
   try {
     const r = await fetch(`${BASE}/dashboard`, { signal: AbortSignal.timeout(2500), headers: { Accept: 'application/json' } });
@@ -1916,7 +1917,7 @@ function setupIPC() {
     if (fromOurs(e) && o) showPanel(o.section, o.id);
   });
 
-  ipcMain.handle('debug-bundle', async (e) => (fromDebug(e) ? buildDebugBundle() : denied()));
+  ipcMain.handle('debug-bundle', async (e) => (fromDebug(e) ? { ...(await buildDebugBundle()), helpKey: resolveShortcuts(state.shortcuts).help } : denied()));
   ipcMain.handle('debug-copy', (e) => {
     if (!fromDebug(e)) return denied();
     if (!lastDebug.text) return { ok: false, error: '기록이 아직 없어요.' };
