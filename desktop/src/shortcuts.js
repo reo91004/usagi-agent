@@ -1,6 +1,9 @@
 // 앱 단축키(순수 로직): 바꿀 수 있는 명령 · 키 입력 → Electron accelerator · 보일 글 · 저장값 고르기와 검사.
 // 모두 앱 메뉴 단축키라 우사기 창이 앞에 있을 때만 동작한다(전역 등록 안 함). 저장은 바꾼 것만 { id: accelerator | '' }, '' 는 끔
-import { WIN } from './os-hint.js';
+import { WIN as UA_WIN } from './os-hint.js';
+
+// 렌더러는 userAgent, main(Node)은 process.platform 으로 윈도우를 안다
+const WIN = UA_WIN || globalThis.process?.platform === 'win32';
 
 export const SHORTCUTS = [
   { id: 'dashboard', label: '대시보드 열기', def: 'CmdOrCtrl+0' },
@@ -12,8 +15,9 @@ export const SHORTCUTS = [
 // 메뉴 「새 대화」가 패널에 넘기는 대화 id 자리 — 진짜 대화 id 와 겹치지 않는 값
 export const NEW_CHAT = ':new';
 
-// 바꿀 수 없는 단축키(편집 메뉴·끄기·가리기·창 닫기·패널 안 이동). 다른 명령에 주지 않는다
-const FIXED = ['Q', 'W', 'H', 'Alt+H', 'C', 'V', 'X', 'A', 'Z', 'Shift+Z', 'O', 'Up', 'Down', '1', '2', '3', '4', '5'].map((k) => `CmdOrCtrl+${k}`);
+// 바꿀 수 없는 단축키(편집 메뉴·끄기·가리기·창 닫기·패널 안 이동). 다른 명령에 주지 않는다.
+// 화살표·↩ 는 아예 받지 않는다(입력칸 커서 이동·⌘↩ 저장·⌘↑↓ 대화 옮기기)
+const FIXED = ['Q', 'W', 'H', 'Alt+H', 'C', 'V', 'X', 'A', 'Z', 'Shift+Z', 'O', '1', '2', '3', '4', '5'].map((k) => `CmdOrCtrl+${k}`);
 // 설정에 안내로 보이는 것: [키, 키 뒤에 붙는 글, 하는 일]
 export const FIXED_HINTS = [
   ['CmdOrCtrl+W', '', '창 닫기'], ['CmdOrCtrl+1', '~5', '사이드바 화면'], ['CmdOrCtrl+Up', '·↓', '이전·다음 대화'],
@@ -23,7 +27,7 @@ export const FIXED_HINTS = [
 const MODS = ['CmdOrCtrl', 'Ctrl', 'Alt', 'Shift'];
 const CODE_KEYS = {
   Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\',
-  Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Enter: 'Return', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+  Minus: '-', Equal: '=', Backquote: '`', Space: 'Space',
 };
 const KEYS = new Set(Object.values(CODE_KEYS));
 const isFn = (k) => /^F([1-9]|1[0-9]|2[0-4])$/.test(k);
@@ -45,32 +49,33 @@ export function fromEvent(e, win = WIN) {
   return [...MODS.filter((m) => on[m]), key].join('+');
 }
 
-// 저장값·받은 값을 정해진 순서의 accelerator 로. 모양이 틀리면 null
-function canon(acc) {
+// 저장값·받은 값을 정해진 순서의 accelerator 로. 모양이 틀리면 null. 윈도우의 Ctrl 은 CmdOrCtrl 과 같은 키라 하나로
+function canon(acc, win = WIN) {
   if (typeof acc !== 'string' || acc.length > 40) return null;
   const parts = acc.split('+');
   const key = parts.pop();
   if (!isKey(key) || parts.some((m) => !MODS.includes(m)) || new Set(parts).size !== parts.length) return null;
-  return [...MODS.filter((m) => parts.includes(m)), key].join('+');
+  const mods = new Set(parts.map((m) => (win && m === 'Ctrl' ? 'CmdOrCtrl' : m)));
+  return [...MODS.filter((m) => mods.has(m)), key].join('+');
 }
 
-// 쓸 수 없으면 그 까닭. ⌘·⌃·⌥ 없이 누르면 입력창 타자를 가로채서 막는다(F 키는 혼자 써도 됨)
+// 쓸 수 없으면 그 까닭. ⌘·⌃ 없이 누르면(⌥·⇧ 만) 입력칸 타자(⌥A = å)·할 일 줄 ⌥↑·⌥1 을 가로채서 막는다(F 키는 혼자 써도 됨)
 export function problem(acc, win = WIN) {
-  const c = canon(acc);
+  const c = canon(acc, win);
   if (!c) return '이 키는 단축키로 쓸 수 없어요';
   const parts = c.split('+');
-  if (!isFn(parts.at(-1)) && !parts.some((m) => m === 'CmdOrCtrl' || m === 'Ctrl' || m === 'Alt')) return '⌘·⌃·⌥ 중 하나와 같이 눌러 주세요';
+  if (!isFn(parts.at(-1)) && !parts.some((m) => m === 'CmdOrCtrl' || m === 'Ctrl')) return win ? 'Ctrl 과 같이 눌러 주세요' : '⌘ 나 ⌃ 와 같이 눌러 주세요';
   if (FIXED.includes(c)) return `${label(c, win)} 키는 늘 쓰는 단축키라 못 바꿔요`;
   return null;
 }
 
 // 저장값(바꾼 것만) → 명령마다 쓸 accelerator('' = 끔). 틀린 값은 기본값, 앞 명령과 겹치면 끔
-export function resolveShortcuts(saved) {
+export function resolveShortcuts(saved, win = WIN) {
   const out = {};
   const used = new Set();
   for (const s of SHORTCUTS) {
     const v = saved && Object.hasOwn(saved, s.id) ? saved[s.id] : s.def;
-    const acc = v === '' ? '' : (canon(v) && !problem(v) ? canon(v) : s.def);
+    const acc = v === '' ? '' : (problem(v, win) ? s.def : canon(v, win));
     out[s.id] = acc && !used.has(acc) ? acc : '';
     if (out[s.id]) used.add(out[s.id]);
   }
@@ -81,11 +86,11 @@ export function resolveShortcuts(saved) {
 export function applyShortcut(saved, id, value, win = WIN) {
   const s = SHORTCUTS.find((x) => x.id === id);
   if (!s || !(value === null || typeof value === 'string')) return { ok: false, error: '앱이 이 요청을 받지 않았어요' };
-  const acc = value === null ? s.def : value === '' ? '' : canon(value);
+  const acc = value === null ? s.def : value === '' ? '' : canon(value, win);
   if (acc !== '') {
     const why = problem(acc ?? value, win);
     if (why) return { ok: false, error: why };
-    const now = resolveShortcuts(saved);
+    const now = resolveShortcuts(saved, win);
     const other = SHORTCUTS.find((x) => x.id !== id && now[x.id] === acc);
     if (other) return { ok: false, error: `${label(acc, win)} 키는 「${other.label}」가 쓰고 있어요` };
   }
@@ -97,7 +102,7 @@ export function applyShortcut(saved, id, value, win = WIN) {
 
 // 보일 글: 맥 ⌃⌥⇧⌘D · 윈도우 Ctrl+Shift+D. '' 는 없음
 const MAC_MODS = { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', CmdOrCtrl: '⌘' };
-const MAC_KEYS = { Up: '↑', Down: '↓', Left: '←', Right: '→', Return: '↩', Space: 'Space' };
+const MAC_KEYS = { Up: '↑', Down: '↓' }; // 안내(⌘↑·↓)에만 나온다
 export function label(acc, win = WIN) {
   if (!acc) return '없음';
   const parts = acc.split('+');

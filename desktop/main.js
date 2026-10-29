@@ -2140,7 +2140,7 @@ const appPrefs = {
       applyPanelPin();
     }
     if ('shortcut' in patch) {
-      const r = applyShortcut(state.shortcuts, patch.shortcut.id, patch.shortcut.value, process.platform === 'win32');
+      const r = applyShortcut(state.shortcuts, patch.shortcut.id, patch.shortcut.value);
       if (!r.ok) return { ok: false, error: r.error };
       state.shortcuts = r.saved;
       saveState();
@@ -2203,7 +2203,7 @@ if (SQUIRREL) {
   // 맥 입력창 ⌘C·⌘V·⌘X·⌘A 는 숨은 「편집」 메뉴에 기대지 않고 직접(src/edit-keys.js). preventDefault 로 메뉴 단축키는 겹쳐 돌지 않는다
   if (process.platform === 'darwin') app.on('web-contents-created', (_e, wc) => {
     wc.on('before-input-event', (e, input) => {
-      const cmd = editCommand(input);
+      const cmd = !shortcutRecording && editCommand(input); // 단축키를 받는 동안은 ⌘C·⌘A 도 그 칸으로(늘 쓰는 키라는 안내가 뜨게)
       if (cmd) { e.preventDefault(); wc[cmd](); }
     });
   });

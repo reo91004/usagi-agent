@@ -9,7 +9,8 @@ test('fromEvent: 자판 자리(code)로 읽어 한글 입력 중에도 같은 �
   assert.equal(fromEvent(ev('KeyD', { metaKey: true, shiftKey: true, key: 'ㅇ' })), 'CmdOrCtrl+Shift+D');
   assert.equal(fromEvent(ev('Digit0', { metaKey: true })), 'CmdOrCtrl+0');
   assert.equal(fromEvent(ev('Comma', { metaKey: true, ctrlKey: true, altKey: true })), 'CmdOrCtrl+Ctrl+Alt+,');
-  assert.equal(fromEvent(ev('ArrowUp', { altKey: true })), 'Alt+Up');
+  assert.equal(fromEvent(ev('ArrowUp', { metaKey: true, shiftKey: true })), null); // 화살표·↩ 는 입력칸 커서 이동·저장이라 안 받음
+  assert.equal(fromEvent(ev('Enter', { metaKey: true })), null);
   assert.equal(fromEvent(ev('F5')), 'F5');
   assert.equal(fromEvent(ev('MetaLeft', { metaKey: true })), null);
   assert.equal(fromEvent(ev('Tab', { metaKey: true })), null);
@@ -18,15 +19,21 @@ test('fromEvent: 자판 자리(code)로 읽어 한글 입력 중에도 같은 �
   assert.equal(fromEvent(ev('KeyN', { metaKey: true }), true), 'N');
 });
 
-test('problem: 수식 키 없는 글자·늘 쓰는 키·틀린 모양은 못 쓴다', () => {
+test('problem: ⌘·⌃ 없는 조합·늘 쓰는 키·틀린 모양은 못 쓴다', () => {
   assert.equal(problem('CmdOrCtrl+Shift+D'), null);
-  assert.equal(problem('Alt+K'), null);
+  assert.equal(problem('Ctrl+Alt+K'), null);
   assert.equal(problem('F7'), null);
+  // ⌥ 만: 맥 입력칸에서 글자(⌥A = å)이고 할 일 줄이 ⌥↑·⌥1~4 로 우선순위를 옮긴다
+  for (const k of ['Alt+K', 'Alt+1', 'Alt+Shift+K']) assert.match(problem(k), /⌘ 나 ⌃ 와 같이/, k);
+  for (const k of ['Alt+Up', 'CmdOrCtrl+Return', 'CmdOrCtrl+Left']) assert.match(problem(k), /쓸 수 없어요/, k);
   assert.match(problem('Shift+D'), /같이 눌러/);
   assert.match(problem('D'), /같이 눌러/);
   assert.match(problem('CmdOrCtrl+W'), /⌘W 키는 늘 쓰는/);
   assert.match(problem('CmdOrCtrl+3'), /늘 쓰는/);
   assert.match(problem('CmdOrCtrl+W', true), /Ctrl\+W 키는/);
+  // 윈도우: Ctrl 은 CmdOrCtrl 과 같은 키 — 늘 쓰는 키·겹침 검사를 빠져나가지 않는다
+  assert.match(problem('Ctrl+C', true), /Ctrl\+C 키는 늘 쓰는/);
+  assert.match(problem('Alt+K', true), /Ctrl 과 같이/);
   for (const bad of ['', 'Cmd+D', 'CmdOrCtrl+', 'CmdOrCtrl+CmdOrCtrl+D', 'CmdOrCtrl+Tab', 'x'.repeat(50)]) assert.ok(problem(bad), bad);
 });
 
@@ -34,10 +41,12 @@ test('resolveShortcuts: 바꾼 것만 덮고, 틀린 값은 기본값, 겹치면
   const def = Object.fromEntries(SHORTCUTS.map((s) => [s.id, s.def]));
   assert.deepEqual(resolveShortcuts(undefined), def);
   assert.equal(def.help, 'CmdOrCtrl+Shift+D');
-  assert.deepEqual(resolveShortcuts({ help: '', newChat: 'Alt+Shift+N' }), { ...def, help: '', newChat: 'Alt+Shift+N' });
+  assert.deepEqual(resolveShortcuts({ help: '', newChat: 'CmdOrCtrl+Alt+N' }), { ...def, help: '', newChat: 'CmdOrCtrl+Alt+N' });
   assert.equal(resolveShortcuts({ help: 'CmdOrCtrl+W' }).help, def.help);
   assert.equal(resolveShortcuts({ help: 'Shift+CmdOrCtrl+K' }).help, 'CmdOrCtrl+Shift+K'); // 순서는 정해진 대로
   assert.equal(resolveShortcuts({ settings: 'CmdOrCtrl+0' }).settings, ''); // 대시보드가 먼저 씀
+  assert.deepEqual([resolveShortcuts({ dashboard: 'Ctrl+N' }, true).dashboard, resolveShortcuts({ dashboard: 'Ctrl+N' }, true).newChat], ['CmdOrCtrl+N', '']);
+  assert.equal(resolveShortcuts({ dashboard: 'Ctrl+N' }).dashboard, 'Ctrl+N'); // 맥 ⌃N 은 ⌘N 과 다른 키
 });
 
 test('applyShortcut: 바꾸기·끄기·기본값, 겹치거나 못 쓰는 키는 까닭과 함께 거절', () => {
@@ -75,6 +84,7 @@ test('main: ⌘⇧D 는 전역 단축키가 아니고, 메뉴 단축키는 설�
   // 새 키를 받는 동안은 메뉴를 비운다(맥 메뉴 단축키가 창보다 먼저 키를 가져감) · 패널을 벗어나면 되돌린다
   assert.match(m, /function createAppMenu\(\) \{\n[^\n]*\n  if \(shortcutRecording\) \{ Menu\.setApplicationMenu\(Menu\.buildFromTemplate\(\[\{ label: app\.name, submenu: \[\{ label: '새 단축키를 받는 중…', enabled: false \}\] \}\]\)\); return; \}/);
   assert.match(m, /panel\.on\('blur', \(\) => appPrefs\.recording\(false\)\)/);
+  assert.match(m, /const cmd = !shortcutRecording && editCommand\(input\);/); // 받는 동안은 ⌘C·⌘A 도 칸으로
   const w = readFileSync(new URL('../src/settings-window.js', import.meta.url), 'utf8');
   assert.match(w, /ipcMain\.on\('settings-shortcut-recording', \(e, on\) => \{ if \(isMine\(e\)\) deps\.appPrefs\?\.recording\(on === true\); \}\)/);
   const p = readFileSync(new URL('../renderer/panel.js', import.meta.url), 'utf8');
