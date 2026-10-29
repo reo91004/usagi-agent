@@ -14,6 +14,8 @@
   --muted: #5e5e64;
   --faint: #8e8e93;
   --line: rgba(0, 0, 0, 0.10);
+  --line-strong: rgba(0, 0, 0, 0.22); /* 입력칸 위에 올렸을 때 */
+  --field: var(--surface);             /* 입력칸 배경 */
   --accent: #5b4bf0;
   --accent-soft: rgba(91, 75, 240, 0.10);
   --p1: #ff453a;
@@ -49,6 +51,7 @@
     --muted: #b0b0b6;
     --faint: #85858b;
     --line: rgba(255, 255, 255, 0.12);
+    --line-strong: rgba(255, 255, 255, 0.28);
     --accent: #9a90ff;
     --accent-soft: rgba(154, 144, 255, 0.16);
     --ok: #4cd068;
@@ -191,7 +194,7 @@ button {
 }
 button:hover:not(:disabled) { filter: brightness(0.96); }
 button:disabled { opacity: 0.5; cursor: default; }
-button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.primary { background: var(--accent); color: #fff; }
 @media (prefers-color-scheme: dark) { button.primary { background: var(--user); } } /* 밝은 보라(--accent) 위 흰 글자는 대비가 모자라 채팅 말풍선 색으로 */
 a { color: var(--accent); text-underline-offset: 2px; }
@@ -427,9 +430,6 @@ kbd {
 .setup-fields input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
   font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 .setup-fields small { color: var(--muted); font-weight: 450; line-height: 1.45; }
@@ -627,18 +627,13 @@ button.setup-copy { padding: 2px 8px; font-size: 11.5px; }
 .todo.row .check, .imp-row .check { --cb: var(--ok); width: 18px; height: 18px; border-radius: 50%; } /* 할 일 완료는 미리알림처럼 동그라미 */
 .todo .chip.mine { flex: none; }
 .todo .chip { flex: none; }
-#sec-todos input[type="text"], #sec-todos input[type="url"], #sec-todos textarea, #sec-todos select,
-:is(#sec-research, #sec-projects) :is(input[type="text"], input[type="url"], input[type="date"], select) {
-  padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); outline: none;
-}
-#sec-todos input:focus, #sec-todos textarea:focus, #sec-todos select:focus, :is(#sec-research, #sec-projects) :is(input, select):focus { border-color: var(--accent); }
 /* 할 일 추가 막대: 윗줄 동그라미 · 입력, 아랫줄 마감 칩 · 미리알림 목록 … 묶음 세그먼트(.rp-kinds) · ↵. 동그라미 색 = 들어갈 묶음(묶음 제목 점과 같은 색) */
 .todo-add { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: border-color 0.12s; }
 .todo-add:focus-within { border-color: var(--accent); }
 .add-line { display: flex; align-items: center; gap: 10px; }
 .add-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-left: 28px; }
 .add-gap { flex: 1; }
-#sec-todos .todo-add input { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; font-size: var(--fs-lg); }
+#sec-todos .todo-add input { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; box-shadow: none; font-size: var(--fs-lg); }
 #sec-todos .add-ring { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--p2); transition: border-color 0.12s; }
 #sec-todos .todo-add[data-pick="today"] .add-ring { border-color: var(--accent); }
 #sec-todos .todo-add[data-pick="3"] .add-ring { border-color: var(--p3); }
@@ -745,13 +740,7 @@ button.ghost.danger-text { color: var(--err); }
 #th-new { width: 100%; padding: 6px 10px; font-weight: 600; }
 #th-search {
   width: 100%;
-  padding: 5px 9px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  outline: none;
 }
-#th-search:focus { border-color: var(--accent); }
 #th-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 6px; }
 #th-archive-toggle { margin: 4px 10px 10px; align-self: flex-start; }
 #th-archive-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
@@ -818,7 +807,7 @@ button.ghost.danger-text { color: var(--err); }
 }
 .th-title:hover:not(:disabled) { background: var(--code); filter: none; }
 .th-title:disabled { opacity: 1; color: var(--muted); cursor: default; }
-#th-title-input { flex: 1; min-width: 0; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--accent); background: var(--card); outline: none; font-weight: 650; font-size: 14px; }
+#th-title-input { flex: 1; min-width: 0; padding: 3px 8px; border-color: var(--accent); font-weight: 650; font-size: 14px; }
 .th-todo {
   flex: none;
   max-width: 45%;
@@ -1001,15 +990,11 @@ button.small { padding: 2px 8px; font-size: 12px; }
   resize: none;
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  outline: none;
   line-height: 1.45;
 }
-#chat-input:focus { border-color: var(--accent); }
 /* 모델 선택·보내기는 한 줄 입력창과 같은 높이로(아래 맞춤) */
 #chat-model, #chat-send { height: 38px; flex: none; } /* 한 줄 입력창(14px × 1.45 + 위아래 여백·테두리)과 같게 */
-#chat-model { border: 1px solid var(--line); border-radius: 10px; padding: 0 6px; background: var(--card); color: var(--fg); font: inherit; font-size: 12.5px; max-width: 120px; }
+#chat-model { border-radius: 10px; padding: 0 6px; font-size: 12.5px; max-width: 120px; }
 #chat-send { padding-top: 0; padding-bottom: 0; }
 #chat-send.stop { background: var(--err); color: #fff; } /* 답하는 중 — 멈추기 */
 #chat-model[hidden] { display: none; }
@@ -1106,15 +1091,8 @@ button.ghost.rules-chip.on, button.ghost.rules-chip:hover:not(:disabled) { backg
 .model-row select {
   flex: 1;
   min-width: 0;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--fg);
-  font: inherit;
   font-weight: 450;
 }
-.model-row select:focus { outline: none; border-color: var(--accent); }
 .model-list { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12.5px; }
 .model-list code { font-size: 12px; }
 .models-note { margin: 0 0 8px; word-break: keep-all; }
@@ -1122,15 +1100,10 @@ button.ghost.rules-chip.on, button.ghost.rules-chip:hover:not(:disabled) { backg
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--fg);
   line-height: 1.45;
   resize: vertical;
   word-break: break-word;
 }
-.voice-line:focus { outline: none; border-color: var(--accent); }
 .voice-acts { display: flex; gap: 8px; justify-content: flex-end; }
 .voice-group { border-top: 1px solid var(--line); padding: 8px 0; }
 .voice-group > summary { cursor: pointer; font-weight: 650; font-size: 13px; }
@@ -1476,7 +1449,6 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .model-row label { font-weight: 600; }
 #sec-settings .model-row .desc { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; margin-top: -2px; }
 #sec-settings .model-row .lock { color: var(--warn); }
-#sec-settings select { padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); }
 
 /* 켜고 끄는 칩(브리핑 출처·알림 시각 등): 켜면 강조색으로 칠한다. 라디오 묶음은 .rp-kinds 와 같은 세그먼트 */
 #sec-settings .toggles { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1523,14 +1495,13 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .gl-text { overflow-wrap: anywhere; cursor: text; border-radius: 5px; padding: 1px 3px; }
 #sec-settings .gl-text:hover { background: var(--code); }
 #sec-settings .gl-src { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-#sec-settings .gl-edit, #sec-settings .gl-add input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
+#sec-settings .gl-edit, #sec-settings .gl-add input { flex: 1; min-width: 0; }
 #sec-settings .gl-empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
-#sec-settings .gl-add { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+#sec-settings .gl-add { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; } /* 입력칸·고르기 칸·단추를 같은 높이로 */
 
 /* Slack 채널·DM: 찾기 줄 + 묶음(채널·그룹 DM·DM)마다 접는 상자. 머리줄 = 펼치기 · 개수 · 한꺼번에 스위치 */
 #sec-settings .sk-bar { display: flex; align-items: center; gap: var(--s3); }
-#sec-settings #sk-search { flex: 1; max-width: 260px; padding: 6px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
-#sec-settings #sk-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#sec-settings #sk-search { flex: 1; max-width: 260px; }
 #sec-settings .sk-sum { margin-left: auto; color: var(--faint); font-size: var(--fs-xs); white-space: nowrap; }
 #sec-settings .sk-groups { display: grid; gap: var(--s2); margin-top: var(--s3); }
 #sec-settings .sk-group { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
@@ -1574,8 +1545,7 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .ph-head label { font-weight: 600; }
 #sec-settings .ph-vars { color: var(--faint); font-size: 11.5px; }
 #sec-settings .ph-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-#sec-settings .ph-row textarea { width: 100%; resize: vertical; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
-#sec-settings .ph-row textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#sec-settings .ph-row textarea { width: 100%; resize: vertical; }
 #sec-settings .ph-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 #sec-settings .ph-def { flex: 1; min-width: 0; color: var(--faint); font-size: 11.5px; white-space: pre-line; overflow-wrap: anywhere; }
 #sec-settings .ph-err { flex: 1; min-width: 0; color: var(--err-fg); font-size: 11.5px; overflow-wrap: anywhere; }
@@ -1633,7 +1603,7 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .ce-head h3 { margin: 0; font-size: 13px; color: var(--fg); }
 #sec-settings .ce-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 #sec-settings .ce-row > span:first-child { min-width: 84px; font-weight: 600; }
-#sec-settings .ce-name { flex: 1; min-width: 160px; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; }
+#sec-settings .ce-name { flex: 1; min-width: 160px; }
 #sec-settings .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
 #sec-settings .slot { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); }
 #sec-settings .slot-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
