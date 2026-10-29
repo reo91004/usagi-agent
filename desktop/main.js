@@ -1,6 +1,6 @@
 // 데스크톱 마스코트 — 메인 프로세스.
 // 데몬 SSE 를 여기서 받고 IPC 로 렌더러에 넘긴다. 렌더러는 네트워크 접근 없음.
-import { app, BrowserWindow, Menu, Tray, clipboard, dialog, globalShortcut, ipcMain, nativeImage, net, protocol, screen, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, nativeImage, net, protocol, screen, session, shell, systemPreferences } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -54,6 +54,7 @@ import { denied } from './src/denied.js';
 import { withCalendarAdded, withCalendarRemoved, calendarRows, calendarUrlById, calendarUrls, hubDoneFor, calendarReloadNote, okCalendarId, CALENDAR_DUP } from './src/calendars.js';
 import { squirrelPlan, loginItemTarget, appUserModelId } from './src/squirrel.js';
 import { editCommand } from './src/edit-keys.js';
+import { resolveShortcuts, applyShortcut, NEW_CHAT } from './src/shortcuts.js';
 
 // 윈도우 Squirrel 설치기가 --squirrel-* 로 띄운 실행이면 바로 가기만 고치고 끝낸다(맨 아래 시작 부분에서 갈린다)
 const SQUIRREL = squirrelPlan({ platform: process.platform, argv: process.argv, execPath: process.execPath });
@@ -569,6 +570,7 @@ function createPanel() {
   };
   panel.on('show', applyDock);
   panel.on('hide', applyDock);
+  panel.on('blur', () => appPrefs.recording(false)); // 키를 받다 다른 앱으로 가도 메뉴는 되돌린다
   applyPanelPin();
   // 창은 큰데 안쪽 화면이 옛 크기로 남아 오른쪽에 빈 띠가 보이는 경우(#128): 보일 때·크기 바꾸기를 마쳤을 때 맞춰 본다
   const refit = async () => {
@@ -926,6 +928,7 @@ function menuTemplate() {
       briefing: triggerBriefing,
       settings: () => showPanel('settings'),
       tour: startTour,
+      help: () => showDebugWindow(),
       toggleBubbles: () => {
         state.bubblesHidden = !state.bubblesHidden;
         saveState();
@@ -987,7 +990,11 @@ function setCharacterHidden(hidden) {
 }
 
 function createAppMenu() {
+  // 설정에서 새 단축키를 받는 동안은 단축키 없는 메뉴로 — 맥은 메뉴 단축키(⌘A·⌘Q 등)가 창보다 먼저 키를 가져간다(null 은 맥에서 무시됨)
+  if (shortcutRecording) { Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: app.name, submenu: [{ label: '새 단축키를 받는 중…', enabled: false }] }])); return; }
   const mac = process.platform === 'darwin';
+  const sc = resolveShortcuts(state.shortcuts);
+  const key = (id) => (sc[id] ? { accelerator: sc[id] } : {}); // 설정에서 끈 단축키는 메뉴 글자만
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(mac ? [{
       label: app.name,
@@ -1005,11 +1012,12 @@ function createAppMenu() {
     {
       label: '윈도우',
       submenu: [
-        { label: '대시보드 열기', accelerator: 'CmdOrCtrl+0', click: () => showPanel(null) },
-        { label: '작업 세션 열기', accelerator: 'CmdOrCtrl+Shift+S', click: openSessionMenu },
-        { label: '도움 보내기', accelerator: 'CmdOrCtrl+Shift+D', registerAccelerator: false, click: () => showDebugWindow() },
+        { label: '대시보드 열기', ...key('dashboard'), click: () => showPanel(null) },
+        { label: '새 대화', ...key('newChat'), click: () => showPanel('chat', NEW_CHAT) },
+        { label: '작업 세션 열기', ...key('session'), click: openSessionMenu },
+        { label: '도움 보내기', ...key('help'), click: () => showDebugWindow() },
         { label: '캐릭터 보이기·숨기기', click: () => setCharacterHidden(!state.characterHidden) },
-        { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => showPanel('settings') },
+        { label: '설정…', ...key('settings'), click: () => showPanel('settings') },
         { type: 'separator' },
         // ⌘W: 패널만 숨긴다(role: close 는 오버레이까지 닫아버림)
         { label: '창 닫기', accelerator: 'CmdOrCtrl+W', click: () => { if (panel?.isFocused()) panel.hide(); else if (sessionWin?.isFocused()) sessionWin.close(); } },
@@ -1154,7 +1162,7 @@ function keepOverlayPos(fn) {
   return out;
 }
 
-// ---- 도움 보내기 (⌘⇧D) — 오버레이가 클릭 통과여도 전역 단축키로 연다 ----
+// ---- 도움 보내기: 메뉴 막대 아이콘 메뉴 · 윈도우 메뉴(기본 ⌘⇧D, 설정에서 바꿈) ----
 async function probeDaemon() {
   try {
     const r = await fetch(`${BASE}/dashboard`, { signal: AbortSignal.timeout(2500), headers: { Accept: 'application/json' } });
@@ -1233,11 +1241,6 @@ function showDebugWindow() {
   }
   if (process.platform === 'darwin') app.focus({ steal: true });
   createDebugWindow();
-}
-
-function registerDebugShortcut() {
-  const ok = globalShortcut.register('CommandOrControl+Shift+D', () => showDebugWindow());
-  if (!ok) console.error('[debug] 단축키를 등록하지 못했어요');
 }
 
 // ---- IPC ----
@@ -1914,7 +1917,7 @@ function setupIPC() {
     if (fromOurs(e) && o) showPanel(o.section, o.id);
   });
 
-  ipcMain.handle('debug-bundle', async (e) => (fromDebug(e) ? buildDebugBundle() : denied()));
+  ipcMain.handle('debug-bundle', async (e) => (fromDebug(e) ? { ...(await buildDebugBundle()), helpKey: resolveShortcuts(state.shortcuts).help } : denied()));
   ipcMain.handle('debug-copy', (e) => {
     if (!fromDebug(e)) return denied();
     if (!lastDebug.text) return { ok: false, error: '기록이 아직 없어요.' };
@@ -2101,7 +2104,13 @@ async function checkForUpdate() {
 }
 
 // 설정 「이 앱」 칸
+let shortcutRecording = false;
 const appPrefs = {
+  recording(on) {
+    if (shortcutRecording === on) return;
+    shortcutRecording = on;
+    createAppMenu();
+  },
   get() {
     const p = loginPlan();
     let on = false;
@@ -2109,7 +2118,7 @@ const appPrefs = {
       try { on = app.getLoginItemSettings(loginTarget()).openAtLogin === true; } catch { on = state.openAtLogin === true; }
     }
     return { ok: true, version: app.getVersion(), openAtLogin: { available: p.manage, on, hint: loginItemHint(p.reason) }, updateCheck: state.updateCheck !== false,
-      panelPinned: state.panelPinned === true,
+      panelPinned: state.panelPinned === true, shortcuts: resolveShortcuts(state.shortcuts),
       ...(process.platform === 'darwin' ? { showInDock: state.showInDock === true } : {}) };
   },
   set(patch) {
@@ -2129,6 +2138,13 @@ const appPrefs = {
       state.panelPinned = patch.panelPinned;
       saveState();
       applyPanelPin();
+    }
+    if ('shortcut' in patch) {
+      const r = applyShortcut(state.shortcuts, patch.shortcut.id, patch.shortcut.value);
+      if (!r.ok) return { ok: false, error: r.error };
+      state.shortcuts = r.saved;
+      saveState();
+      createAppMenu();
     }
     if ('updateCheck' in patch) {
       state.updateCheck = patch.updateCheck;
@@ -2187,7 +2203,7 @@ if (SQUIRREL) {
   // 맥 입력창 ⌘C·⌘V·⌘X·⌘A 는 숨은 「편집」 메뉴에 기대지 않고 직접(src/edit-keys.js). preventDefault 로 메뉴 단축키는 겹쳐 돌지 않는다
   if (process.platform === 'darwin') app.on('web-contents-created', (_e, wc) => {
     wc.on('before-input-event', (e, input) => {
-      const cmd = editCommand(input);
+      const cmd = !shortcutRecording && editCommand(input); // 단축키를 받는 동안은 ⌘C·⌘A 도 그 칸으로(늘 쓰는 키라는 안내가 뜨게)
       if (cmd) { e.preventDefault(); wc[cmd](); }
     });
   });
@@ -2206,7 +2222,6 @@ if (SQUIRREL) {
     setupIPC();
     createAppMenu();
     setupAppActivation();
-    registerDebugShortcut();
     createWindow();
     if (state.tucked) settlePos(); // 저장 자리를 잃었거나(모니터를 뺌) 작업영역이 바뀌었어도 가장자리 가까이면 다시 붙인다
     // 윈도우 로그오프·종료는 before-quit 을 안 거친다(창의 session-end 만 온다) → 집중 기록·데몬 끄기를 여기서 짧게
@@ -2244,7 +2259,6 @@ if (SQUIRREL) {
     }
     quitting = true;
     currentAbort?.abort();
-    globalShortcut.unregisterAll();
     // 앱이 띄운 데몬은 같이 끈다(남의 데몬·launchd 데몬은 그대로)
     if (daemonHost?.pid && !daemonStopping) {
       daemonStopping = true;
@@ -2252,7 +2266,6 @@ if (SQUIRREL) {
       daemonHost.stop().finally(() => app.quit());
     }
   });
-  app.on('will-quit', () => globalShortcut.unregisterAll());
   // 창 닫혀도 계속 — 종료는 ⌘Q·Dock·트레이 메뉴에서만
   app.on('window-all-closed', () => {});
 }

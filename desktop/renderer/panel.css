@@ -1709,3 +1709,14 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 .rp-sess .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-chip { margin-left: 6px; }
 .rp-more { margin: 4px 0 2px; }
+
+/* 단축키(설정 「이 앱」): 줄은 행동 지침 줄 모양, 키 칸은 오른쪽 끝에 맞춰 입력칸 모양 · 받는 중엔 강조색 고리 */
+#sec-settings .gl-row.sc-row { grid-template-columns: 1fr auto auto; }
+#sec-settings .sc-name { min-width: 0; }
+#sec-settings .sc-key { min-width: 112px; padding: 4px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--field); color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: 0.06em; text-align: center; transition: border-color 0.12s, box-shadow 0.12s; }
+#sec-settings .sc-key:hover:not(:disabled) { filter: none; border-color: var(--line-strong); } /* 입력칸(controls.css)과 같은 올림·초점 모양 */
+#sec-settings .sc-key:focus-visible, #sec-settings .sc-key.rec { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#sec-settings .sc-key.rec { color: var(--accent); letter-spacing: 0; }
+#sec-settings .sc-key.none { color: var(--faint); letter-spacing: 0; }
+#sec-settings .sc-fixed { margin: 10px 0 0; font-size: var(--fs-xs); }
+@media (prefers-reduced-motion: reduce) { #sec-settings .sc-key { transition: none; } }

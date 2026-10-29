@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { menuTemplate } from '../src/menu.js';
 
-const a = Object.fromEntries(['open', 'session', 'briefing', 'settings', 'tour', 'toggleBubbles', 'toggleTuck', 'toggleCharacter', 'quit'].map((k) => [k, () => k]));
+const a = Object.fromEntries(['open', 'session', 'briefing', 'settings', 'tour', 'help', 'toggleBubbles', 'toggleTuck', 'toggleCharacter', 'quit'].map((k) => [k, () => k]));
 const s = { name: '우사기', connected: true, brainLabel: 'Claude Code', coder: true, bubblesHidden: false };
 const labels = (t) => t.map((i) => (i.type === 'separator' ? '-' : i.label));
 
 test('항목과 순서', () => {
   assert.deepEqual(labels(menuTemplate(s, a)), [
-    '우사기 켜짐 · Claude Code', '-', '패널 열기', '작업 세션 열기', '지금 브리핑', '-', '설정…', '사용법 다시 보기', '-', '말풍선 숨기기', '가장자리에 숨기', '캐릭터 숨기기', '-', '우사기 끄기',
+    '우사기 켜짐 · Claude Code', '-', '패널 열기', '작업 세션 열기', '지금 브리핑', '-', '설정…', '사용법 다시 보기', '도움 보내기', '-', '말풍선 숨기기', '가장자리에 숨기', '캐릭터 숨기기', '-', '우사기 끄기',
   ]);
 });
 

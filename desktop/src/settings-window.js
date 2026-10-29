@@ -48,6 +48,7 @@ export function setupSettings(deps) {
     const p = isMine(e) && deps.appPrefs ? sanitizeAppPrefs(patch) : null;
     return p ? deps.appPrefs.set(p) : denied();
   });
+  ipcMain.on('settings-shortcut-recording', (e, on) => { if (isMine(e)) deps.appPrefs?.recording(on === true); });
 
   // 캐릭터 만들기·고치기·지우기(데몬 /characters). 그림은 바이트로(채팅 첨부처럼), 저장 이름은 데몬이 짓는다
   ipcMain.handle('characters-list', (e) => (isMine(e) ? deps.request('GET', '/characters') : denied()));
