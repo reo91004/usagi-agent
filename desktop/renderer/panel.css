@@ -1497,7 +1497,7 @@ button.focus-tab.on { background: var(--surface); color: var(--fg); box-shadow: 
 #sec-settings .gl-src { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 #sec-settings .gl-edit, #sec-settings .gl-add input { flex: 1; min-width: 0; }
 #sec-settings .gl-empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
-#sec-settings .gl-add { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+#sec-settings .gl-add { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; } /* 입력칸·고르기 칸·단추를 같은 높이로 */
 
 /* Slack 채널·DM: 찾기 줄 + 묶음(채널·그룹 DM·DM)마다 접는 상자. 머리줄 = 펼치기 · 개수 · 한꺼번에 스위치 */
 #sec-settings .sk-bar { display: flex; align-items: center; gap: var(--s3); }
