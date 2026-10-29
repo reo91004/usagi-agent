@@ -26,6 +26,7 @@ onWho(fillWho);
 fillWho(); // 처음 캐릭터가 기본값과 같으면 onWho 가 안 불려 HTML 의 「시사」가 남았다
 import { brainRows, brainDisconnectCopy, connectorAction, capOfRow, connectorDisconnectCopy, disconnectControl } from '../src/disconnect.js';
 import { calendarRemoveCopy } from '../src/calendars.js';
+import { SHORTCUTS, FIXED_HINTS, fromEvent, label as keyLabel } from '../src/shortcuts.js';
 
 
 const el = (tag, cls, text) => {
@@ -199,6 +200,68 @@ function renderAppPrefs() {
   const hint = $('app-hint');
   hint.textContent = login.hint || '';
   hint.hidden = !login.hint;
+  renderShortcuts();
+}
+
+// ---- 단축키: 키 칸을 누르고 새 키를 누르면 바뀐다(Esc 취소 · ⌫ 끄기). 받는 동안은 메인이 앱 메뉴를 비워 키가 이 칸으로 온다 ----
+let recording = null; // 새 키를 기다리는 명령 id
+function setRecording(id) {
+  if (recording === id) return;
+  if (!recording !== !id) cy.recordShortcut?.(!!id);
+  recording = id;
+  paintKeys();
+}
+function renderShortcuts(focusId) {
+  const box = $('sc-list');
+  box.replaceChildren();
+  const cur = appPrefs?.shortcuts;
+  if (!cur) return;
+  for (const s of SHORTCUTS) {
+    const key = el('button');
+    key.type = 'button';
+    key.dataset.id = s.id;
+    paintKey(key);
+    // 받는 중엔 칸만 다시 칠한다(줄을 새로 그리면 포커스가 빠져 키를 못 받는다)
+    key.addEventListener('click', () => { $('sc-err').textContent = ''; key.focus(); setRecording(recording === s.id ? null : s.id); });
+    key.addEventListener('keydown', (e) => onShortcutKey(e, s.id));
+    key.addEventListener('blur', () => { if (recording === s.id) setRecording(null); });
+    const reset = el('button', 'ghost small', '기본값');
+    reset.type = 'button';
+    reset.title = `${keyLabel(s.def)} 로 되돌려요`;
+    reset.hidden = cur[s.id] === s.def;
+    reset.addEventListener('click', () => saveShortcut(s.id, null));
+    const row = el('div', 'gl-row sc-row');
+    row.append(el('span', 'sc-name', s.label), reset, key); // 키 칸이 늘 오른쪽 끝에 줄 맞게
+    box.append(row);
+  }
+  const f = recording ?? focusId; // 받는 중에 다시 그려도(다른 칩을 바꿔서) 그 칸이 키를 계속 받게
+  if (f) box.querySelector(`.sc-key[data-id="${f}"]`)?.focus();
+  $('sc-fixed').textContent = `바꿀 수 없는 단축키: ${FIXED_HINTS.map(([k, tail, what]) => `${keyLabel(k)}${tail} ${what}`).join(' · ')}`;
+}
+function paintKey(key) {
+  const acc = appPrefs.shortcuts[key.dataset.id];
+  const rec = recording === key.dataset.id;
+  key.className = `sc-key${rec ? ' rec' : ''}${acc ? '' : ' none'}`;
+  key.textContent = rec ? '새 키를 눌러요…' : keyLabel(acc);
+  key.setAttribute('aria-label', `${SHORTCUTS.find((s) => s.id === key.dataset.id).label} 단축키 ${keyLabel(acc)}${rec ? ', 새 키를 눌러요' : ', 눌러서 바꾸기'}`);
+}
+const paintKeys = () => { for (const k of $('sc-list').querySelectorAll('.sc-key')) paintKey(k); };
+function onShortcutKey(e, id) {
+  if (recording !== id || e.key === 'Tab') return;
+  e.preventDefault();
+  e.stopPropagation(); // 패널의 Esc(닫기)·⌘W 로 가지 않게
+  const bare = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
+  if (bare && e.key === 'Escape') { setRecording(null); return; }
+  if (bare && (e.key === 'Backspace' || e.key === 'Delete')) { saveShortcut(id, ''); return; }
+  const acc = fromEvent(e);
+  if (acc) saveShortcut(id, acc); // 수식 키만 누른 동안은 계속 기다린다
+}
+async function saveShortcut(id, value) {
+  setRecording(null);
+  const res = await cy.setAppPrefs?.({ shortcut: { id, value } }).catch(() => null);
+  if (res?.ok) { appPrefs = res; flash('저장했어요'); }
+  $('sc-err').textContent = res?.ok ? '' : res?.error || '저장하지 못했어요';
+  renderShortcuts(id);
 }
 async function loadAppPrefs() {
   const r = await cy.getAppPrefs?.().catch(() => null);

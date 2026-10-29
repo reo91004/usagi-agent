@@ -159,6 +159,7 @@ contextBridge.exposeInMainWorld('cy', {
     openDoc: (doc) => ipcRenderer.send('settings-open-doc', String(doc)), // docs/connect/*.md — 설치 화면에 없는 연결(메일·이슈)의 안내를 GitHub 에서
     getAppPrefs: () => ipcRenderer.invoke('settings-app-get'), // { version, openAtLogin: { available, on, hint }, updateCheck, showInDock(맥) }
     setAppPrefs: (patch) => ipcRenderer.invoke('settings-app-set', patch && typeof patch === 'object' ? JSON.parse(JSON.stringify(patch)) : null),
+    recordShortcut: (on) => ipcRenderer.send('settings-shortcut-recording', on === true), // 새 단축키를 받는 동안 메뉴 단축키를 비운다
     startTour: () => ipcRenderer.send('start-tour'), // 사용법 다시 보기(캐릭터 말풍선)
     // 캐릭터: 목록(GET /characters) · 만들기 { name, from?, lines?, frame? } · 고치기(id, { name?, lines?, frame? }) · 기본값으로(id) · 지우기(id)
     // · 그림 올리기(id, 칸, 이름, 종류, 바이트) · 그림 빼기(id, 칸) → { ok, status, data }

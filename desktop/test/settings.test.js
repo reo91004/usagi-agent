@@ -113,7 +113,7 @@ test('캐릭터 한 번 클릭 → 말 걸기(뇌가 없으면 질문 칩), 더�
   const m = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
   // 설정으로 가는 길: 트레이·앱 메뉴(⌘,) 모두 패널의 설정 화면. 따로 뜨는 설정 창은 없다
   assert.match(m, /settings: \(\) => showPanel\('settings'\)/);
-  assert.match(m, /accelerator: 'CmdOrCtrl\+,', click: \(\) => showPanel\('settings'\)/);
+  assert.match(m, /\.\.\.key\('settings'\), click: \(\) => showPanel\('settings'\)/);
   assert.doesNotMatch(m, /settingsUi|preload-settings/);
   assert.doesNotMatch(readFileSync(new URL('../renderer/panel.html', import.meta.url), 'utf8'), /id="open-settings"/);
 });
@@ -229,14 +229,19 @@ test('일정 알림: 저장 본문 거르기 · 칩 켜고 끄기 · 직접 적�
   assert.match(js, /calendarAlert: \{ minutesBefore \}/);
 });
 
-test('sanitizeAppPrefs: 로그인할 때 켜기·새 버전 알림·Dock 아이콘만, 참/거짓만', () => {
+test('sanitizeAppPrefs: 로그인할 때 켜기·새 버전 알림·Dock 아이콘은 참/거짓만, 단축키는 { id, value } 한 쌍만', () => {
   assert.deepEqual(sanitizeAppPrefs({ openAtLogin: true }), { openAtLogin: true });
   assert.deepEqual(sanitizeAppPrefs({ showInDock: true }), { showInDock: true });
   assert.equal(sanitizeAppPrefs({ showInDock: 'yes' }), null);
   assert.deepEqual(sanitizeAppPrefs({ panelPinned: true }), { panelPinned: true });
   assert.equal(sanitizeAppPrefs({ panelPinned: 1 }), null);
   assert.deepEqual(sanitizeAppPrefs({ updateCheck: false, openAtLogin: false }), { updateCheck: false, openAtLogin: false });
-  for (const bad of [null, [], {}, { openAtLogin: 'yes' }, { other: true }, { openAtLogin: true, x: 1 }]) assert.equal(sanitizeAppPrefs(bad), null, JSON.stringify(bad));
+  assert.deepEqual(sanitizeAppPrefs({ shortcut: { id: 'help', value: 'CmdOrCtrl+Shift+H' } }), { shortcut: { id: 'help', value: 'CmdOrCtrl+Shift+H' } });
+  assert.deepEqual(sanitizeAppPrefs({ shortcut: { id: 'help', value: null } }), { shortcut: { id: 'help', value: null } });
+  for (const bad of [null, [], {}, { openAtLogin: 'yes' }, { other: true }, { openAtLogin: true, x: 1 },
+    { shortcut: { id: 'nope', value: '' } }, { shortcut: { id: 'help' } }, { shortcut: { id: 'help', value: 3 } }, { shortcut: { id: 'help', value: 'x'.repeat(41) } }, { shortcut: { id: 'help', value: '', x: 1 } }, { shortcut: null }]) {
+    assert.equal(sanitizeAppPrefs(bad), null, JSON.stringify(bad));
+  }
 });
 
 test('chat-send: 오버레이에서 보내면 kind hover(늘 새 스레드), 패널에서 보내면 고른 스레드', async () => {

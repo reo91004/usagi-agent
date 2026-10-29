@@ -26,6 +26,7 @@ import { parseDue, dueBucket } from '../src/todo-date.js';
 import { createClickSorter, toggleOpen, dropTarget, autoScrollDelta, reorderLocal, isNoopMove, keyMove, detailView, SOURCE_LABELS, dueChip, laterPart, LATER_PARTS, LONG_PRESS, MOVE_SLOP } from '../src/todo-rows.js';
 import { openEdit, fillDescription, editKey, editPatch, editDue } from '../src/todo-edit.js';
 import { originPlan, todoPlan } from '../src/origin.js';
+import { NEW_CHAT } from '../src/shortcuts.js';
 import { trashModel, commitTrash, trashItemOf, todoBodyOf, confirmReducer, isConfirming, confirmKey, isTrashKey, createUndo, readTrashOpen, writeTrashOpen, overTrash, CONFIRM_TEXT, UNDO_MS } from '../src/todo-trash.js';
 import { BACKLOG, rulesChip, overlayRules, hitsLabel, readBacklogOpen, writeBacklogOpen, isCollapsed } from '../src/todo-rules.js';
 import { attachSlashMenu } from './slash-menu.js';
@@ -3457,6 +3458,7 @@ let dashStale = false;
 cy.onDashboard(() => { if (panelShown()) loadSoon(); else dashStale = true; });
 // id(선택): 오버레이 말풍선(새 할 일)에서 연 그 할 일을 펼친다
 cy.onSection(({ section: s, id } = {}) => {
+  if (s === 'chat' && id === NEW_CHAT) { newChat(); return; } // 앱 메뉴 「새 대화」(⌘N 등 설정한 단축키)
   if (s === 'chat' && typeof id === 'string' && id) { openThread(id); return; } // 말풍선(호버 답) → 그 대화
   if (s === 'setup' && isSetupPhase(id)) { openSetup(id); if (id === 'brain') detectAgents(); return; } // 연결 안내 말풍선 → 마법사의 그 단계
   if (s === 'settings' && SETTINGS_TABS.includes(id)) settingsTab = id; // 「모델」 탭이던 말풍선은 id 'ai'
@@ -3563,9 +3565,6 @@ document.addEventListener('keydown', (e) => {
   } else if (e.metaKey && e.key === 'w') {
     e.preventDefault();
     cy.close();
-  } else if (e.metaKey && !e.shiftKey && !e.altKey && (e.key === 'n' || e.key === 'N')) {
-    e.preventDefault();
-    newChat();
   } else if (e.metaKey && section === 'chat' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.isComposing) {
     e.preventDefault();
     const next = neighborThread(visibleOrder(), selectedId, e.key === 'ArrowDown' ? 1 : -1);
