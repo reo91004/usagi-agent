@@ -1,6 +1,6 @@
 // 도움 보내기 창 — 메인에서 받은 기록을 보여 주고, 짧은 요약 그림을 그린다. 네트워크 없음.
 import { encode } from './vendor/qr.js';
-import { isWindowsUA } from '../src/os-hint.js';
+import { label as keyLabel } from '../src/shortcuts.js';
 
 const $ = (id) => document.getElementById(id);
 const logEl = $('log');
@@ -9,8 +9,6 @@ const speechEl = $('speech');
 const canvas = $('qr');
 const qrNote = $('qr-note');
 
-// 윈도우: 단축키 안내를 Ctrl+Shift+D 로
-if (isWindowsUA()) { const k = $('guide')?.querySelector('strong'); if (k) k.textContent = 'Ctrl+Shift+D'; }
 
 function setStatus(text, err) {
   statusEl.textContent = text;
@@ -55,6 +53,11 @@ async function load() {
   }
   logEl.value = b.text || '';
   if (b.speech) speechEl.textContent = b.speech;
+  // 단축키 안내는 설정에서 고른 키로(맥 ⇧⌘D · 윈도우 Ctrl+Shift+D), 끄면 그 말을 뺀다
+  if (typeof b.helpKey === 'string') {
+    $('guide-key').hidden = !b.helpKey;
+    $('guide-key').querySelector('strong').textContent = keyLabel(b.helpKey);
+  }
   drawQr(b.qr);
 }
 
